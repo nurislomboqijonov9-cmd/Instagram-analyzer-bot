@@ -2,16 +2,17 @@ import os
 import logging
 import tempfile
 import asyncio
-import google.generativeai as genai
+import base64
+import subprocess
+from openai import OpenAI
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 # === SOZLAMALAR ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# Gemini sozlash
-genai.configure(api_key=GEMINI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -20,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # === TAHLIL PROMPTI ===
-TAHLIL_PROMPT = """Sen Instagram video tahlil qiluvchi mutaxassis AI assistantsan. 
+TAHLIL_PROMPT = """Sen Instagram video tahlil qiluvchi mutaxassis AI assistantsan.
 Seni vazifang — blogger yuborgan videoni to'liq professional tahlil qilish.
 
 Quyidagi bo'limlarni O'ZBEK tilida batafsil tahlil qil:
@@ -58,7 +59,71 @@ Quyidagi bo'limlarni O'ZBEK tilida batafsil tahlil qil:
 8. 💡 TAVSIYALAR
    - Keyingi videoni yaxshilash uchun 5 ta aniq qadam
 
-Tahlilni professional, aniq va foydali qil. Ortiqcha maqtov yoki tanqiddan saqlaning."""
+Tahlilni professional, aniq va foydali qil."""
+
+
+def extract_frames(video_path, num_frames=8):
+    """Videodan kadrlar ajratib olish"""
+    frames = []
+    try:
+        # Video davomiyligini olish
+        result = subprocess.run([
+            'ffprobe', '-v', 'quiet', '-print_format', 'json',
+            '-show_format', video_path
+        ], capture_output=True, text=True)
+        
+        import json
+        data = json.loads(result.stdout)
+        duration = float(data['format'].get('duration', 30))
+        
+        # Kadrlarni vaqt oralig'ida ajratib olish
+        for i in range(num_frames):
+            timestamp = (duration / num_frames) * i
+            output_path = f'/tmp/frame_{i}.jpg'
+            subprocess.run([
+                'ffmpeg', '-ss', str(timestamp), '-i', video_path,
+                '-vframes', '1', '-q:v', '3', '-s', '720x1280',
+                output_path, '-y'
+            ], capture_output=True)
+            
+            if os.path.exists(output_path):
+                with open(output_path, 'rb') as f:
+                    frame_data = base64.b64encode(f.read()).decode('utf-8')
+                    frames.append(frame_data)
+                os.unlink(output_path)
+        
+        logger.info(f"{len(frames)} ta kadr ajratildi")
+    except Exception as e:
+        logger.error(f"Kadr ajratishda xato: {e}")
+    
+    return frames
+
+
+def extract_audio_text(video_path):
+    """Videodan audio ajratib, matnga o'girish"""
+    try:
+        audio_path = '/tmp/audio_extract.mp3'
+        subprocess.run([
+            'ffmpeg', '-i', video_path, '-vn', '-acodec', 'mp3',
+            '-ar', '16000', '-ac', '1', '-b:a', '64k',
+            audio_path, '-y'
+        ], capture_output=True)
+        
+        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 1000:
+            with open(audio_path, 'rb') as audio_file:
+                # Whisper API orqali transkriptsiya
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    language="uz"  # O'zbek tili
+                )
+            os.unlink(audio_path)
+            logger.info("Audio transkriptsiya muvaffaqiyatli")
+            return transcript.text
+    except Exception as e:
+        logger.error(f"Audio tahlilida xato: {e}")
+    
+    return None
 
 
 # === START KOMANDASI ===
@@ -110,7 +175,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     
-    # Foydalanuvchiga xabar
     wait_msg = await message.reply_text(
         "⏳ Video qabul qilindi! Tahlil boshlanmoqda...\n"
         "Bu 30-60 sekund vaqt olishi mumkin."
@@ -128,48 +192,70 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text("❌ Video formatini tanib olmadim. MP4 yoki MOV formatida yuboring.")
             return
         
-        # Vaqtinchalik fayl saqlash
         with tempfile.NamedTemporaryFile(suffix=f'.{file_ext}', delete=False) as tmp_file:
             tmp_path = tmp_file.name
         
         await file.download_to_drive(tmp_path)
+        await wait_msg.edit_text("🔍 Video kadrlar tahlil qilinmoqda...")
         
-        await wait_msg.edit_text("🔍 Video tahlil qilinmoqda... (Gemini AI ishlamoqda)")
+        # Kadrlarni ajratib olish
+        frames = extract_frames(tmp_path, num_frames=8)
         
-        # Gemini ga yuborish
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # Audio transkriptsiya
+        await wait_msg.edit_text("🎙️ Audio tahlil qilinmoqda...")
+        audio_text = extract_audio_text(tmp_path)
         
-        # Video faylni yuklash
-        video_file = genai.upload_file(tmp_path, mime_type=f'video/{file_ext}')
+        await wait_msg.edit_text("🧠 AI tahlil qilinmoqda...")
         
-        # Fayl tayyor bo'lishini kutish
-        while video_file.state.name == "PROCESSING":
-            await asyncio.sleep(2)
-            video_file = genai.get_file(video_file.name)
+        # OpenAI Vision ga yuborish
+        messages_content = [
+            {"type": "text", "text": TAHLIL_PROMPT}
+        ]
         
-        if video_file.state.name == "FAILED":
-            await wait_msg.edit_text("❌ Video yuklanmadi. Qaytadan urinib ko'ring.")
-            return
+        # Kadrlarni qo'shish
+        for frame in frames:
+            messages_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{frame}",
+                    "detail": "high"
+                }
+            })
         
-        # Tahlil so'rash
-        response = model.generate_content([TAHLIL_PROMPT, video_file])
+        # Audio matni qo'shish
+        if audio_text:
+            messages_content.append({
+                "type": "text",
+                "text": f"\n\n🎙️ VIDEODAGI NUTQ MATNI:\n{audio_text}"
+            })
+        else:
+            messages_content.append({
+                "type": "text",
+                "text": "\n\n🎙️ AUDIO: Videoda nutq aniqlanmadi yoki ovoz yo'q."
+            })
         
-        tahlil = response.text
+        # GPT-4o ga yuborish
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "user", "content": messages_content}
+            ],
+            max_tokens=2000
+        )
         
-        # Javobni yuborish (agar uzun bo'lsa bo'laklarga bo'lish)
+        tahlil = response.choices[0].message.content
+        
         await wait_msg.edit_text("✅ Tahlil tayyor!")
         
+        # Javobni yuborish
         if len(tahlil) <= 4000:
             await message.reply_text(tahlil)
         else:
-            # Uzun javobni bo'laklarga bo'lish
             chunks = [tahlil[i:i+4000] for i in range(0, len(tahlil), 4000)]
             for i, chunk in enumerate(chunks):
                 await message.reply_text(f"📋 *Qism {i+1}/{len(chunks)}*\n\n{chunk}", parse_mode='Markdown')
         
-        # Faylni o'chirish
         os.unlink(tmp_path)
-        genai.delete_file(video_file.name)
         
     except Exception as e:
         logger.error(f"Xato: {e}")
