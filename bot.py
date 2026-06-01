@@ -35,19 +35,45 @@ DB_PATH = "/tmp/instadoktor.db"
 
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
-        joined TEXT, balance INTEGER DEFAULT 0)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS analyses (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
-        package TEXT, amount INTEGER, status TEXT, created TEXT)""")
-    conn.commit()
-    conn.close()
-
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("""CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
+            joined TEXT, balance INTEGER DEFAULT 0)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS analyses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+            package TEXT, amount INTEGER, status TEXT, created TEXT)""")
+        try:
+            c.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        conn.commit()
+        conn.close()
+        logger.info("Baza tayyor")
+    except Exception as e:
+        logger.error(f"init_db xato: {e}")
+        # Baza buzilgan - o'chirib qayta yaratamiz
+        try:
+            if os.path.exists(DB_PATH):
+                os.remove(DB_PATH)
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("""CREATE TABLE users (
+                user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
+                joined TEXT, balance INTEGER DEFAULT 0)""")
+            c.execute("""CREATE TABLE analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
+            c.execute("""CREATE TABLE payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+                package TEXT, amount INTEGER, status TEXT, created TEXT)""")
+            conn.commit()
+            conn.close()
+            logger.info("Baza qayta yaratildi")
+        except Exception as e2:
+            logger.error(f"Baza qayta yaratishda xato: {e2}")
 
 def save_user(user_id, username, first_name):
     try:
@@ -473,37 +499,4 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uploaded_file = upload_with_retry(tmp_path)
 
         await wait_msg.edit_text(t(context, 'analyzing'))
-        prompt = PROMPT_RU if get_lang(context) == 'ru' else PROMPT_UZ
-        tahlil = analyze_with_retry(uploaded_file, prompt)
-
-        await wait_msg.edit_text(t(context, 'ready'))
-        use_balance(user_id)
-        save_analysis(user_id)
-
-        if len(tahlil) <= 4000:
-            await message.reply_text(tahlil)
-        else:
-            chunks = [tahlil[i:i+4000] for i in range(0, len(tahlil), 4000)]
-            for chunk in chunks:
-                await message.reply_text(chunk)
-
-    except Exception as e:
-        logger.error(f"Yakuniy xato: {e}")
-        await wait_msg.edit_text(t(context, 'error'))
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        if uploaded_file:
-            try:
-                client.files.delete(name=uploaded_file.name)
-            except:
-                pass
-
-
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
-        await update.message.reply_text(t(context, 'send_video'))
-    elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
-        bal = get_balance(update.effective_user.id)
-        await update.message.reply_t
+        prompt = PROMPT_RU if get_lang(context) ==
