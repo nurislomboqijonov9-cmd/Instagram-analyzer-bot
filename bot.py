@@ -3,13 +3,13 @@ import logging
 import tempfile
 import time
 from google import genai
+from google.genai import errors as genai_errors
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# Yangi GenAI client
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 logging.basicConfig(
@@ -18,43 +18,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TAHLIL_PROMPT = """Sen Instagram video tahlil qiluvchi mutaxassis AI assistantsan.
-Videoni TO'LIQ ko'r va eshit — vizualni ham, ovozni ham, harakatni ham, montajni ham.
-Keyin quyidagilarni O'ZBEK tilida batafsil tahlil qil:
+TAHLIL_PROMPT = """Sen tajribali, xolis Instagram kontent tahlilchisisan.
+Vazifang — blogger videosini HALOL va OBJEKTIV baholash. Video qanday bo'lsa,
+shunday bahola: yaxshi bo'lsa yaxshi de, kuchsiz bo'lsa kuchsiz de. Na ortiqcha
+maqta, na asossiz tanqid qil. Faqat HAQIQATNI ayt.
 
-1. 🎣 HOOK TAHLILI (0-3 sekund)
-   - Birinchi 3 sekund qanchalik e'tiborni tortadi?
-   - Tomoshabin davom ettirib ko'rishi ehtimoli?
-   - Hook kuchli yoki zaifmi va nima uchun?
+QAT'IY QOIDALAR:
+- Baho videoning haqiqiy sifatiga MOS bo'lsin — sun'iy past ham, ko'taringan
+  maqtov ham emas. Adolatli bo'l.
+- "Ajoyib", "zo'r", "wow" kabi so'zlarni faqat HAQIQATAN shunday bo'lsa ishlat.
+- Har bir kamchilikni aniq ayt. Yumshatma, lekin bo'rttirma ham.
+- Rekka chiqish ehtimolini REAL bahola — video nimaga loyiq bo'lsa, shu foizni ber.
+- Bloggerga yoqish uchun emas, uni O'STIRISH uchun gapir. Halol baho — eng katta yordam.
 
-2. 🎬 VIZUAL VA MONTAJ
-   - Yoritish, kamera barqarorligi, kompozitsiya
-   - Montaj tezligi va dinamikasi
-   - Sahna o'zgarishlari, effektlar
-   - Professional darajasi
+Har bo'limni O'ZBEK tilida, emoji bilan chiroyli, lekin MAZMUNAN qattiq yoz:
 
-3. 🗣️ AUDIO VA NUTQ
-   - Videoda nima gapirildi? (asosiy gaplar)
-   - Ovoz toni va ishonch darajasi
-   - Fon musiqasi yoki shovqin
-   - Nutq sifati va tezligi
+🎣 *HOOK (0-3 sekund)*
+Birinchi 3 sekund e'tiborni tortadimi? Aksariyat hooklar zaif — agar shunday bo'lsa,
+to'g'ridan ayt. Ball: __/10
 
-4. 📝 KONTENT SIFATI
-   - Xabar aniq va tushunarli ekanmi?
-   - CTA (chaqiruv) bor yoki yo'q?
-   - Tomoshabinga qiymat bermoqdami?
+🎬 *VIZUAL VA MONTAJ*
+Yoritish, kamera, kompozitsiya, montaj tezligi. Kamchiliklarni aniq ko'rsat. Ball: __/10
 
-5. 📊 REKKA CHIQISH EHTIMOLI
-   - 0-100% oralig'ida baho ber
-   - Asosiy sabablarni ayt
+🗣️ *AUDIO VA NUTQ*
+Nima gapirildi? Ovoz toni, nutq sifati. Sokin yoki zerikarli bo'lsa — ayt. Ball: __/10
 
-6. ✅ KUCHLI TOMONLARI (3-5 ta)
+📝 *KONTENT VA QIYMAT*
+Xabar tushunarlimi? CTA bormi? Tomoshabin nima oladi? Ball: __/10
 
-7. ❌ KAMCHILIKLAR (3-5 ta)
+📊 *REKKA CHIQISH EHTIMOLI*
+Real, adolatli foiz — video nimaga loyiq bo'lsa shuni ber. Sabablarini ayt.
 
-8. 💡 TAVSIYALAR (5 ta aniq qadam)
+✅ *KUCHLI TOMONLARI*
+Faqat HAQIQIY kuchli tomonlar (bo'lmasa, "kam" deb ayt). Yolg'on maqtov yo'q.
 
-Tahlilni professional, aniq va foydali qil."""
+❌ *KAMCHILIKLAR*
+Eng muhim qism. Barcha jiddiy kamchiliklarni ro'yxatla. Yumshatma.
+
+💡 *ANIQ TAVSIYALAR*
+Keyingi video uchun 5 ta amaliy qadam. Umumiy gap emas — aniq harakat.
+
+Esda tut: sen do'st emas, ekspertsan. Halol baho bloggerni o'stiradi, maqtov esa aldaydi."""
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,14 +67,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 Profil tahlil — 5,990 so'm", callback_data='profil_info')],
     ]
     await update.message.reply_text(
-        "🤖 *Instagram Analyzer Bot ga xush kelibsiz!*\n\n"
-        "Bu bot videolaringizni sun'iy intellekt yordamida to'liq tahlil qiladi — "
-        "vizual, audio, montaj va harakatigacha.\n\n"
+        "🩺 *INSTADOKTOR — Instagram tahlil boti*\n\n"
+        "Men sizning videolaringizni halol va qattiq tahlil qilaman — "
+        "maqtov emas, haqiqat aytaman. 💯\n\n"
         "🎬 *Video tahlil* — 3,990 so'm\n"
-        "• Hook, vizual, audio, montaj tahlili\n"
-        "• Rekka chiqish ehtimoli\n"
-        "• Kamchiliklar va tavsiyalar\n\n"
-        "👇 Boshlash uchun videoni yuboring:",
+        "• 🎣 Hook tahlili\n"
+        "• 🎬 Vizual va montaj\n"
+        "• 🗣️ Audio va nutq\n"
+        "• 📊 Rekka chiqish ehtimoli\n"
+        "• ❌ Kamchiliklar + 💡 tavsiyalar\n\n"
+        "📤 Videongizni yuboring (20MB gacha):",
         parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -81,11 +87,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if query.data == 'video_info':
         await query.message.reply_text(
-            "🎬 Videongizni shu yerga yuboring — AI to'liq tahlil qiladi.\n\n"
+            "🎬 Videongizni shu yerga yuboring — men to'liq tahlil qilaman.\n\n"
+            "📏 Hozircha video 20MB dan kichik bo'lsin.\n"
             "⚠️ Hozircha bepul sinov rejimida!"
         )
     elif query.data == 'profil_info':
-        await query.message.reply_text("📊 Profil tahlil tez orada ishga tushadi!")
+        await query.message.reply_text("📊 Profil tahlil tez orada ishga tushadi! 🔜")
+
+
+def analyze_with_retry(uploaded_file, max_retries=4):
+    """503/server band bo'lsa avtomatik qayta urinish"""
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[uploaded_file, TAHLIL_PROMPT]
+            )
+            return response.text
+        except genai_errors.APIError as e:
+            last_error = e
+            code = getattr(e, 'code', None)
+            # 503 (band) yoki 429 (limit) bo'lsa kutib qayta urinamiz
+            if code in (503, 429, 500):
+                wait = (attempt + 1) * 5
+                logger.warning(f"Server band ({code}), {wait}s kutib qayta urinish... ({attempt+1}/{max_retries})")
+                time.sleep(wait)
+                continue
+            raise
+    raise last_error
 
 
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,18 +133,22 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text("❌ Video formatini tanimadim. MP4 yoki MOV yuboring.")
             return
 
+        if video.file_size and video.file_size > 20 * 1024 * 1024:
+            await wait_msg.edit_text(
+                "❌ Video juda katta (20MB dan oshmasligi kerak).\n\n"
+                "📏 Iltimos, qisqaroq yoki sifatini biroz pasaytirib yuboring."
+            )
+            return
+
         file = await context.bot.get_file(video.file_id)
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
             tmp_path = tmp_file.name
         await file.download_to_drive(tmp_path)
 
         await wait_msg.edit_text("📤 Video yuklanmoqda...")
-
-        # Yangi SDK: faylni yuklash
         uploaded_file = client.files.upload(file=tmp_path)
 
-        # Fayl tayyor bo'lishini kutish
-        await wait_msg.edit_text("🧠 AI video tahlil qilinmoqda (vizual + audio)...")
+        await wait_msg.edit_text("🧠 AI tahlil qilinmoqda (vizual + audio)...")
         waited = 0
         while uploaded_file.state.name == "PROCESSING" and waited < 120:
             time.sleep(3)
@@ -125,25 +159,34 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text("❌ Video qayta ishlanmadi. Boshqa video yuboring.")
             return
 
-        # Yangi SDK: kontent generatsiya
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[uploaded_file, TAHLIL_PROMPT]
-        )
+        # 503/429 ga qarshi qayta urinish bilan tahlil
+        tahlil = analyze_with_retry(uploaded_file)
 
-        tahlil = response.text
         await wait_msg.edit_text("✅ Tahlil tayyor!")
 
         if len(tahlil) <= 4000:
-            await message.reply_text(tahlil)
+            await message.reply_text(tahlil, parse_mode='Markdown')
         else:
             chunks = [tahlil[i:i+4000] for i in range(0, len(tahlil), 4000)]
             for i, chunk in enumerate(chunks):
-                await message.reply_text(f"📋 Qism {i+1}/{len(chunks)}\n\n{chunk}")
+                await message.reply_text(chunk, parse_mode='Markdown')
 
+    except genai_errors.APIError as e:
+        code = getattr(e, 'code', None)
+        logger.error(f"API xato: {e}")
+        if code == 429:
+            await wait_msg.edit_text(
+                "⏳ Hozir juda ko'p so'rov bor. Iltimos, 1-2 daqiqadan keyin qayta urinib ko'ring."
+            )
+        elif code == 503:
+            await wait_msg.edit_text(
+                "⏳ AI server hozir band. Iltimos, bir oz kutib qayta yuboring."
+            )
+        else:
+            await wait_msg.edit_text(f"❌ Xato yuz berdi. Qaytadan urinib ko'ring.")
     except Exception as e:
         logger.error(f"Xato: {e}")
-        await wait_msg.edit_text(f"❌ Xato yuz berdi.\n\n{str(e)[:300]}")
+        await wait_msg.edit_text(f"❌ Xato yuz berdi. Qaytadan urinib ko'ring.")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -170,3 +213,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
