@@ -1,9 +1,7 @@
 import os
 import logging
 import tempfile
-import asyncio
 import base64
-import subprocess
 import anthropic
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -12,7 +10,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-# Anthropic client
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 logging.basicConfig(
@@ -23,80 +20,39 @@ logger = logging.getLogger(__name__)
 
 # === TAHLIL PROMPTI ===
 TAHLIL_PROMPT = """Sen Instagram video tahlil qiluvchi mutaxassis AI assistantsan.
-Seni vazifang — blogger yuborgan videoni to'liq professional tahlil qilish.
-Video kadrlarini diqqat bilan ko'r va quyidagilarni O'ZBEK tilida tahlil qil:
+Yuborilgan videoni diqqat bilan ko'r va eshit, keyin quyidagilarni O'ZBEK tilida tahlil qil:
 
 1. 🎣 HOOK TAHLILI (0-3 sekund)
-   - Birinchi kadr qanchalik e'tiborni tortadi?
-   - Tomoshabin davom ettirib ko'rishi ehtimoli qancha?
+   - Birinchi 3 sekund qanchalik e'tiborni tortadi?
+   - Tomoshabin davom ettirib ko'rishi ehtimoli?
    - Hook kuchli yoki zaifmi va nima uchun?
 
 2. 🎬 VIZUAL SIFAT
    - Video sifati: yoritish, kamera barqarorligi, kompozitsiya
-   - Montaj va dinamika qanday?
-   - Umumiy professional darajasi?
+   - Montaj va dinamika
+   - Professional darajasi
 
 3. 🗣️ AUDIO VA NUTQ
    - Ovoz toni va ishonch darajasi
    - Asosiy xabar nima?
-   - Fon shovqini yoki musiqa bormi?
+   - Fon shovqini yoki musiqa
 
 4. 📝 KONTENT SIFATI
    - Xabar aniq va tushunarli ekanmi?
-   - CTA (chaqiruv harakat) bor yoki yo'q?
+   - CTA (chaqiruv) bor yoki yo'q?
    - Tomoshabinga qiymat bermoqdami?
 
 5. 📊 REKKA CHIQISH EHTIMOLI
    - 0-100% oralig'ida baho ber
-   - Asosiy sabablarni aniq ayt
+   - Asosiy sabablarni ayt
 
-6. ✅ KUCHLI TOMONLARI
-   - 3-5 ta aniq kuchli joy
+6. ✅ KUCHLI TOMONLARI (3-5 ta)
 
-7. ❌ KAMCHILIKLAR
-   - 3-5 ta aniq kamchilik
+7. ❌ KAMCHILIKLAR (3-5 ta)
 
-8. 💡 TAVSIYALAR
-   - Keyingi videoni yaxshilash uchun 5 ta aniq qadam
+8. 💡 TAVSIYALAR (5 ta aniq qadam)
 
-Tahlilni professional, aniq va foydali qil. Ortiqcha maqtov yoki haddan tashqari tanqiddan saqlaning."""
-
-
-def extract_frames(video_path, num_frames=6):
-    """Videodan asosiy kadrlarni ajratib olish"""
-    frames = []
-    try:
-        # Video davomiyligini olish
-        result = subprocess.run([
-            'ffprobe', '-v', 'quiet', '-print_format', 'json',
-            '-show_format', video_path
-        ], capture_output=True, text=True)
-
-        import json
-        data = json.loads(result.stdout)
-        duration = float(data['format'].get('duration', 30))
-
-        # Kadrlarni teng oralig'ida ajratib olish
-        for i in range(num_frames):
-            timestamp = (duration / num_frames) * i + 0.5
-            output_path = f'/tmp/frame_claude_{i}.jpg'
-            subprocess.run([
-                'ffmpeg', '-ss', str(timestamp), '-i', video_path,
-                '-vframes', '1', '-q:v', '3', '-s', '720x1280',
-                output_path, '-y'
-            ], capture_output=True)
-
-            if os.path.exists(output_path):
-                with open(output_path, 'rb') as f:
-                    frame_data = base64.standard_b64encode(f.read()).decode('utf-8')
-                    frames.append(frame_data)
-                os.unlink(output_path)
-
-        logger.info(f"{len(frames)} ta kadr ajratildi")
-    except Exception as e:
-        logger.error(f"Kadr ajratishda xato: {e}")
-
-    return frames
+Tahlilni professional, aniq va foydali qil."""
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,63 +103,62 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     wait_msg = await message.reply_text(
         "⏳ Video qabul qilindi! Tahlil boshlanmoqda...\n"
-        "Bu 30-60 sekund vaqt olishi mumkin."
+        "Bu 30-90 sekund vaqt olishi mumkin."
     )
 
     try:
-        # Video faylni yuklab olish
+        # Video faylni aniqlash
         if message.video:
-            file = await context.bot.get_file(message.video.file_id)
+            video = message.video
         elif message.document and message.document.mime_type and 'video' in message.document.mime_type:
-            file = await context.bot.get_file(message.document.file_id)
+            video = message.document
         else:
             await wait_msg.edit_text("❌ Video formatini tanib olmadim. MP4 yoki MOV formatida yuboring.")
             return
+
+        # Hajm tekshirish (Claude limiti ~30MB base64)
+        if video.file_size and video.file_size > 20 * 1024 * 1024:
+            await wait_msg.edit_text(
+                "❌ Video juda katta (20MB dan oshmasligi kerak).\n"
+                "Iltimos, qisqaroq yoki kichikroq video yuboring."
+            )
+            return
+
+        file = await context.bot.get_file(video.file_id)
 
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
             tmp_path = tmp_file.name
 
         await file.download_to_drive(tmp_path)
-        await wait_msg.edit_text("🔍 Video kadrlar tahlil qilinmoqda...")
+        await wait_msg.edit_text("🧠 Claude AI video tahlil qilinmoqda...")
 
-        # Kadrlarni ajratib olish
-        frames = extract_frames(tmp_path, num_frames=6)
+        # Videoni base64 ga o'girish
+        with open(tmp_path, 'rb') as f:
+            video_data = base64.standard_b64encode(f.read()).decode('utf-8')
 
-        if not frames:
-            await wait_msg.edit_text("❌ Videodan kadr ajratib bo'lmadi. Boshqa video yuboring.")
-            return
-
-        await wait_msg.edit_text("🧠 Claude AI tahlil qilinmoqda...")
-
-        # Claude API ga yuborish uchun xabar tayyorlash
-        content = [{"type": "text", "text": TAHLIL_PROMPT}]
-
-        # Kadrlarni qo'shish
-        for i, frame in enumerate(frames):
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": frame
-                }
-            })
-            content.append({
-                "type": "text",
-                "text": f"Kadr {i+1}/{len(frames)}"
-            })
-
-        # Claude API ga so'rov yuborish
+        # Claude API ga yuborish
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=2000,
-            messages=[{"role": "user", "content": content}]
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "video/mp4",
+                            "data": video_data
+                        }
+                    },
+                    {"type": "text", "text": TAHLIL_PROMPT}
+                ]
+            }]
         )
 
         tahlil = response.content[0].text
         await wait_msg.edit_text("✅ Tahlil tayyor!")
 
-        # Javobni yuborish — uzun bo'lsa bo'laklarga bo'lish
         if len(tahlil) <= 4000:
             await message.reply_text(tahlil)
         else:
@@ -211,7 +166,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i, chunk in enumerate(chunks):
                 await message.reply_text(f"📋 Qism {i+1}/{len(chunks)}\n\n{chunk}")
 
-        # Faylni tozalash
         os.unlink(tmp_path)
 
     except Exception as e:
@@ -239,3 +193,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
