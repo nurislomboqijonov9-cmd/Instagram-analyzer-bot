@@ -127,7 +127,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Yangi SDK: kontent generatsiya
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             contents=[uploaded_file, TAHLIL_PROMPT]
         )
 
