@@ -1,17 +1,15 @@
 import os
 import logging
 import tempfile
-import base64
-import subprocess
-import json
-import anthropic
+import time
+import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -20,21 +18,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TAHLIL_PROMPT = """Sen Instagram video tahlil qiluvchi mutaxassis AI assistantsan.
-Video kadrlarini diqqat bilan ko'r va quyidagilarni O'ZBEK tilida tahlil qil:
+Videoni TO'LIQ ko'r va eshit — vizualni ham, ovozni ham, harakatni ham, montajni ham.
+Keyin quyidagilarni O'ZBEK tilida batafsil tahlil qil:
 
 1. 🎣 HOOK TAHLILI (0-3 sekund)
-   - Birinchi kadr qanchalik e'tiborni tortadi?
+   - Birinchi 3 sekund qanchalik e'tiborni tortadi?
    - Tomoshabin davom ettirib ko'rishi ehtimoli?
    - Hook kuchli yoki zaifmi va nima uchun?
 
-2. 🎬 VIZUAL SIFAT
+2. 🎬 VIZUAL VA MONTAJ
    - Yoritish, kamera barqarorligi, kompozitsiya
-   - Montaj va dinamika
+   - Montaj tezligi va dinamikasi
+   - Sahna o'zgarishlari, effektlar
    - Professional darajasi
 
 3. 🗣️ AUDIO VA NUTQ
-   - Videoda nima ko'rsatilgan va aytilgan deb o'ylaysan?
-   - Asosiy xabar nima?
+   - Videoda nima gapirildi? (asosiy gaplar)
+   - Ovoz toni va ishonch darajasi
+   - Fon musiqasi yoki shovqin
+   - Nutq sifati va tezligi
 
 4. 📝 KONTENT SIFATI
    - Xabar aniq va tushunarli ekanmi?
@@ -54,34 +56,6 @@ Video kadrlarini diqqat bilan ko'r va quyidagilarni O'ZBEK tilida tahlil qil:
 Tahlilni professional, aniq va foydali qil."""
 
 
-def extract_frames(video_path, num_frames=8):
-    frames = []
-    try:
-        result = subprocess.run([
-            'ffprobe', '-v', 'quiet', '-print_format', 'json',
-            '-show_format', video_path
-        ], capture_output=True, text=True)
-        data = json.loads(result.stdout)
-        duration = float(data['format'].get('duration', 30))
-
-        for i in range(num_frames):
-            timestamp = (duration / num_frames) * i + 0.3
-            output_path = f'/tmp/frame_{i}.jpg'
-            subprocess.run([
-                'ffmpeg', '-ss', str(timestamp), '-i', video_path,
-                '-vframes', '1', '-q:v', '4', '-vf', 'scale=640:-1',
-                output_path, '-y'
-            ], capture_output=True)
-            if os.path.exists(output_path):
-                with open(output_path, 'rb') as f:
-                    frames.append(base64.standard_b64encode(f.read()).decode('utf-8'))
-                os.unlink(output_path)
-        logger.info(f"{len(frames)} ta kadr ajratildi")
-    except Exception as e:
-        logger.error(f"Kadr ajratishda xato: {e}")
-    return frames
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🎬 Video tahlil — 3,990 so'm", callback_data='video_info')],
@@ -89,9 +63,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text(
         "🤖 *Instagram Analyzer Bot ga xush kelibsiz!*\n\n"
-        "Bu bot videolaringizni Claude AI yordamida professional tahlil qiladi.\n\n"
+        "Bu bot videolaringizni sun'iy intellekt yordamida to'liq tahlil qiladi — "
+        "vizual, audio, montaj va harakatigacha.\n\n"
         "🎬 *Video tahlil* — 3,990 so'm\n"
-        "• Hook, vizual, kontent tahlili\n"
+        "• Hook, vizual, audio, montaj tahlili\n"
         "• Rekka chiqish ehtimoli\n"
         "• Kamchiliklar va tavsiyalar\n\n"
         "👇 Boshlash uchun videoni yuboring:",
@@ -105,7 +80,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     if query.data == 'video_info':
         await query.message.reply_text(
-            "🎬 Videongizni shu yerga yuboring — Claude AI tahlil qiladi.\n\n"
+            "🎬 Videongizni shu yerga yuboring — AI to'liq tahlil qiladi.\n\n"
             "⚠️ Hozircha bepul sinov rejimida!"
         )
     elif query.data == 'profil_info':
@@ -116,6 +91,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     wait_msg = await message.reply_text("⏳ Video qabul qilindi! Tahlil boshlanmoqda...")
 
+    tmp_path = None
+    uploaded_file = None
     try:
         if message.video:
             video = message.video
@@ -130,30 +107,30 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_path = tmp_file.name
         await file.download_to_drive(tmp_path)
 
-        await wait_msg.edit_text("🔍 Video kadrlar ajratilmoqda...")
-        frames = extract_frames(tmp_path, num_frames=8)
+        await wait_msg.edit_text("📤 Video yuklanmoqda...")
 
-        if not frames:
-            await wait_msg.edit_text("❌ Videodan kadr ajratib bo'lmadi. Boshqa video yuboring.")
-            os.unlink(tmp_path)
+        # Gemini Files API ga yuklash
+        uploaded_file = genai.upload_file(tmp_path, mime_type='video/mp4')
+
+        # Fayl tayyor bo'lishini kutish
+        await wait_msg.edit_text("🧠 AI video tahlil qilinmoqda (vizual + audio)...")
+        waited = 0
+        while uploaded_file.state.name == "PROCESSING" and waited < 120:
+            time.sleep(3)
+            waited += 3
+            uploaded_file = genai.get_file(uploaded_file.name)
+
+        if uploaded_file.state.name == "FAILED":
+            await wait_msg.edit_text("❌ Video qayta ishlanmadi. Boshqa video yuboring.")
             return
 
-        await wait_msg.edit_text("🧠 Claude AI tahlil qilinmoqda...")
-
-        content = [{"type": "text", "text": TAHLIL_PROMPT}]
-        for i, frame in enumerate(frames):
-            content.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": "image/jpeg", "data": frame}
-            })
-
-        response = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": content}]
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        response = model.generate_content(
+            [TAHLIL_PROMPT, uploaded_file],
+            generation_config={"max_output_tokens": 2500}
         )
 
-        tahlil = response.content[0].text
+        tahlil = response.text
         await wait_msg.edit_text("✅ Tahlil tayyor!")
 
         if len(tahlil) <= 4000:
@@ -163,11 +140,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i, chunk in enumerate(chunks):
                 await message.reply_text(f"📋 Qism {i+1}/{len(chunks)}\n\n{chunk}")
 
-        os.unlink(tmp_path)
-
     except Exception as e:
         logger.error(f"Xato: {e}")
         await wait_msg.edit_text(f"❌ Xato yuz berdi.\n\n{str(e)[:300]}")
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        if uploaded_file:
+            try:
+                genai.delete_file(uploaded_file.name)
+            except:
+                pass
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
