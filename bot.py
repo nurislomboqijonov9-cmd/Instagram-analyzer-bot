@@ -13,6 +13,15 @@ from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ADMIN_ID = 7589459697
+CARD_NUMBER = "6262 7300 6521 3151"
+CARD_NAME = "Boqijonov Nurislom"
+
+# Paketlar: callback -> (tahlillar soni, narx so'm)
+PACKAGES = {
+    'pkg_1': (1, 3990),
+    'pkg_5': (5, 16000),
+    'pkg_10': (10, 26000),
+}
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -29,9 +38,13 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, joined TEXT)""")
+        user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
+        joined TEXT, balance INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS analyses (
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
+        package TEXT, amount INTEGER, status TEXT, created TEXT)""")
     conn.commit()
     conn.close()
 
@@ -40,12 +53,51 @@ def save_user(user_id, username, first_name):
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO users (user_id, username, first_name, joined) VALUES (?, ?, ?, ?)",
+        c.execute("INSERT OR IGNORE INTO users (user_id, username, first_name, joined, balance) VALUES (?, ?, ?, ?, 0)",
                   (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M")))
         conn.commit()
         conn.close()
     except Exception as e:
         logger.error(f"save_user xato: {e}")
+
+
+def get_balance(user_id):
+    if user_id == ADMIN_ID:
+        return 999999
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        row = c.fetchone()
+        conn.close()
+        return row[0] if row else 0
+    except Exception as e:
+        logger.error(f"get_balance xato: {e}")
+        return 0
+
+
+def add_balance(user_id, amount):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"add_balance xato: {e}")
+
+
+def use_balance(user_id):
+    if user_id == ADMIN_ID:
+        return
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - 1 WHERE user_id = ? AND balance > 0", (user_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"use_balance xato: {e}")
 
 
 def save_analysis(user_id):
@@ -60,6 +112,21 @@ def save_analysis(user_id):
         logger.error(f"save_analysis xato: {e}")
 
 
+def create_payment(user_id, package, amount):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT INTO payments (user_id, package, amount, status, created) VALUES (?, ?, ?, 'pending', ?)",
+                  (user_id, package, amount, datetime.now().strftime("%Y-%m-%d %H:%M")))
+        pid = c.lastrowid
+        conn.commit()
+        conn.close()
+        return pid
+    except Exception as e:
+        logger.error(f"create_payment xato: {e}")
+        return None
+
+
 def get_stats():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -71,11 +138,13 @@ def get_stats():
         today = datetime.now().strftime("%Y-%m-%d")
         c.execute("SELECT COUNT(*) FROM analyses WHERE created LIKE ?", (today + "%",))
         today_analyses = c.fetchone()[0]
+        c.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved'")
+        revenue = c.fetchone()[0]
         conn.close()
-        return total_users, total_analyses, today_analyses
+        return total_users, total_analyses, today_analyses, revenue
     except Exception as e:
         logger.error(f"get_stats xato: {e}")
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
 
 PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan.
@@ -139,22 +208,18 @@ TEXTS = {
             "🩺 INSTADOKTOR — Instagram tahlil boti\n\n"
             "Men videolaringizni halol va xolis tahlil qilaman — "
             "maqtov emas, haqiqat aytaman. 💯\n\n"
-            "🎬 Video tahlil — 3,990 so'm\n"
-            "• 🎣 Hook tahlili\n• 🎥 Vizual va montaj\n• 🎙️ Audio va nutq\n"
-            "• 🎯 Rekka chiqish ehtimoli\n• ❌ Kamchiliklar + 💡 tavsiyalar\n\n"
             "📤 Videongizni yuboring (20MB gacha):"
         ),
         'menu_video': "🎬 Video tahlil",
-        'menu_profil': "📊 Profil tahlil",
+        'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
-        'video_info': ("🎬 Videongizni shu yerga yuboring — men to'liq tahlil qilaman.\n\n"
-                       "📏 Hozircha video 20MB dan kichik bo'lsin.\n⚠️ Hozircha bepul sinov rejimida!"),
         'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
                       "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
-                      "📊 Profil tahlil — tez orada!\n\n🌐 Til — tilni o'zgartirish.\n\n"
+                      "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
+                      "🌐 Til — tilni o'zgartirish.\n\n"
                       "📏 Video 20MB dan kichik bo'lsin."),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
@@ -165,28 +230,37 @@ TEXTS = {
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
         'send_video': "🎬 Tahlil uchun videoni yuboring! 📤",
+        'no_balance': ("💳 Sizda tahlil qolmagan.\n\nDavom etish uchun paket tanlang:"),
+        'balance_info': "💰 Sizda {n} ta tahlil bor.",
+        'choose_pkg': "💳 Paketni tanlang:",
+        'pay_instr': ("💳 To'lov uchun:\n\n"
+                      "💰 Summa: {amount:,} so'm\n"
+                      "💳 Karta: {card}\n"
+                      "👤 Ega: {name}\n\n"
+                      "✅ To'lagach, CHEK SKRINSHOTINI shu yerga yuboring.\n"
+                      "Admin tekshirib, tahlillarni hisobingizga qo'shadi. ⏳"),
+        'receipt_sent': "✅ Chekingiz adminga yuborildi. Tez orada tasdiqlanadi! ⏳",
+        'approved': "🎉 To'lovingiz tasdiqlandi! Hisobingizga {n} ta tahlil qo'shildi.\n💰 Jami: {total} ta",
+        'pkg_1': "1 tahlil — 3,990 so'm",
+        'pkg_5': "5 tahlil — 16,000 so'm",
+        'pkg_10': "10 tahlil — 26,000 so'm",
     },
     'ru': {
         'welcome': (
             "🩺 INSTADOKTOR — бот анализа Instagram\n\n"
             "Я честно и объективно анализирую ваши видео — "
             "не хвалю, а говорю правду. 💯\n\n"
-            "🎬 Анализ видео — 3 990 сум\n"
-            "• 🎣 Анализ хука\n• 🎥 Визуал и монтаж\n• 🎙️ Аудио и речь\n"
-            "• 🎯 Вероятность в рекомендациях\n• ❌ Недостатки + 💡 советы\n\n"
             "📤 Отправьте ваше видео (до 20МБ):"
         ),
         'menu_video': "🎬 Анализ видео",
-        'menu_profil': "📊 Анализ профиля",
+        'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
-        'video_info': ("🎬 Отправьте видео сюда — я сделаю полный анализ.\n\n"
-                       "📏 Пока видео должно быть меньше 20МБ.\n⚠️ Сейчас работает в бесплатном тестовом режиме!"),
         'profil_info': "📊 Анализ профиля скоро заработает! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
-                      "🎬 Анализ видео — отправьте видео, я полностью его проанализирую: "
-                      "хук, визуал, аудио, монтаж и вероятность попадания в рекомендации.\n\n"
-                      "📊 Анализ профиля — скоро!\n\n🌐 Язык — сменить язык.\n\n"
+                      "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
+                      "💰 Мой баланс — сколько анализов осталось.\n\n"
+                      "🌐 Язык — сменить язык.\n\n"
                       "📏 Видео должно быть меньше 20МБ."),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
@@ -197,6 +271,20 @@ TEXTS = {
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
         'send_video': "🎬 Отправьте видео для анализа! 📤",
+        'no_balance': ("💳 У вас не осталось анализов.\n\nВыберите пакет для продолжения:"),
+        'balance_info': "💰 У вас {n} анализов.",
+        'choose_pkg': "💳 Выберите пакет:",
+        'pay_instr': ("💳 Для оплаты:\n\n"
+                      "💰 Сумма: {amount:,} сум\n"
+                      "💳 Карта: {card}\n"
+                      "👤 Владелец: {name}\n\n"
+                      "✅ После оплаты отправьте СКРИНШОТ ЧЕКА сюда.\n"
+                      "Админ проверит и добавит анализы на ваш счёт. ⏳"),
+        'receipt_sent': "✅ Ваш чек отправлен админу. Скоро подтвердим! ⏳",
+        'approved': "🎉 Оплата подтверждена! На счёт добавлено {n} анализов.\n💰 Всего: {total}",
+        'pkg_1': "1 анализ — 3 990 сум",
+        'pkg_5': "5 анализов — 16 000 сум",
+        'pkg_10': "10 анализов — 26 000 сум",
     }
 }
 
@@ -212,7 +300,7 @@ def t(context, key):
 def main_keyboard(context):
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profil'))],
+            [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_balance'))],
             [KeyboardButton(t(context, 'menu_lang')), KeyboardButton(t(context, 'menu_help'))],
         ],
         resize_keyboard=True
@@ -226,13 +314,18 @@ def lang_keyboard():
     ])
 
 
+def package_keyboard(context):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(t(context, 'pkg_1'), callback_data='pkg_1')],
+        [InlineKeyboardButton(t(context, 'pkg_5'), callback_data='pkg_5')],
+        [InlineKeyboardButton(t(context, 'pkg_10'), callback_data='pkg_10')],
+    ])
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user.id, user.username, user.first_name)
-    await update.message.reply_text(
-        "🌐 Tilni tanlang / Выберите язык:",
-        reply_markup=lang_keyboard()
-    )
+    await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
 
 
 async def show_menu(message, context):
@@ -242,14 +335,39 @@ async def show_menu(message, context):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data == 'lang_uz':
+    data = query.data
+
+    if data == 'lang_uz':
         context.user_data['lang'] = 'uz'
         await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
-    elif query.data == 'lang_ru':
+    elif data == 'lang_ru':
         context.user_data['lang'] = 'ru'
         await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
+    elif data in PACKAGES:
+        count, amount = PACKAGES[data]
+        create_payment(query.from_user.id, data, amount)
+        context.user_data['pending_pkg'] = data
+        await query.message.reply_text(
+            t(context, 'pay_instr').format(amount=amount, card=CARD_NUMBER, name=CARD_NAME)
+        )
+    elif data.startswith('approve_'):
+        # Admin tasdiqlash: approve_{user_id}_{package}
+        parts = data.split('_')
+        target_user = int(parts[1])
+        package = parts[2] + '_' + parts[3] if len(parts) > 3 else parts[2]
+        count, amount = PACKAGES.get(package, (0, 0))
+        add_balance(target_user, count)
+        new_balance = get_balance(target_user)
+        try:
+            await context.bot.send_message(
+                target_user,
+                f"🎉 To'lovingiz tasdiqlandi! Hisobingizga {count} ta tahlil qo'shildi.\n💰 Jami: {new_balance} ta"
+            )
+        except Exception as e:
+            logger.error(f"Foydalanuvchiga xabar yuborilmadi: {e}")
+        await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ga {count} ta tahlil qo'shildi.")
 
 
 def upload_with_retry(tmp_path, max_retries=3):
@@ -289,10 +407,48 @@ def analyze_with_retry(uploaded_file, prompt, max_retries=4):
     raise last_error
 
 
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Foydalanuvchi chek skrinshotini yuborganda"""
+    pending = context.user_data.get('pending_pkg')
+    if not pending:
+        return  # Chek kutilmayotgan bo'lsa, e'tibor bermaymiz
+    user = update.effective_user
+    count, amount = PACKAGES.get(pending, (0, 0))
+    # Chekni admin ga yuboramiz
+    caption = (
+        f"💳 YANGI TO'LOV CHEKI\n\n"
+        f"👤 {user.first_name} (@{user.username or 'username yo`q'})\n"
+        f"🆔 ID: {user.id}\n"
+        f"📦 Paket: {count} ta tahlil\n"
+        f"💰 Summa: {amount:,} so'm"
+    )
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_{user.id}_{pending}")
+    ]])
+    try:
+        await context.bot.send_photo(
+            ADMIN_ID,
+            update.message.photo[-1].file_id,
+            caption=caption,
+            reply_markup=keyboard
+        )
+        await update.message.reply_text(t(context, 'receipt_sent'))
+        context.user_data['pending_pkg'] = None
+    except Exception as e:
+        logger.error(f"Chek yuborishda xato: {e}")
+        await update.message.reply_text(t(context, 'error'))
+
+
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    wait_msg = await message.reply_text(t(context, 'received'))
+    user_id = message.from_user.id
 
+    # Balans tekshirish
+    if get_balance(user_id) <= 0:
+        await message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
+        return
+
+    wait_msg = await message.reply_text(t(context, 'received'))
     tmp_path = None
     uploaded_file = None
     try:
@@ -321,7 +477,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tahlil = analyze_with_retry(uploaded_file, prompt)
 
         await wait_msg.edit_text(t(context, 'ready'))
-        save_analysis(message.from_user.id)
+        use_balance(user_id)
+        save_analysis(user_id)
 
         if len(tahlil) <= 4000:
             await message.reply_text(tahlil)
@@ -346,60 +503,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
-        await update.message.reply_text(t(context, 'video_info'))
-    elif text in (TEXTS['uz']['menu_profil'], TEXTS['ru']['menu_profil']):
-        await update.message.reply_text(t(context, 'profil_info'))
-    elif text in (TEXTS['uz']['menu_lang'], TEXTS['ru']['menu_lang']):
-        await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
-    elif text in (TEXTS['uz']['menu_help'], TEXTS['ru']['menu_help']):
-        await update.message.reply_text(t(context, 'help_text'))
-    else:
         await update.message.reply_text(t(context, 'send_video'))
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(t(context, 'help_text'))
-
-
-async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
-
-
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    total_users, total_analyses, today_analyses = get_stats()
-    text = (
-        "📊 ADMIN STATISTIKA\n\n"
-        f"👥 Jami foydalanuvchilar: {total_users}\n"
-        f"🎬 Jami tahlillar: {total_analyses}\n"
-        f"📅 Bugungi tahlillar: {today_analyses}\n\n"
-        f"💰 Taxminiy daromad (3990 so'm): {total_analyses * 3990:,} so'm"
-    )
-    await update.message.reply_text(text)
-
-
-async def post_init(application):
-    await application.bot.set_my_commands([
-        BotCommand("start", "🚀 Boshlash / Начать"),
-        BotCommand("help", "ℹ️ Yordam / Помощь"),
-        BotCommand("til", "🌐 Til / Язык"),
-    ])
-
-
-def main():
-    init_db()
-    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("til", til_command))
-    app.add_handler(CommandHandler("admin", admin_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, video_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    logger.info("Bot ishga tushdi!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-if __name__ == '__main__':
-    main()
+    elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
+        bal = get_balance(update.effective_user.id)
+        await update.message.reply_t
