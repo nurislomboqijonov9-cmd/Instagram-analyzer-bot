@@ -2,14 +2,15 @@ import os
 import logging
 import tempfile
 import time
-import google.generativeai as genai
+from google import genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-genai.configure(api_key=GEMINI_API_KEY)
+# Yangi GenAI client
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -109,8 +110,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await wait_msg.edit_text("📤 Video yuklanmoqda...")
 
-        # Gemini Files API ga yuklash
-        uploaded_file = genai.upload_file(tmp_path, mime_type='video/mp4')
+        # Yangi SDK: faylni yuklash
+        uploaded_file = client.files.upload(file=tmp_path)
 
         # Fayl tayyor bo'lishini kutish
         await wait_msg.edit_text("🧠 AI video tahlil qilinmoqda (vizual + audio)...")
@@ -118,16 +119,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         while uploaded_file.state.name == "PROCESSING" and waited < 120:
             time.sleep(3)
             waited += 3
-            uploaded_file = genai.get_file(uploaded_file.name)
+            uploaded_file = client.files.get(name=uploaded_file.name)
 
         if uploaded_file.state.name == "FAILED":
             await wait_msg.edit_text("❌ Video qayta ishlanmadi. Boshqa video yuboring.")
             return
 
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        response = model.generate_content(
-            [TAHLIL_PROMPT, uploaded_file],
-            generation_config={"max_output_tokens": 2500}
+        # Yangi SDK: kontent generatsiya
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[uploaded_file, TAHLIL_PROMPT]
         )
 
         tahlil = response.text
@@ -148,7 +149,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.unlink(tmp_path)
         if uploaded_file:
             try:
-                genai.delete_file(uploaded_file.name)
+                client.files.delete(name=uploaded_file.name)
             except:
                 pass
 
