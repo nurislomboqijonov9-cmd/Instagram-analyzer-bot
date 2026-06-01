@@ -2,12 +2,17 @@ import os
 import logging
 import tempfile
 import time
+import sqlite3
+from datetime import datetime
 from google import genai
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
+                      ReplyKeyboardMarkup, KeyboardButton, BotCommand)
+from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
+                          ContextTypes, CallbackQueryHandler)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+ADMIN_ID = 7589459697
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -17,7 +22,61 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============ TAHLIL PROMPTLARI (2 til) ============
+DB_PATH = "/tmp/instadoktor.db"
+
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, joined TEXT)""")
+    c.execute("""CREATE TABLE IF NOT EXISTS analyses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
+    conn.commit()
+    conn.close()
+
+
+def save_user(user_id, username, first_name):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO users (user_id, username, first_name, joined) VALUES (?, ?, ?, ?)",
+                  (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M")))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"save_user xato: {e}")
+
+
+def save_analysis(user_id):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT INTO analyses (user_id, created) VALUES (?, ?)",
+                  (user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"save_analysis xato: {e}")
+
+
+def get_stats():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM users")
+        total_users = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM analyses")
+        total_analyses = c.fetchone()[0]
+        today = datetime.now().strftime("%Y-%m-%d")
+        c.execute("SELECT COUNT(*) FROM analyses WHERE created LIKE ?", (today + "%",))
+        today_analyses = c.fetchone()[0]
+        conn.close()
+        return total_users, total_analyses, today_analyses
+    except Exception as e:
+        logger.error(f"get_stats xato: {e}")
+        return 0, 0, 0
+
 
 PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan.
 Vazifang — blogger videosini HALOL va OBJEKTIV baholash. Video qanday bo'lsa,
@@ -74,31 +133,30 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 
 Ты не друг, ты эксперт. Честная оценка помогает блогеру расти. 💪"""
 
-# ============ MATNLAR (2 til) ============
-
 TEXTS = {
     'uz': {
-        'choose_lang': "🌐 Tilni tanlang / Выберите язык:",
         'welcome': (
             "🩺 INSTADOKTOR — Instagram tahlil boti\n\n"
             "Men videolaringizni halol va xolis tahlil qilaman — "
             "maqtov emas, haqiqat aytaman. 💯\n\n"
             "🎬 Video tahlil — 3,990 so'm\n"
-            "• 🎣 Hook tahlili\n"
-            "• 🎥 Vizual va montaj\n"
-            "• 🎙️ Audio va nutq\n"
-            "• 🎯 Rekka chiqish ehtimoli\n"
-            "• ❌ Kamchiliklar + 💡 tavsiyalar\n\n"
+            "• 🎣 Hook tahlili\n• 🎥 Vizual va montaj\n• 🎙️ Audio va nutq\n"
+            "• 🎯 Rekka chiqish ehtimoli\n• ❌ Kamchiliklar + 💡 tavsiyalar\n\n"
             "📤 Videongizni yuboring (20MB gacha):"
         ),
-        'btn_video': "🎬 Video tahlil — 3,990 so'm",
-        'btn_profil': "📊 Profil tahlil — 5,990 so'm",
-        'video_info': (
-            "🎬 Videongizni shu yerga yuboring — men to'liq tahlil qilaman.\n\n"
-            "📏 Hozircha video 20MB dan kichik bo'lsin.\n"
-            "⚠️ Hozircha bepul sinov rejimida!"
-        ),
+        'menu_video': "🎬 Video tahlil",
+        'menu_profil': "📊 Profil tahlil",
+        'menu_lang': "🌐 Til",
+        'menu_help': "ℹ️ Yordam",
+        'video_info': ("🎬 Videongizni shu yerga yuboring — men to'liq tahlil qilaman.\n\n"
+                       "📏 Hozircha video 20MB dan kichik bo'lsin.\n⚠️ Hozircha bepul sinov rejimida!"),
         'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
+        'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
+                      "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
+                      "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
+                      "📊 Profil tahlil — tez orada!\n\n🌐 Til — tilni o'zgartirish.\n\n"
+                      "📏 Video 20MB dan kichik bo'lsin."),
+        'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
         'too_big': "❌ Video juda katta (20MB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
@@ -106,30 +164,31 @@ TEXTS = {
         'analyzing': "🧠 AI tahlil qilinmoqda (vizual + audio)... ⚡",
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
-        'send_video': "🎬 Tahlil uchun videoni yuboring! 📤\n\n/start — Bosh menyu",
+        'send_video': "🎬 Tahlil uchun videoni yuboring! 📤",
     },
     'ru': {
-        'choose_lang': "🌐 Tilni tanlang / Выберите язык:",
         'welcome': (
             "🩺 INSTADOKTOR — бот анализа Instagram\n\n"
             "Я честно и объективно анализирую ваши видео — "
             "не хвалю, а говорю правду. 💯\n\n"
             "🎬 Анализ видео — 3 990 сум\n"
-            "• 🎣 Анализ хука\n"
-            "• 🎥 Визуал и монтаж\n"
-            "• 🎙️ Аудио и речь\n"
-            "• 🎯 Вероятность в рекомендациях\n"
-            "• ❌ Недостатки + 💡 советы\n\n"
+            "• 🎣 Анализ хука\n• 🎥 Визуал и монтаж\n• 🎙️ Аудио и речь\n"
+            "• 🎯 Вероятность в рекомендациях\n• ❌ Недостатки + 💡 советы\n\n"
             "📤 Отправьте ваше видео (до 20МБ):"
         ),
-        'btn_video': "🎬 Анализ видео — 3 990 сум",
-        'btn_profil': "📊 Анализ профиля — 5 990 сум",
-        'video_info': (
-            "🎬 Отправьте видео сюда — я сделаю полный анализ.\n\n"
-            "📏 Пока видео должно быть меньше 20МБ.\n"
-            "⚠️ Сейчас работает в бесплатном тестовом режиме!"
-        ),
+        'menu_video': "🎬 Анализ видео",
+        'menu_profil': "📊 Анализ профиля",
+        'menu_lang': "🌐 Язык",
+        'menu_help': "ℹ️ Помощь",
+        'video_info': ("🎬 Отправьте видео сюда — я сделаю полный анализ.\n\n"
+                       "📏 Пока видео должно быть меньше 20МБ.\n⚠️ Сейчас работает в бесплатном тестовом режиме!"),
         'profil_info': "📊 Анализ профиля скоро заработает! 🔜",
+        'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
+                      "🎬 Анализ видео — отправьте видео, я полностью его проанализирую: "
+                      "хук, визуал, аудио, монтаж и вероятность попадания в рекомендации.\n\n"
+                      "📊 Анализ профиля — скоро!\n\n🌐 Язык — сменить язык.\n\n"
+                      "📏 Видео должно быть меньше 20МБ."),
+        'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
         'too_big': "❌ Видео слишком большое (не более 20МБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
@@ -137,7 +196,7 @@ TEXTS = {
         'analyzing': "🧠 ИИ анализирует (визуал + аудио)... ⚡",
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
-        'send_video': "🎬 Отправьте видео для анализа! 📤\n\n/start — Главное меню",
+        'send_video': "🎬 Отправьте видео для анализа! 📤",
     }
 }
 
@@ -150,42 +209,47 @@ def t(context, key):
     return TEXTS[get_lang(context)][key]
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
+def main_keyboard(context):
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profil'))],
+            [KeyboardButton(t(context, 'menu_lang')), KeyboardButton(t(context, 'menu_help'))],
+        ],
+        resize_keyboard=True
+    )
+
+
+def lang_keyboard():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("🇺🇿 O'zbekcha", callback_data='lang_uz')],
         [InlineKeyboardButton("🇷🇺 Русский", callback_data='lang_ru')],
-    ]
+    ])
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    save_user(user.id, user.username, user.first_name)
     await update.message.reply_text(
         "🌐 Tilni tanlang / Выберите язык:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=lang_keyboard()
     )
 
 
 async def show_menu(message, context):
-    keyboard = [
-        [InlineKeyboardButton(t(context, 'btn_video'), callback_data='video_info')],
-        [InlineKeyboardButton(t(context, 'btn_profil'), callback_data='profil_info')],
-    ]
-    await message.reply_text(
-        t(context, 'welcome'),
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await message.reply_text(t(context, 'welcome'), reply_markup=main_keyboard(context))
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == 'lang_uz':
         context.user_data['lang'] = 'uz'
+        await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
     elif query.data == 'lang_ru':
         context.user_data['lang'] = 'ru'
+        await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
-    elif query.data == 'video_info':
-        await query.message.reply_text(t(context, 'video_info'))
-    elif query.data == 'profil_info':
-        await query.message.reply_text(t(context, 'profil_info'))
 
 
 def upload_with_retry(tmp_path, max_retries=3):
@@ -257,6 +321,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tahlil = analyze_with_retry(uploaded_file, prompt)
 
         await wait_msg.edit_text(t(context, 'ready'))
+        save_analysis(message.from_user.id)
 
         if len(tahlil) <= 4000:
             await message.reply_text(tahlil)
@@ -279,12 +344,56 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(t(context, 'send_video'))
+    text = update.message.text
+    if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
+        await update.message.reply_text(t(context, 'video_info'))
+    elif text in (TEXTS['uz']['menu_profil'], TEXTS['ru']['menu_profil']):
+        await update.message.reply_text(t(context, 'profil_info'))
+    elif text in (TEXTS['uz']['menu_lang'], TEXTS['ru']['menu_lang']):
+        await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
+    elif text in (TEXTS['uz']['menu_help'], TEXTS['ru']['menu_help']):
+        await update.message.reply_text(t(context, 'help_text'))
+    else:
+        await update.message.reply_text(t(context, 'send_video'))
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(t(context, 'help_text'))
+
+
+async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
+
+
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    total_users, total_analyses, today_analyses = get_stats()
+    text = (
+        "📊 ADMIN STATISTIKA\n\n"
+        f"👥 Jami foydalanuvchilar: {total_users}\n"
+        f"🎬 Jami tahlillar: {total_analyses}\n"
+        f"📅 Bugungi tahlillar: {today_analyses}\n\n"
+        f"💰 Taxminiy daromad (3990 so'm): {total_analyses * 3990:,} so'm"
+    )
+    await update.message.reply_text(text)
+
+
+async def post_init(application):
+    await application.bot.set_my_commands([
+        BotCommand("start", "🚀 Boshlash / Начать"),
+        BotCommand("help", "ℹ️ Yordam / Помощь"),
+        BotCommand("til", "🌐 Til / Язык"),
+    ])
 
 
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    init_db()
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("til", til_command))
+    app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, video_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
@@ -294,4 +403,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
