@@ -1,4 +1,5 @@
 import os
+import uuid
 import logging
 import tempfile
 import time
@@ -9,9 +10,15 @@ from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, KeyboardButton, BotCommand)
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
                           ContextTypes, CallbackQueryHandler)
+from pyrogram import Client as PyroClient
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# my.telegram.org dan olinadi (katta video yuklab olish uchun)
+API_ID = int(os.getenv("API_ID", "0") or "0")
+API_HASH = os.getenv("API_HASH", "")
+# Maksimal qabul qilinadigan video hajmi (2GB). Kerak bo'lsa pasaytiring.
+MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 ADMIN_ID = 7589459697
 CARD_NUMBER = "6262 7300 6521 3151"
 CARD_NAME = "Boqijonov Nurislom"
@@ -24,6 +31,21 @@ PACKAGES = {
 }
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Pyrogram "yuklab oluvchi" — faqat katta videolarni yuklab olish uchun.
+# API_ID/API_HASH kiritilmagan bo'lsa, pyro=None bo'ladi va bot avvalgidek
+# (faqat 20MB gacha, Bot API orqali) ishlayveradi — ya'ni hech narsa buzilmaydi.
+pyro = None
+if API_ID and API_HASH and TELEGRAM_TOKEN:
+    pyro = PyroClient(
+        "instadoktor_downloader",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=TELEGRAM_TOKEN,
+        no_updates=True,   # PTB bilan to'qnashmasligi uchun update olmaydi
+        in_memory=True,    # session faylsiz (Railway diski vaqtinchalik)
+        workdir="/tmp",
+    )
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -234,7 +256,7 @@ TEXTS = {
             "🩺 INSTADOKTOR — Instagram tahlil boti\n\n"
             "Men videolaringizni halol va xolis tahlil qilaman — "
             "maqtov emas, haqiqat aytaman. 💯\n\n"
-            "📤 Videongizni yuboring (20MB gacha):"
+            "📤 Videongizni yuboring (2GB gacha):"
         ),
         'menu_video': "🎬 Video tahlil",
         'menu_balance': "💰 Balansim",
@@ -246,10 +268,10 @@ TEXTS = {
                       "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
-                      "📏 Video 20MB dan kichik bo'lsin."),
+                      "📏 Video 2GB dan kichik bo'lsin."),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
-        'too_big': "❌ Video juda katta (20MB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
+        'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
         'analyzing': "🧠 AI tahlil qilinmoqda (vizual + audio)... ⚡",
@@ -276,7 +298,7 @@ TEXTS = {
             "🩺 INSTADOKTOR — бот анализа Instagram\n\n"
             "Я честно и объективно анализирую ваши видео — "
             "не хвалю, а говорю правду. 💯\n\n"
-            "📤 Отправьте ваше видео (до 20МБ):"
+            "📤 Отправьте ваше видео (до 2ГБ):"
         ),
         'menu_video': "🎬 Анализ видео",
         'menu_balance': "💰 Мой баланс",
@@ -287,10 +309,10 @@ TEXTS = {
                       "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
                       "💰 Мой баланс — сколько анализов осталось.\n\n"
                       "🌐 Язык — сменить язык.\n\n"
-                      "📏 Видео должно быть меньше 20МБ."),
+                      "📏 Видео должно быть меньше 2ГБ."),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
-        'too_big': "❌ Видео слишком большое (не более 20МБ). 📏\n\nПожалуйста, отправьте покороче.",
+        'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
         'analyzing': "🧠 ИИ анализирует (визуал + аудио)... ⚡",
@@ -396,7 +418,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ga {count} ta tahlil qo'shildi.")
 
 
-def upload_with_retry(tmp_path, max_retries=3):
+def upload_with_retry(tmp_path,
+max_retries=3):
     last_error = None
     for attempt in range(max_retries):
         try:
@@ -486,14 +509,31 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'wrong_format'))
             return
 
-        if video.file_size and video.file_size > 20 * 1024 * 1024:
+        if video.file_size and video.file_size > MAX_VIDEO_BYTES:
             await wait_msg.edit_text(t(context, 'too_big'))
             return
 
-        file = await context.bot.get_file(video.file_id)
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-        await file.download_to_drive(tmp_path)
+        tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
+        is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
+
+        # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
+        downloaded = None
+        if pyro is not None:
+            try:
+                downloaded = await pyro.download_media(video.file_id, file_name=tmp_path)
+            except Exception as e:
+                logger.warning(f"Pyrogram yuklab olishda xato: {e}")
+
+        if downloaded:
+            tmp_path = downloaded
+        else:
+            # Zaxira yo'l: Pyrogram yo'q/ishlamadi.
+            # Katta video bo'lsa Bot API ham eplay olmaydi -> ogohlantiramiz.
+            if is_big:
+                await wait_msg.edit_text(t(context, 'too_big'))
+                return
+            file = await context.bot.get_file(video.file_id)
+            await file.download_to_drive(tmp_path)
 
         await wait_msg.edit_text(t(context, 'uploading'))
         uploaded_file = upload_with_retry(tmp_path)
@@ -564,6 +604,14 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def post_init(application):
+    # Pyrogram yuklab oluvchini ishga tushiramiz (agar sozlangan bo'lsa).
+    # Ishga tushmasa ham bot to'xtamaydi — kichik videolar Bot API orqali ishlaydi.
+    if pyro is not None:
+        try:
+            await pyro.start()
+            logger.info("Pyrogram yuklab oluvchi ishga tushdi (2GB gacha)")
+        except Exception as e:
+            logger.error(f"Pyrogram ishga tushmadi, kichik videolar rejimida davom: {e}")
     await application.bot.set_my_commands([
         BotCommand("start", "🚀 Boshlash / Начать"),
         BotCommand("help", "ℹ️ Yordam / Помощь"),
@@ -571,9 +619,17 @@ async def post_init(application):
     ])
 
 
+async def post_shutdown(application):
+    if pyro is not None:
+        try:
+            await pyro.stop()
+        except Exception:
+            pass
+
+
 def main():
     init_db()
-    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
@@ -587,4 +643,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main()                      
