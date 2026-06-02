@@ -53,7 +53,39 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_PATH = "/tmp/instadoktor.db"
+def _choose_db_path():
+    # Bazani saqlash uchun joyni avtomatik tanlaymiz.
+    # Tartib: aniq DB_PATH -> Railway volume mount path -> /data -> /tmp
+    candidates = []
+    explicit = os.getenv("DB_PATH")
+    if explicit:
+        candidates.append(explicit)
+    vol = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    if vol:
+        candidates.append(os.path.join(vol, "instadoktor.db"))
+    candidates.append("/data/instadoktor.db")
+    candidates.append("/tmp/instadoktor.db")
+
+    for path in candidates:
+        d = os.path.dirname(path) or "."
+        try:
+            os.makedirs(d, exist_ok=True)
+            test = os.path.join(d, ".write_test")
+            with open(test, "w") as f:
+                f.write("ok")
+            os.remove(test)
+            return path
+        except Exception:
+            continue
+    return "/tmp/instadoktor.db"
+
+
+DB_PATH = _choose_db_path()
+# Bu yozuv Railway loglarida ko'rinadi - baza qayerda saqlanayotganini bildiradi.
+if DB_PATH.startswith("/tmp"):
+    logging.warning(f"DIQQAT: baza vaqtinchalik joyda ({DB_PATH}) - deployda o'chadi! Volume tekshiring.")
+else:
+    logging.info(f"Baza DOIMIY joyda saqlanadi: {DB_PATH}")
 
 
 def init_db():
@@ -77,25 +109,24 @@ def init_db():
         logger.info("Baza tayyor")
     except Exception as e:
         logger.error(f"init_db xato: {e}")
-        # Baza buzilgan - o'chirib qayta yaratamiz
+        # MUHIM: bazani O'CHIRMAYMIZ (mijozlar balanslari yo'qolmasligi uchun).
+        # Faqat jadvallarni bor bo'lsa qoldirib, yo'q bo'lsa yaratishga urinamiz.
         try:
-            if os.path.exists(DB_PATH):
-                os.remove(DB_PATH)
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute("""CREATE TABLE users (
+            c.execute("""CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
                 joined TEXT, balance INTEGER DEFAULT 0)""")
-            c.execute("""CREATE TABLE analyses (
+            c.execute("""CREATE TABLE IF NOT EXISTS analyses (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
-            c.execute("""CREATE TABLE payments (
+            c.execute("""CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
                 package TEXT, amount INTEGER, status TEXT, created TEXT)""")
             conn.commit()
             conn.close()
-            logger.info("Baza qayta yaratildi")
+            logger.info("Baza tekshirildi (o'chirilmadi)")
         except Exception as e2:
-            logger.error(f"Baza qayta yaratishda xato: {e2}")
+            logger.error(f"Baza tekshirishda xato: {e2}")
 
 def save_user(user_id, username, first_name):
     try:
@@ -128,6 +159,11 @@ def add_balance(user_id, amount):
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
+        # Foydalanuvchi bazada bo'lmasa ham ishlashi uchun avval qatorini yaratamiz
+        c.execute(
+            "INSERT OR IGNORE INTO users (user_id, username, first_name, joined, balance) VALUES (?, '', '', ?, 0)",
+            (user_id, datetime.now().strftime("%Y-%m-%d %H:%M"))
+        )
         c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
         conn.commit()
         conn.close()
@@ -418,8 +454,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ga {count} ta tahlil qo'shildi.")
 
 
-def upload_with_retry(tmp_path,
-max_retries=3):
+def upload_with_retry(tmp_path, max_retries=3):
     last_error = None
     for attempt in range(max_retries):
         try:
@@ -643,4 +678,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()                      
+    main()
