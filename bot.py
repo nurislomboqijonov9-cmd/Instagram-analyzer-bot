@@ -321,8 +321,7 @@ TEXTS = {
         'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
-                      "hook, vizual, audio
-                      montaj va rekka chiqish ehtimoli.\n\n"
+                      "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
                       "📏 Video 2GB dan kichik bo'lsin."),
