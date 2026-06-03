@@ -321,7 +321,8 @@ TEXTS = {
         'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
-                      "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
+                      "hook, vizual, audio
+                      montaj va rekka chiqish ehtimoli.\n\n"
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
                       "📏 Video 2GB dan kichik bo'lsin."),
@@ -739,7 +740,12 @@ async def post_shutdown(application):
 
 def main():
     init_db()
-    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
+    app = (Application.builder()
+           .token(TELEGRAM_TOKEN)
+           .concurrent_updates(True)   # MUHIM: har bir foydalanuvchi alohida ishlanadi
+           .post_init(post_init)
+           .post_shutdown(post_shutdown)
+           .build())
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
@@ -754,4 +760,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-      
+    
