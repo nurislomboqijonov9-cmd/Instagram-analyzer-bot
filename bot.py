@@ -1,5 +1,6 @@
 import os
 import uuid
+import asyncio
 import logging
 import tempfile
 import time
@@ -19,6 +20,11 @@ API_ID = int(os.getenv("API_ID", "0") or "0")
 API_HASH = os.getenv("API_HASH", "")
 # Maksimal qabul qilinadigan video hajmi (2GB). Kerak bo'lsa pasaytiring.
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
+# Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
+# Pullik Gemini + kattaroq serverga o'tganda Railway'dan MAX_CONCURRENT ni oshiring.
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3") or "3")
+# Navbat mexanizmi: bir vaqtda faqat MAX_CONCURRENT ta tahlil ishlaydi
+_video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 ADMIN_ID = 7589459697
 CARD_NUMBER = "6262 7300 6521 3151"
 CARD_NAME = "Boqijonov Nurislom"
@@ -31,6 +37,20 @@ PACKAGES = {
 }
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Xavfsizlik sozlamalari: oddiy reklama/Instagram videolari xato "bloklanib"
+# bo'sh javob qaytmasligi uchun. Agar SDK qabul qilmasa, e'tiborsiz qoldiriladi.
+try:
+    from google.genai import types as genai_types
+    SAFETY_SETTINGS = [
+        genai_types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_ONLY_HIGH"),
+        genai_types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_ONLY_HIGH"),
+        genai_types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_ONLY_HIGH"),
+        genai_types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_ONLY_HIGH"),
+    ]
+except Exception:
+    genai_types = None
+    SAFETY_SETTINGS = None
 
 # Pyrogram "yuklab oluvchi" — faqat katta videolarni yuklab olish uchun.
 # API_ID/API_HASH kiritilmagan bo'lsa, pyro=None bo'ladi va bot avvalgidek
@@ -307,6 +327,7 @@ TEXTS = {
                       "📏 Video 2GB dan kichik bo'lsin."),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
+        'queued': "⏳ Hozir navbat bandroq, videongiz navbatga qo'yildi. Bir oz kuting... 🕐",
         'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
@@ -348,6 +369,7 @@ TEXTS = {
                       "📏 Видео должно быть меньше 2ГБ."),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
+        'queued': "⏳ Сейчас очередь занята, ваше видео в очереди. Немного подождите... 🕐",
         'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
@@ -454,18 +476,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ga {count} ta tahlil qo'shildi.")
 
 
-def upload_with_retry(tmp_path, max_retries=3):
+def _upload_and_wait(tmp_path, max_retries=3, max_wait=300):
+    """Videoni Gemini'ga yuklaydi va ACTIVE bo'lguncha kutadi (qayta urinish bilan)."""
     last_error = None
     for attempt in range(max_retries):
         try:
             uploaded = client.files.upload(file=tmp_path)
             waited = 0
-            while uploaded.state.name == "PROCESSING" and waited < 120:
+            while uploaded.state.name == "PROCESSING" and waited < max_wait:
                 time.sleep(3)
                 waited += 3
                 uploaded = client.files.get(name=uploaded.name)
             if uploaded.state.name == "FAILED":
-                raise Exception("Video processing failed")
+                raise Exception("Gemini videoni qayta ishlay olmadi (FAILED)")
+            if uploaded.state.name != "ACTIVE":
+                raise Exception(f"Video tayyor bo'lmadi (holat: {uploaded.state.name})")
             return uploaded
         except Exception as e:
             last_error = e
@@ -474,21 +499,62 @@ def upload_with_retry(tmp_path, max_retries=3):
     raise last_error
 
 
-def analyze_with_retry(uploaded_file, prompt, max_retries=4):
+def _extract_text(response):
+    """Gemini javobidan matnni xavfsiz ajratadi (bo'sh/bloklangan holatlarni hisobga olib)."""
+    try:
+        if getattr(response, "text", None):
+            return response.text.strip()
+    except Exception:
+        pass
+    try:
+        parts_text = []
+        for cand in (getattr(response, "candidates", None) or []):
+            content = getattr(cand, "content", None)
+            for p in (getattr(content, "parts", None) or []):
+                if getattr(p, "text", None):
+                    parts_text.append(p.text)
+        return "".join(parts_text).strip()
+    except Exception:
+        return ""
+
+
+def _analyze(uploaded_file, prompt, max_retries=4):
+    """Tahlil qiladi (qayta urinish + bo'sh javobni ushlash bilan)."""
     last_error = None
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=[uploaded_file, prompt]
-            )
-            return response.text
+            kwargs = {"model": "gemini-2.5-flash", "contents": [uploaded_file, prompt]}
+            if genai_types is not None and SAFETY_SETTINGS is not None:
+                try:
+                    kwargs["config"] = genai_types.GenerateContentConfig(safety_settings=SAFETY_SETTINGS)
+                except Exception:
+                    pass
+            response = client.models.generate_content(**kwargs)
+            text = _extract_text(response)
+            if text:
+                return text
+            raise Exception("Bo'sh javob keldi")
         except Exception as e:
             last_error = e
             wait = (attempt + 1) * 5
-            logger.warning(f"Tahlil urinish {attempt+1}/{max_retries}: {e}, {wait}s")
+            logger.warning(f"Tahlil urinish {attempt+1}/{max_retries}: {e}")
             time.sleep(wait)
     raise last_error
+
+
+def _gemini_process(tmp_path, prompt):
+    """BLOKLAYDIGAN to'liq Gemini ishi. Faqat alohida thread'da chaqiriladi
+    (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi."""
+    uploaded = None
+    try:
+        uploaded = _upload_and_wait(tmp_path)
+        return _analyze(uploaded, prompt)
+    finally:
+        if uploaded is not None:
+            try:
+                client.files.delete(name=uploaded.name)
+            except Exception:
+                pass
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -548,56 +614,65 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'too_big'))
             return
 
-        tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
-        is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
+        # Navbat: bir vaqtda faqat MAX_CONCURRENT ta tahlil ishlaydi.
+        # Hamma slot band bo'lsa, foydalanuvchiga "navbatda" deb bildiramiz.
+        if _video_semaphore.locked():
+            await wait_msg.edit_text(t(context, 'queued'))
 
-        # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
-        downloaded = None
-        if pyro is not None:
-            try:
-                downloaded = await pyro.download_media(video.file_id, file_name=tmp_path)
-            except Exception as e:
-                logger.warning(f"Pyrogram yuklab olishda xato: {e}")
+        async with _video_semaphore:
+            tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
+            is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
 
-        if downloaded:
-            tmp_path = downloaded
-        else:
-            # Zaxira yo'l: Pyrogram yo'q/ishlamadi.
-            # Katta video bo'lsa Bot API ham eplay olmaydi -> ogohlantiramiz.
-            if is_big:
-                await wait_msg.edit_text(t(context, 'too_big'))
-                return
-            file = await context.bot.get_file(video.file_id)
-            await file.download_to_drive(tmp_path)
+            # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
+            downloaded = None
+            if pyro is not None:
+                try:
+                    downloaded = await pyro.download_media(video.file_id, file_name=tmp_path)
+                except Exception as e:
+                    logger.warning(f"Pyrogram yuklab olishda xato: {e}")
 
-        await wait_msg.edit_text(t(context, 'uploading'))
-        uploaded_file = upload_with_retry(tmp_path)
+            if downloaded:
+                tmp_path = downloaded
+            else:
+                # Zaxira yo'l: Pyrogram yo'q/ishlamadi.
+                # Katta video bo'lsa Bot API ham eplay olmaydi -> ogohlantiramiz.
+                if is_big:
+                    await wait_msg.edit_text(t(context, 'too_big'))
+                    return
+                file = await context.bot.get_file(video.file_id)
+                await file.download_to_drive(tmp_path)
 
-        await wait_msg.edit_text(t(context, 'analyzing'))
-        prompt = PROMPT_RU if get_lang(context) == 'ru' else PROMPT_UZ
-        tahlil = analyze_with_retry(uploaded_file, prompt)
+            await wait_msg.edit_text(t(context, 'uploading'))
+            prompt = PROMPT_RU if get_lang(context) == 'ru' else PROMPT_UZ
 
-        await wait_msg.edit_text(t(context, 'ready'))
-        use_balance(user_id)
-        save_analysis(user_id)
+            await wait_msg.edit_text(t(context, 'analyzing'))
+            # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi,
+            # Pyrogram uzilmaydi, bir nechta odam bir vaqtda ishlatsa ham ishlaydi.
+            tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt)
 
-        if len(tahlil) <= 4000:
-            await message.reply_text(tahlil)
-        else:
-            chunks = [tahlil[i:i+4000] for i in range(0, len(tahlil), 4000)]
-            for chunk in chunks:
-                await message.reply_text(chunk)
+            if not tahlil or not tahlil.strip():
+                raise Exception("Tahlil bo'sh keldi")
+
+            await wait_msg.edit_text(t(context, 'ready'))
+            # Balans FAQAT muvaffaqiyatli tahlildan keyin yechiladi (xatoda yechilmaydi)
+            use_balance(user_id)
+            save_analysis(user_id)
+
+            if len(tahlil) <= 4000:
+                await message.reply_text(tahlil)
+            else:
+                chunks = [tahlil[i:i+4000] for i in range(0, len(tahlil), 4000)]
+                for chunk in chunks:
+                    await message.reply_text(chunk)
 
     except Exception as e:
         logger.error(f"Yakuniy xato: {e}")
         await wait_msg.edit_text(t(context, 'error'))
     finally:
         if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        if uploaded_file:
             try:
-                client.files.delete(name=uploaded_file.name)
-            except:
+                os.unlink(tmp_path)
+            except Exception:
                 pass
 
 
@@ -679,3 +754,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+      
