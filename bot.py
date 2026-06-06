@@ -4,7 +4,8 @@ import asyncio
 import logging
 import tempfile
 import time
-import sqlite3
+import psycopg
+from psycopg_pool import ConnectionPool
 from datetime import datetime
 from google import genai
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -73,178 +74,118 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def _choose_db_path():
-    # Bazani saqlash uchun joyni avtomatik tanlaymiz.
-    # Tartib: aniq DB_PATH -> Railway volume mount path -> /data -> /tmp
-    candidates = []
-    explicit = os.getenv("DB_PATH")
-    if explicit:
-        candidates.append(explicit)
-    vol = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
-    if vol:
-        candidates.append(os.path.join(vol, "instadoktor.db"))
-    candidates.append("/data/instadoktor.db")
-    candidates.append("/tmp/instadoktor.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+# Railway ba'zan postgres:// beradi; psycopg postgresql:// kutadi - to'g'rilaymiz.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-    for path in candidates:
-        d = os.path.dirname(path) or "."
-        try:
-            os.makedirs(d, exist_ok=True)
-            test = os.path.join(d, ".write_test")
-            with open(test, "w") as f:
-                f.write("ok")
-            os.remove(test)
-            return path
-        except Exception:
-            continue
-    return "/tmp/instadoktor.db"
-
-
-DB_PATH = _choose_db_path()
-# Bu yozuv Railway loglarida ko'rinadi - baza qayerda saqlanayotganini bildiradi.
-if DB_PATH.startswith("/tmp"):
-    logging.warning(f"DIQQAT: baza vaqtinchalik joyda ({DB_PATH}) - deployda o'chadi! Volume tekshiring.")
+# Ulanishlar puli: ko'p odam bir vaqtda ishlasa ham tez va xavfsiz.
+_pool = None
+if DATABASE_URL:
+    try:
+        _pool = ConnectionPool(DATABASE_URL, min_size=1, max_size=10,
+                               kwargs={"autocommit": True}, open=True)
+        logging.info("PostgreSQL pool tayyor - balans DOIMIY saqlanadi")
+    except Exception as e:
+        logging.error(f"PostgreSQL pool xato: {e}")
+        _pool = None
 else:
-    logging.info(f"Baza DOIMIY joyda saqlanadi: {DB_PATH}")
+    logging.warning("DIQQAT: DATABASE_URL yo'q! Postgres ulanmagan.")
+
+
+def _db_execute(query, params=(), fetch=None):
+    """Bitta so'rovni xavfsiz bajaradi. fetch: None / 'one' / 'all'."""
+    if _pool is None:
+        return None
+    try:
+        with _pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                if fetch == 'one':
+                    return cur.fetchone()
+                if fetch == 'all':
+                    return cur.fetchall()
+                return None
+    except Exception as e:
+        logger.error(f"DB xato: {e}")
+        return None
 
 
 def init_db():
+    if _pool is None:
+        logger.error("Postgres ulanmagan - init_db o'tkazib yuborildi")
+        return
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("""CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
-            joined TEXT, balance INTEGER DEFAULT 0)""")
-        c.execute("""CREATE TABLE IF NOT EXISTS analyses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
-        c.execute("""CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
-            package TEXT, amount INTEGER, status TEXT, created TEXT)""")
-        try:
-            c.execute("ALTER TABLE users ADD COLUMN balance INTEGER DEFAULT 0")
-        except Exception:
-            pass
-        conn.commit()
-        conn.close()
-        logger.info("Baza tayyor")
+        with _pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY, username TEXT, first_name TEXT,
+                    joined TEXT, balance INTEGER DEFAULT 0)""")
+                cur.execute("""CREATE TABLE IF NOT EXISTS analyses (
+                    id SERIAL PRIMARY KEY, user_id BIGINT, created TEXT)""")
+                cur.execute("""CREATE TABLE IF NOT EXISTS payments (
+                    id SERIAL PRIMARY KEY, user_id BIGINT,
+                    package TEXT, amount INTEGER, status TEXT, created TEXT)""")
+        logger.info("PostgreSQL baza tayyor (jadvallar mavjud)")
     except Exception as e:
         logger.error(f"init_db xato: {e}")
-        # MUHIM: bazani O'CHIRMAYMIZ (mijozlar balanslari yo'qolmasligi uchun).
-        # Faqat jadvallarni bor bo'lsa qoldirib, yo'q bo'lsa yaratishga urinamiz.
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute("""CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT,
-                joined TEXT, balance INTEGER DEFAULT 0)""")
-            c.execute("""CREATE TABLE IF NOT EXISTS analyses (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, created TEXT)""")
-            c.execute("""CREATE TABLE IF NOT EXISTS payments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
-                package TEXT, amount INTEGER, status TEXT, created TEXT)""")
-            conn.commit()
-            conn.close()
-            logger.info("Baza tekshirildi (o'chirilmadi)")
-        except Exception as e2:
-            logger.error(f"Baza tekshirishda xato: {e2}")
+
 
 def save_user(user_id, username, first_name):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO users (user_id, username, first_name, joined, balance) VALUES (?, ?, ?, ?, 0)",
-                  (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M")))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"save_user xato: {e}")
+    _db_execute(
+        "INSERT INTO users (user_id, username, first_name, joined, balance) "
+        "VALUES (%s, %s, %s, %s, 0) ON CONFLICT (user_id) DO NOTHING",
+        (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
 
 
 def get_balance(user_id):
     if user_id == ADMIN_ID:
         return 999999
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-        row = c.fetchone()
-        conn.close()
-        return row[0] if row else 0
-    except Exception as e:
-        logger.error(f"get_balance xato: {e}")
-        return 0
+    row = _db_execute("SELECT balance FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    return row[0] if row else 0
 
 
 def add_balance(user_id, amount):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        # Foydalanuvchi bazada bo'lmasa ham ishlashi uchun avval qatorini yaratamiz
-        c.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, first_name, joined, balance) VALUES (?, '', '', ?, 0)",
-            (user_id, datetime.now().strftime("%Y-%m-%d %H:%M"))
-        )
-        c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"add_balance xato: {e}")
+    # Foydalanuvchi bazada bo'lmasa ham ishlashi uchun avval qatorini yaratamiz
+    _db_execute(
+        "INSERT INTO users (user_id, username, first_name, joined, balance) "
+        "VALUES (%s, '', '', %s, 0) ON CONFLICT (user_id) DO NOTHING",
+        (user_id, datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
+    _db_execute("UPDATE users SET balance = balance + %s WHERE user_id = %s", (amount, user_id))
 
 
 def use_balance(user_id):
     if user_id == ADMIN_ID:
         return
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("UPDATE users SET balance = balance - 1 WHERE user_id = ? AND balance > 0", (user_id,))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"use_balance xato: {e}")
+    _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
 
 
 def save_analysis(user_id):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO analyses (user_id, created) VALUES (?, ?)",
-                  (user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"save_analysis xato: {e}")
+    _db_execute("INSERT INTO analyses (user_id, created) VALUES (%s, %s)",
+                (user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
 
 
 def create_payment(user_id, package, amount):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT INTO payments (user_id, package, amount, status, created) VALUES (?, ?, ?, 'pending', ?)",
-                  (user_id, package, amount, datetime.now().strftime("%Y-%m-%d %H:%M")))
-        pid = c.lastrowid
-        conn.commit()
-        conn.close()
-        return pid
-    except Exception as e:
-        logger.error(f"create_payment xato: {e}")
-        return None
+    row = _db_execute(
+        "INSERT INTO payments (user_id, package, amount, status, created) "
+        "VALUES (%s, %s, %s, 'pending', %s) RETURNING id",
+        (user_id, package, amount, datetime.now().strftime("%Y-%m-%d %H:%M")),
+        fetch='one'
+    )
+    return row[0] if row else None
 
 
 def get_stats():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM users")
-        total_users = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM analyses")
-        total_analyses = c.fetchone()[0]
         today = datetime.now().strftime("%Y-%m-%d")
-        c.execute("SELECT COUNT(*) FROM analyses WHERE created LIKE ?", (today + "%",))
-        today_analyses = c.fetchone()[0]
-        c.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved'")
-        revenue = c.fetchone()[0]
-        conn.close()
+        total_users = (_db_execute("SELECT COUNT(*) FROM users", fetch='one') or [0])[0]
+        total_analyses = (_db_execute("SELECT COUNT(*) FROM analyses", fetch='one') or [0])[0]
+        today_analyses = (_db_execute("SELECT COUNT(*) FROM analyses WHERE created LIKE %s",
+                                      (today + "%",), fetch='one') or [0])[0]
+        revenue = (_db_execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved'",
+                               fetch='one') or [0])[0]
         return total_users, total_analyses, today_analyses, revenue
     except Exception as e:
         logger.error(f"get_stats xato: {e}")
@@ -306,6 +247,32 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 
 Ты не друг, ты эксперт. Честная оценка помогает блогеру расти. 💪"""
 
+
+PROMPT_PROFILE_UZ = """Sen Instagram bo'yicha tajribali, xolis ekspertsan. Senga foydalanuvchining Instagram profili va/yoki statistikasi (Insights) skrinshot(lar)i berildi. Ularni diqqat bilan ko'rib chiqib, professional va halol tahlil ber:
+
+📊 UMUMIY TAASSUROT — profil haqida qisqacha.
+👤 BIO VA PROFIL — ism, bio, profil rasmi, havola: nimasi yaxshi, nimasi kam.
+🎯 KONTENT — postlar mavzusi, sifati, izchilligi.
+📈 ENGAGEMENT — layk, izoh, ko'rishlar bo'yicha baho (agar ko'rinsa).
+✅ KUCHLI TOMONLAR — faqat real plyuslar.
+❌ KAMCHILIKLAR — barcha jiddiy minuslar, ochiq va halol.
+💡 TAVSIYALAR — 🚀 5 ta aniq, amaliy qadam.
+
+Faqat skrinshotda haqiqatan ko'ringan narsaga asoslan, ko'rinmaganini o'ylab topma. Do'st emas, ekspertsan — halol baho blogerni o'stiradi."""
+
+
+PROMPT_PROFILE_RU = """Ты опытный, объективный эксперт по Instagram. Тебе дали скриншот(ы) профиля и/или статистики (Insights) пользователя. Внимательно изучи их и дай профессиональный, честный анализ:
+
+📊 ОБЩЕЕ ВПЕЧАТЛЕНИЕ — кратко о профиле.
+👤 БИО И ПРОФИЛЬ — имя, био, аватар, ссылка: что хорошо, чего не хватает.
+🎯 КОНТЕНТ — тема, качество, регулярность постов.
+📈 ВОВЛЕЧЁННОСТЬ — оценка по лайкам, комментариям, просмотрам (если видно).
+✅ СИЛЬНЫЕ СТОРОНЫ — только реальные плюсы.
+❌ НЕДОСТАТКИ — все серьёзные минусы, честно.
+💡 РЕКОМЕНДАЦИИ — 🚀 5 конкретных шагов.
+
+Опирайся только на то, что реально видно на скриншоте, не выдумывай. Ты не друг, ты эксперт — честная оценка помогает расти."""
+
 TEXTS = {
     'uz': {
         'welcome': (
@@ -318,6 +285,21 @@ TEXTS = {
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
+        'menu_profile': "📊 Profil tahlili",
+        'profile_instr': ("📊 PROFIL TAHLILI\n\n"
+                          "Instagram profilingizni chuqur tahlil qilaman: kuchli va kuchsiz tomonlari, kontent va aniq tavsiyalar.\n\n"
+                          "📸 SKRINSHOT YO'LI (eng tez va aniq):\n"
+                          "1. Instagram'da profilingizni oching\n"
+                          "2. Profil sahifangiz skrinshotini oling (bio, postlar ko'rinsin)\n"
+                          "3. Bo'lsa, statistika (Insights) skrinshotlarini ham oling\n"
+                          "4. Skrinshot(lar)ni shu yerga yuboring\n"
+                          "5. Tugagach '✅ Tahlil qilish' tugmasini bosing\n\n"
+                          "💡 Qancha ko'p skrinshot — shuncha aniq natija.\n\n"
+                          "Boshlash uchun skrinshot yuboring 👇"),
+        'profile_got': "✅ Rasm qabul qilindi ({n} ta).\n\nYana yuboring yoki tahlilni boshlang 👇",
+        'profile_btn': "✅ Tahlil qilish",
+        'profile_none': "❌ Avval profil skrinshotini yuboring.",
+        'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
@@ -361,6 +343,21 @@ TEXTS = {
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
+        'menu_profile': "📊 Анализ профиля",
+        'profile_instr': ("📊 АНАЛИЗ ПРОФИЛЯ\n\n"
+                          "Глубоко проанализирую ваш Instagram-профиль: сильные и слабые стороны, контент и конкретные рекомендации.\n\n"
+                          "📸 ЧЕРЕЗ СКРИНШОТ (быстро и точно):\n"
+                          "1. Откройте свой профиль в Instagram\n"
+                          "2. Сделайте скриншот страницы профиля (видны био, посты)\n"
+                          "3. Если есть — сделайте скриншоты статистики (Insights)\n"
+                          "4. Отправьте скриншот(ы) сюда\n"
+                          "5. После — нажмите '✅ Анализировать'\n\n"
+                          "💡 Чем больше скриншотов — тем точнее результат.\n\n"
+                          "Чтобы начать, отправьте скриншот 👇"),
+        'profile_got': "✅ Изображение получено ({n} шт.).\n\nОтправьте ещё или начните анализ 👇",
+        'profile_btn': "✅ Анализировать",
+        'profile_none': "❌ Сначала отправьте скриншот профиля.",
+        'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'profil_info': "📊 Анализ профиля скоро заработает! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
                       "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
@@ -406,8 +403,9 @@ def t(context, key):
 def main_keyboard(context):
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_balance'))],
-            [KeyboardButton(t(context, 'menu_lang')), KeyboardButton(t(context, 'menu_help'))],
+            [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
+            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_lang'))],
+            [KeyboardButton(t(context, 'menu_help'))],
         ],
         resize_keyboard=True
     )
@@ -455,9 +453,56 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count, amount = PACKAGES[data]
         create_payment(query.from_user.id, data, amount)
         context.user_data['pending_pkg'] = data
+        context.user_data['mode'] = None  # profil rejimini o'chiramiz (chek bilan aralashmasin)
         await query.message.reply_text(
             t(context, 'pay_instr').format(amount=amount, card=CARD_NUMBER, name=CARD_NAME)
         )
+    elif data == 'profile_analyze':
+        user_id = query.from_user.id
+        imgs = context.user_data.get('profile_imgs', [])
+        if not imgs:
+            await query.message.reply_text(t(context, 'profile_none'))
+            return
+        if get_balance(user_id) <= 0:
+            await query.message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
+            return
+        wait_msg = await query.message.reply_text(t(context, 'profile_analyzing'))
+        tmp_paths = []
+        try:
+            async with _video_semaphore:
+                for fid in imgs:
+                    p = os.path.join("/tmp", f"{uuid.uuid4().hex}.jpg")
+                    f = await context.bot.get_file(fid)
+                    await f.download_to_drive(p)
+                    tmp_paths.append(p)
+
+                prompt = PROMPT_PROFILE_RU if get_lang(context) == 'ru' else PROMPT_PROFILE_UZ
+                tahlil = await asyncio.to_thread(_gemini_process_images, tmp_paths, prompt)
+
+                if not tahlil or not tahlil.strip():
+                    raise Exception("Profil tahlili bo'sh keldi")
+
+                await wait_msg.edit_text(t(context, 'ready'))
+                use_balance(user_id)       # balans faqat muvaffaqiyatda yechiladi
+                save_analysis(user_id)
+                context.user_data['mode'] = None
+                context.user_data['profile_imgs'] = []
+
+                if len(tahlil) <= 4000:
+                    await query.message.reply_text(tahlil)
+                else:
+                    for i in range(0, len(tahlil), 4000):
+                        await query.message.reply_text(tahlil[i:i+4000])
+        except Exception as e:
+            logger.error(f"Profil tahlil xato: {e}")
+            await wait_msg.edit_text(t(context, 'error'))
+        finally:
+            for p in tmp_paths:
+                try:
+                    if os.path.exists(p):
+                        os.unlink(p)
+                except Exception:
+                    pass
     elif data.startswith('approve_'):
         # Admin tasdiqlash: approve_{user_id}_{package}
         parts = data.split('_')
@@ -518,12 +563,12 @@ def _extract_text(response):
         return ""
 
 
-def _analyze(uploaded_file, prompt, max_retries=4):
-    """Tahlil qiladi (qayta urinish + bo'sh javobni ushlash bilan)."""
+def _generate(contents, max_retries=4):
+    """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan)."""
     last_error = None
     for attempt in range(max_retries):
         try:
-            kwargs = {"model": "gemini-2.5-flash", "contents": [uploaded_file, prompt]}
+            kwargs = {"model": "gemini-2.5-flash", "contents": contents}
             if genai_types is not None and SAFETY_SETTINGS is not None:
                 try:
                     kwargs["config"] = genai_types.GenerateContentConfig(safety_settings=SAFETY_SETTINGS)
@@ -536,10 +581,30 @@ def _analyze(uploaded_file, prompt, max_retries=4):
             raise Exception("Bo'sh javob keldi")
         except Exception as e:
             last_error = e
-            wait = (attempt + 1) * 5
-            logger.warning(f"Tahlil urinish {attempt+1}/{max_retries}: {e}")
-            time.sleep(wait)
+            logger.warning(f"Generate urinish {attempt+1}/{max_retries}: {e}")
+            time.sleep((attempt + 1) * 5)
     raise last_error
+
+
+def _analyze(uploaded_file, prompt, max_retries=4):
+    """Bitta video uchun tahlil."""
+    return _generate([uploaded_file, prompt], max_retries=max_retries)
+
+
+def _gemini_process_images(image_paths, prompt):
+    """BLOKLAYDIGAN: bir nechta rasm (skrinshot)ni Gemini bilan tahlil qiladi.
+    Faqat alohida thread'da chaqiriladi (asyncio.to_thread)."""
+    uploaded = []
+    try:
+        for p in image_paths:
+            uploaded.append(_upload_and_wait(p))
+        return _generate(uploaded + [prompt])
+    finally:
+        for u in uploaded:
+            try:
+                client.files.delete(name=u.name)
+            except Exception:
+                pass
 
 
 def _gemini_process(tmp_path, prompt):
@@ -558,7 +623,20 @@ def _gemini_process(tmp_path, prompt):
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Foydalanuvchi chek skrinshotini yuborganda"""
+    """Profil rejimida — profil skrinshoti; aks holda — to'lov cheki."""
+    # PROFIL REJIMI: rasm = profil skrinshoti
+    if context.user_data.get('mode') == 'profile':
+        imgs = context.user_data.setdefault('profile_imgs', [])
+        imgs.append(update.message.photo[-1].file_id)
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t(context, 'profile_btn'), callback_data='profile_analyze')
+        ]])
+        await update.message.reply_text(
+            t(context, 'profile_got').format(n=len(imgs)), reply_markup=kb
+        )
+        return
+
+    # AKS HOLDA: to'lov cheki (eski mantiq)
     pending = context.user_data.get('pending_pkg')
     if not pending:
         return  # Chek kutilmayotgan bo'lsa, e'tibor bermaymiz
@@ -679,7 +757,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
+        context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'send_video'))
+    elif text in (TEXTS['uz']['menu_profile'], TEXTS['ru']['menu_profile']):
+        user_id = update.effective_user.id
+        if get_balance(user_id) <= 0:
+            await update.message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
+            return
+        context.user_data['mode'] = 'profile'
+        context.user_data['profile_imgs'] = []
+        context.user_data['pending_pkg'] = None
+        await update.message.reply_text(t(context, 'profile_instr'))
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
         bal = get_balance(update.effective_user.id)
         await update.message.reply_text(t(context, 'balance_info').format(n=bal))
@@ -759,4 +847,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    

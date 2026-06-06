@@ -1,3 +1,12 @@
+# Telegram bot (sizning kodingiz shu kutubxonada yozilgan)
 python-telegram-bot>=20.7,<23.0
+
+# Gemini AI (video va profil tahlil qilish uchun)
 google-genai>=1.10,<3.0
+
+# Katta video yuklab olish uchun (2GB gacha) — Pyrogram'ning ishlaydigan versiyasi.
+# DIQQAT: oddiy "pyrogram" emas, aynan "kurigram".
 kurigram>=2.1
+
+# PostgreSQL bazasi (balans DOIMIY saqlanadi + ko'p odam bir vaqtda).
+psycopg[binary,pool]>=3.1
