@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import asyncio
 import logging
@@ -126,6 +127,11 @@ def init_db():
                 cur.execute("""CREATE TABLE IF NOT EXISTS payments (
                     id SERIAL PRIMARY KEY, user_id BIGINT,
                     package TEXT, amount INTEGER, status TEXT, created TEXT)""")
+                # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
+                for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
+                                 ("file_id", "TEXT"), ("foiz", "INTEGER DEFAULT 0"),
+                                 ("qisqa", "TEXT"), ("toliq", "TEXT")]:
+                    cur.execute(f"ALTER TABLE analyses ADD COLUMN IF NOT EXISTS {col} {typ}")
         logger.info("PostgreSQL baza tayyor (jadvallar mavjud)")
     except Exception as e:
         logger.error(f"init_db xato: {e}")
@@ -162,9 +168,34 @@ def use_balance(user_id):
     _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
 
 
-def save_analysis(user_id):
-    _db_execute("INSERT INTO analyses (user_id, created) VALUES (%s, %s)",
-                (user_id, datetime.now().strftime("%Y-%m-%d %H:%M")))
+def save_analysis(user_id, username="", kind="video", file_id=None, foiz=0, qisqa=None, toliq=None):
+    """Tahlilni saqlaydi va yangi yozuv ID sini qaytaradi (To'liq tugmasi uchun)."""
+    row = _db_execute(
+        "INSERT INTO analyses (user_id, username, kind, file_id, foiz, qisqa, toliq, created) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (user_id, username or "", kind, file_id, foiz, qisqa, toliq,
+         datetime.now().strftime("%Y-%m-%d %H:%M")),
+        fetch='one'
+    )
+    return row[0] if row else None
+
+
+def get_full_analysis(analysis_id):
+    """To'liq tahlil matnini qaytaradi (tugma bosilganda)."""
+    row = _db_execute("SELECT toliq FROM analyses WHERE id = %s", (analysis_id,), fetch='one')
+    return row[0] if row and row[0] else None
+
+
+def get_top_today(limit=10):
+    """Bugungi eng yuqori rekka foizli videolar (admin uchun)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = _db_execute(
+        "SELECT id, user_id, username, foiz, file_id, created FROM analyses "
+        "WHERE kind = 'video' AND file_id IS NOT NULL AND created LIKE %s "
+        "ORDER BY foiz DESC, id DESC LIMIT %s",
+        (today + "%", limit), fetch='all'
+    )
+    return rows or []
 
 
 def create_payment(user_id, package, amount):
@@ -192,60 +223,65 @@ def get_stats():
         return 0, 0, 0, 0
 
 
-PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan.
-Vazifang — blogger videosini HALOL va OBJEKTIV baholash. Video qanday bo'lsa,
-shunday bahola: yaxshi bo'lsa yaxshi de, kuchsiz bo'lsa kuchsiz de. Na ortiqcha
-maqta, na asossiz tanqid qil. Faqat HAQIQATNI ayt.
+PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan. Blogger videosini HALOL va OBJEKTIV bahola. Faqat HAQIQATNI ayt — yaxshi bo'lsa yaxshi, kuchsiz bo'lsa kuchsiz de.
 
-QAT'IY QOIDALAR:
-- Baho videoning haqiqiy sifatiga MOS bo'lsin — adolatli bo'l.
-- "Ajoyib", "zo'r", "wow" so'zlarini faqat HAQIQATAN shunday bo'lsa ishlat.
-- Har bir kamchilikni aniq ayt. Yumshatma, lekin bo'rttirma ham.
-- Rekka chiqish ehtimolini REAL bahola.
-- Bloggerni O'STIRISH uchun gapir. Halol baho — eng katta yordam.
+Javobingni ANIQ shu formatda, shu teglar bilan ber (teglarni o'zgartirma, teglardan tashqarida hech narsa yozma):
 
-MUHIM: KO'P EMOJI ishlat — javob jonli, chiroyli bo'lsin, lekin tahlil chuqur qolsin.
+[FOIZ]videoning rekkaga (rekomendatsiyaga) chiqish ehtimoli, faqat 0-100 oralig'idagi bitta son[/FOIZ]
 
-Har bo'limni O'ZBEK tilida, ko'p emoji bilan yoz:
+[QISQA]
+QISQA va o'qishga oson tahlil (jami 8-12 qator). Har bo'lim 1-2 qisqa qator, ko'p emoji bilan:
+🎣 Hook — ⭐ _/10 — qisqa sabab
+🎬 Vizual/Montaj — ⭐ _/10 — qisqa sabab
+🗣️ Audio/Nutq — ⭐ _/10 — qisqa sabab
+📝 Kontent — ⭐ _/10 — qisqa sabab
+📈 Rekka chiqish ehtimoli: _% — qisqa sabab
+Oxirida 1 qatorli umumiy xulosa.
+[/QISQA]
 
-🎣 HOOK (0-3 sekund) — e'tiborni tortadimi? ⭐ Ball: __/10
-🎬 VIZUAL VA MONTAJ — 🎥 yoritish, kamera, montaj. ⭐ Ball: __/10
-🗣️ AUDIO VA NUTQ — 🎙️ nima gapirildi, ovoz toni. ⭐ Ball: __/10
-📝 KONTENT VA QIYMAT — 💬 xabar, CTA. ⭐ Ball: __/10
-📊 REKKA CHIQISH EHTIMOLI — 🎯 real foiz va sabablar.
+[TOLIQ]
+TO'LIQ, chuqur tahlil (har bo'lim bir necha jumla, ko'p emoji bilan):
+🎣 HOOK (0-3 sekund) — e'tiborni tortadimi? ⭐ Ball: _/10 — batafsil izoh
+🎬 VIZUAL VA MONTAJ — 🎥 yoritish, kamera, montaj. ⭐ Ball: _/10 — batafsil izoh
+🗣️ AUDIO VA NUTQ — 🎙️ nima gapirildi, ovoz toni. ⭐ Ball: _/10 — batafsil izoh
+📝 KONTENT VA QIYMAT — 💬 xabar, CTA. ⭐ Ball: _/10 — batafsil izoh
+📊 REKKA CHIQISH EHTIMOLI — 🎯 _% va batafsil sabablar.
 ✅ KUCHLI TOMONLARI — faqat haqiqiy kuchli joylar.
-❌ KAMCHILIKLAR — barcha jiddiy kamchiliklar.
-💡 TAVSIYALAR — 🚀 5 ta amaliy qadam.
+❌ KAMCHILIKLAR — barcha jiddiy kamchiliklar, ochiq ayt.
+💡 TAVSIYALAR — 🚀 5 ta aniq, amaliy qadam.
+[/TOLIQ]
 
-Sen do'st emas, ekspertsan. Halol baho bloggerni o'stiradi. 💪"""
+Baho videoning haqiqiy sifatiga MOS bo'lsin. Foiz REAL bo'lsin. Sen do'st emas, ekspertsan — halol baho bloggerni o'stiradi."""
 
-PROMPT_RU = """Ты опытный, объективный аналитик Instagram-контента.
-Твоя задача — ЧЕСТНО и ОБЪЕКТИВНО оценить видео блогера. Оценивай как есть:
-хорошее — хорошо, слабое — слабо. Не хвали зря и не критикуй без причины.
-Говори только ПРАВДУ.
+PROMPT_RU = """Ты опытный, объективный аналитик Instagram-контента. Оцени видео блогера ЧЕСТНО. Говори только ПРАВДУ.
 
-СТРОГИЕ ПРАВИЛА:
-- Оценка должна СООТВЕТСТВОВАТЬ реальному качеству видео — будь справедлив.
-- Слова "отлично", "круто", "вау" используй только если это ПРАВДА.
-- Указывай каждый недостаток чётко. Не смягчай, но и не преувеличивай.
-- Оценивай вероятность попадания в рекомендации РЕАЛЬНО.
-- Говори, чтобы помочь блогеру РАСТИ. Честная оценка — лучшая помощь.
+Ответ дай СТРОГО в этом формате с этими тегами (не меняй теги, вне тегов ничего не пиши):
 
-ВАЖНО: используй МНОГО ЭМОДЗИ — ответ должен быть живым и красивым,
-но анализ оставайся глубоким.
+[FOIZ]вероятность попадания видео в рекомендации, только одно число 0-100[/FOIZ]
 
-Каждый раздел пиши на РУССКОМ языке, с эмодзи:
+[QISQA]
+КОРОТКИЙ, лёгкий для чтения анализ (всего 8-12 строк). Каждый раздел 1-2 строки, с эмодзи:
+🎣 Хук — ⭐ _/10 — кратко
+🎬 Визуал/Монтаж — ⭐ _/10 — кратко
+🗣️ Аудио/Речь — ⭐ _/10 — кратко
+📝 Контент — ⭐ _/10 — кратко
+📈 Вероятность в рекомендации: _% — кратко
+В конце 1 строка общего вывода.
+[/QISQA]
 
-🎣 ХУК (0-3 сек) — цепляет внимание? ⭐ Балл: __/10
-🎬 ВИЗУАЛ И МОНТАЖ — 🎥 свет, камера, монтаж. ⭐ Балл: __/10
-🗣️ АУДИО И РЕЧЬ — 🎙️ что сказано, тон голоса. ⭐ Балл: __/10
-📝 КОНТЕНТ И ЦЕННОСТЬ — 💬 посыл, призыв к действию. ⭐ Балл: __/10
-📊 ВЕРОЯТНОСТЬ В РЕКОМЕНДАЦИИ — 🎯 реальный процент и причины.
-✅ СИЛЬНЫЕ СТОРОНЫ — только реальные плюсы.
+[TOLIQ]
+ПОЛНЫЙ, глубокий анализ (каждый раздел в несколько предложений, с эмодзи):
+🎣 ХУК (0-3 сек) — цепляет? ⭐ Балл: _/10 — подробно
+🎬 ВИЗУАЛ И МОНТАЖ — 🎥 свет, камера, монтаж. ⭐ Балл: _/10 — подробно
+🗣️ АУДИО И РЕЧЬ — 🎙️ что сказано, тон. ⭐ Балл: _/10 — подробно
+📝 КОНТЕНТ И ЦЕННОСТЬ — 💬 посыл, призыв. ⭐ Балл: _/10 — подробно
+📊 ВЕРОЯТНОСТЬ В РЕКОМЕНДАЦИИ — 🎯 _% и причины.
+✅ СИЛЬНЫЕ СТОРОНЫ — реальные плюсы.
 ❌ НЕДОСТАТКИ — все серьёзные минусы.
 💡 РЕКОМЕНДАЦИИ — 🚀 5 конкретных шагов.
+[/TOLIQ]
 
-Ты не друг, ты эксперт. Честная оценка помогает блогеру расти. 💪"""
+Оценка должна соответствовать реальному качеству. Процент реальный. Ты не друг, ты эксперт."""
 
 
 PROMPT_PROFILE_UZ = """Sen Instagram bo'yicha tajribali, xolis ekspertsan. Senga foydalanuvchining Instagram profili va/yoki statistikasi (Insights) skrinshot(lar)i berildi. Ularni diqqat bilan ko'rib chiqib, professional va halol tahlil ber:
@@ -300,6 +336,8 @@ TEXTS = {
         'profile_btn': "✅ Tahlil qilish",
         'profile_none': "❌ Avval profil skrinshotini yuboring.",
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
+        'full_btn': "📖 To'liq tahlilni ko'rish",
+        'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
         'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
@@ -358,6 +396,8 @@ TEXTS = {
         'profile_btn': "✅ Анализировать",
         'profile_none': "❌ Сначала отправьте скриншот профиля.",
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
+        'full_btn': "📖 Посмотреть полный анализ",
+        'full_gone': "❌ Полный анализ не найден (возможно, старый).",
         'profil_info': "📊 Анализ профиля скоро заработает! 🔜",
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
                       "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
@@ -457,6 +497,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             t(context, 'pay_instr').format(amount=amount, card=CARD_NUMBER, name=CARD_NAME)
         )
+    elif data.startswith('full_'):
+        try:
+            aid = int(data.split('_', 1)[1])
+        except Exception:
+            return
+        toliq = get_full_analysis(aid)
+        if not toliq:
+            await query.message.reply_text(t(context, 'full_gone'))
+            return
+        if len(toliq) <= 4000:
+            await query.message.reply_text(toliq)
+        else:
+            for i in range(0, len(toliq), 4000):
+                await query.message.reply_text(toliq[i:i+4000])
     elif data == 'profile_analyze':
         user_id = query.from_user.id
         imgs = context.user_data.get('profile_imgs', [])
@@ -484,7 +538,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await wait_msg.edit_text(t(context, 'ready'))
                 use_balance(user_id)       # balans faqat muvaffaqiyatda yechiladi
-                save_analysis(user_id)
+                _uname = query.from_user.username or query.from_user.first_name or ""
+                save_analysis(user_id, username=_uname, kind="profile", toliq=tahlil)
                 context.user_data['mode'] = None
                 context.user_data['profile_imgs'] = []
 
@@ -667,6 +722,30 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t(context, 'error'))
 
 
+def _parse_analysis(text):
+    """Gemini javobini foiz / qisqa / to'liq qismlarga ajratadi.
+    Agar teglar topilmasa, butun matnni ikkalasiga ham ishlatadi (xavfsiz)."""
+    foiz = 0
+    m = re.search(r'\[FOIZ\](.*?)\[/FOIZ\]', text, re.DOTALL)
+    if m:
+        digits = re.sub(r'[^0-9]', '', m.group(1))
+        if digits:
+            foiz = max(0, min(100, int(digits[:3])))
+    qm = re.search(r'\[QISQA\](.*?)\[/QISQA\]', text, re.DOTALL)
+    tm = re.search(r'\[TOLIQ\](.*?)\[/TOLIQ\]', text, re.DOTALL)
+    qisqa = qm.group(1).strip() if qm else None
+    toliq = tm.group(1).strip() if tm else None
+    # Zaxira: teglar topilmasa, butun matnni ishlatamiz
+    if not qisqa and not toliq:
+        clean = re.sub(r'\[/?FOIZ\].*?(\n|$)', '', text).strip()
+        qisqa = toliq = clean or text.strip()
+    elif not toliq:
+        toliq = qisqa
+    elif not qisqa:
+        qisqa = toliq
+    return foiz, qisqa, toliq
+
+
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
@@ -734,14 +813,25 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'ready'))
             # Balans FAQAT muvaffaqiyatli tahlildan keyin yechiladi (xatoda yechilmaydi)
             use_balance(user_id)
-            save_analysis(user_id)
 
-            if len(tahlil) <= 4000:
-                await message.reply_text(tahlil)
+            # Tahlilni qism qism ajratamiz: foiz, qisqa, to'liq
+            foiz, qisqa, toliq = _parse_analysis(tahlil)
+            uname = message.from_user.username or message.from_user.first_name or ""
+            aid = save_analysis(user_id, username=uname, kind="video",
+                                file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq)
+
+            # Mijozga QISQA tahlil + "To'liq tahlilni ko'rish" tugmasi
+            kb = None
+            if aid:
+                kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")
+                ]])
+            if len(qisqa) <= 4000:
+                await message.reply_text(qisqa, reply_markup=kb)
             else:
-                chunks = [tahlil[i:i+4000] for i in range(0, len(tahlil), 4000)]
-                for chunk in chunks:
-                    await message.reply_text(chunk)
+                parts = [qisqa[i:i+4000] for i in range(0, len(qisqa), 4000)]
+                for idx, chunk in enumerate(parts):
+                    await message.reply_text(chunk, reply_markup=(kb if idx == len(parts) - 1 else None))
 
     except Exception as e:
         logger.error(f"Yakuniy xato: {e}")
@@ -801,6 +891,28 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    rows = get_top_today(10)
+    if not rows:
+        await update.message.reply_text("📊 Bugun hali tahlil qilingan video yo'q.")
+        return
+    await update.message.reply_text(
+        f"🏆 BUGUNGI TOP {len(rows)} VIDEO (rekka chiqish ehtimoli bo'yicha)\n\n"
+        "Quyida har birini videosi bilan yuboraman 👇"
+    )
+    for i, row in enumerate(rows, 1):
+        aid, uid, uname, foiz, file_id, created = row
+        who = f"@{uname}" if uname else f"ID {uid}"
+        caption = f"#{i} • 📈 Rekka ehtimoli: {foiz}%\n👤 {who}\n🕐 {created}"
+        try:
+            await context.bot.send_video(update.effective_chat.id, file_id, caption=caption)
+        except Exception as e:
+            logger.warning(f"Top video yuborishda xato (id={aid}): {e}")
+            await update.message.reply_text(caption + "\n⚠️ (videoni yuborib bo'lmadi)")
+
+
 async def post_init(application):
     # Pyrogram yuklab oluvchini ishga tushiramiz (agar sozlangan bo'lsa).
     # Ishga tushmasa ham bot to'xtamaydi — kichik videolar Bot API orqali ishlaydi.
@@ -815,6 +927,18 @@ async def post_init(application):
         BotCommand("help", "ℹ️ Yordam / Помощь"),
         BotCommand("til", "🌐 Til / Язык"),
     ])
+    # Bot tavsifi (profilda va Start oldida ko'rinadi) - bir marta o'rnatiladi
+    try:
+        await application.bot.set_my_short_description(
+            short_description="Instagram video va profilingizni AI bilan tahlil qiladi 🎬📊"
+        )
+        await application.bot.set_my_description(
+            description=("🎬 Instagram videongizni AI bilan tahlil qilaman: hook, "
+                         "vizual, audio, montaj va rekka chiqish ehtimoli (%).\n\n"
+                         "📊 Profil tahlili ham bor.\n\nBoshlash uchun «Start» 👇")
+        )
+    except Exception as e:
+        logger.warning(f"Tavsif o'rnatishda xato: {e}")
 
 
 async def post_shutdown(application):
@@ -837,6 +961,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
+    app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, video_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
