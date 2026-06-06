@@ -338,7 +338,7 @@ TEXTS = {
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'full_btn': "📖 To'liq tahlilni ko'rish",
         'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
-        'profil_info': "📊 Profil tahlil tez orada ishga tushadi! 🔜",
+        'profil_info': "📊 Profil tahlili hozircha ishlamayapti — tez orada qo'shiladi! 🔜\n\nHozircha 🎬 Video tahlil xizmatidan foydalanishingiz mumkin.",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
                       "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
@@ -398,7 +398,7 @@ TEXTS = {
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'full_btn': "📖 Посмотреть полный анализ",
         'full_gone': "❌ Полный анализ не найден (возможно, старый).",
-        'profil_info': "📊 Анализ профиля скоро заработает! 🔜",
+        'profil_info': "📊 Анализ профиля пока не работает — скоро добавим! 🔜\n\nПока можете воспользоваться 🎬 Анализом видео.",
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
                       "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
                       "💰 Мой баланс — сколько анализов осталось.\n\n"
@@ -850,14 +850,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'send_video'))
     elif text in (TEXTS['uz']['menu_profile'], TEXTS['ru']['menu_profile']):
-        user_id = update.effective_user.id
-        if get_balance(user_id) <= 0:
-            await update.message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
-            return
-        context.user_data['mode'] = 'profile'
-        context.user_data['profile_imgs'] = []
-        context.user_data['pending_pkg'] = None
-        await update.message.reply_text(t(context, 'profile_instr'))
+        # Profil tahlili hozircha vaqtincha o'chirilgan ("tez orada")
+        context.user_data['mode'] = None
+        await update.message.reply_text(t(context, 'profil_info'))
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
         bal = get_balance(update.effective_user.id)
         await update.message.reply_text(t(context, 'balance_info').format(n=bal))
