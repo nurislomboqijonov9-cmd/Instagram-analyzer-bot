@@ -7,7 +7,7 @@ import tempfile
 import time
 import psycopg
 from psycopg_pool import ConnectionPool
-from datetime import datetime
+from datetime import datetime, timedelta
 from google import genai
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, KeyboardButton, BotCommand)
@@ -31,12 +31,11 @@ ADMIN_ID = 7589459697
 CARD_NUMBER = "6262 7300 6521 3151"
 CARD_NAME = "Boqijonov Nurislom"
 
-# Paketlar: callback -> (tahlillar soni, narx so'm)
-PACKAGES = {
-    'pkg_1': (1, 3990),
-    'pkg_5': (5, 16000),
-    'pkg_10': (10, 26000),
-}
+# Obuna (1 oylik): narx (so'm) va kun
+SUB_PRICE = 29990
+SUB_DAYS = 30
+# 1 martalik tahlil narxi (so'm)
+ONE_PRICE = 4990
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -127,6 +126,12 @@ def init_db():
                 cur.execute("""CREATE TABLE IF NOT EXISTS payments (
                     id SERIAL PRIMARY KEY, user_id BIGINT,
                     package TEXT, amount INTEGER, status TEXT, created TEXT)""")
+                # users jadvaliga yangi ustunlar (obuna + referral)
+                for col, typ in [("sub_until", "TEXT"),
+                                 ("referred_by", "BIGINT"),
+                                 ("ref_credited", "BOOLEAN DEFAULT FALSE"),
+                                 ("ref_reward_given", "BOOLEAN DEFAULT FALSE")]:
+                    cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {typ}")
                 # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
                 for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
                                  ("file_id", "TEXT"), ("foiz", "INTEGER DEFAULT 0"),
@@ -138,11 +143,18 @@ def init_db():
 
 
 def save_user(user_id, username, first_name):
+    # Yangi foydalanuvchiga 1 ta BEPUL tahlil (balance=1). ON CONFLICT DO NOTHING
+    # tufayli faqat BIRINCHI marta beriladi - qayta /start bossa qayta berilmaydi.
     _db_execute(
         "INSERT INTO users (user_id, username, first_name, joined, balance) "
-        "VALUES (%s, %s, %s, %s, 0) ON CONFLICT (user_id) DO NOTHING",
+        "VALUES (%s, %s, %s, %s, 1) ON CONFLICT (user_id) DO NOTHING",
         (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M"))
     )
+
+
+def user_exists(user_id):
+    row = _db_execute("SELECT 1 FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    return row is not None
 
 
 def get_balance(user_id):
@@ -166,6 +178,92 @@ def use_balance(user_id):
     if user_id == ADMIN_ID:
         return
     _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
+
+
+def sub_active(user_id):
+    """Obuna faolmi? (sub_until hozirgi vaqtdan keyinmi)"""
+    if user_id == ADMIN_ID:
+        return True
+    row = _db_execute("SELECT sub_until FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    if not row or not row[0]:
+        return False
+    try:
+        return datetime.strptime(row[0], "%Y-%m-%d %H:%M") > datetime.now()
+    except Exception:
+        return False
+
+
+def sub_until_str(user_id):
+    row = _db_execute("SELECT sub_until FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    return row[0] if row and row[0] else None
+
+
+def has_access(user_id):
+    """'admin' | 'sub' (obuna faol) | 'credit' (bepul tahlil bor) | 'none'"""
+    if user_id == ADMIN_ID:
+        return 'admin'
+    if sub_active(user_id):
+        return 'sub'
+    if get_balance(user_id) > 0:
+        return 'credit'
+    return 'none'
+
+
+def activate_subscription(user_id, days=SUB_DAYS):
+    """Obunani yoqadi/uzaytiradi. Yangi tugash sanasini qaytaradi."""
+    _db_execute(
+        "INSERT INTO users (user_id, username, first_name, joined, balance) "
+        "VALUES (%s, '', '', %s, 0) ON CONFLICT (user_id) DO NOTHING",
+        (user_id, datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
+    base = datetime.now()
+    cur = sub_until_str(user_id)
+    if cur:
+        try:
+            d = datetime.strptime(cur, "%Y-%m-%d %H:%M")
+            if d > base:
+                base = d  # hali tugamagan obunaga qo'shamiz
+        except Exception:
+            pass
+    new_until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+    _db_execute("UPDATE users SET sub_until = %s WHERE user_id = %s", (new_until, user_id))
+    return new_until
+
+
+def set_referrer(user_id, referrer_id):
+    """Faqat referred_by bo'sh bo'lsa va o'ziga o'zi emas bo'lsa o'rnatadi."""
+    if not referrer_id or referrer_id == user_id:
+        return
+    row = _db_execute("SELECT referred_by FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    if row is not None and row[0] is None:
+        _db_execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, user_id))
+
+
+def consume_access(user_id):
+    """Video tahlil muvaffaqiyatli bo'lganda chaqiriladi.
+    Obuna faol bo'lsa - hech narsa yechilmaydi (cheksiz).
+    Aks holda 1 ta bepul tahlil yechiladi.
+    Agar bu user referral orqali kelgan bo'lsa va hali bonus berilmagan bo'lsa,
+    TAKLIF QILGAN odamga +1 bepul tahlil qo'shadi va uning ID sini qaytaradi (xabar berish uchun)."""
+    if user_id == ADMIN_ID:
+        return None
+    if not sub_active(user_id):
+        _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
+    # Referral mukofoti: do'st BIRINCHI tahlil qilganda, TAKLIF QILGAN odamga +1.
+    # Lekin har taklif qiluvchi umrida FAQAT 1 MARTA bonus oladi (1 do'st uchun).
+    row = _db_execute("SELECT referred_by, ref_credited FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    if row and row[0] and not row[1]:
+        referrer = row[0]
+        # Bu do'st bo'yicha boshqa hisoblanmasin
+        _db_execute("UPDATE users SET ref_credited = TRUE WHERE user_id = %s", (user_id,))
+        # Taklif qiluvchi avval bonus olmagan bo'lsagina beramiz (umrida 1 marta)
+        rrow = _db_execute("SELECT ref_reward_given FROM users WHERE user_id = %s", (referrer,), fetch='one')
+        already = bool(rrow and rrow[0])
+        if not already:
+            _db_execute("UPDATE users SET ref_reward_given = TRUE WHERE user_id = %s", (referrer,))
+            add_balance(referrer, 1)
+            return referrer
+    return None
 
 
 def save_analysis(user_id, username="", kind="video", file_id=None, foiz=0, qisqa=None, toliq=None):
@@ -354,21 +452,41 @@ TEXTS = {
         'analyzing': "🧠 AI tahlil qilinmoqda (vizual + audio)... ⚡",
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
+        'busy_quota': ("⏳ Hozir tizimda yuklama juda yuqori. Iltimos, biroz (5-10 daqiqa) "
+                       "kutib, qaytadan urinib ko'ring. Balansingiz yechilmadi. 🙏"),
         'send_video': "🎬 Tahlil uchun videoni yuboring! 📤",
-        'no_balance': ("💳 Sizda tahlil qolmagan.\n\nDavom etish uchun paket tanlang:"),
-        'balance_info': "💰 Sizda {n} ta tahlil bor.",
-        'choose_pkg': "💳 Paketni tanlang:",
-        'pay_instr': ("💳 To'lov uchun:\n\n"
+        'no_balance': ("💳 Sizda bepul tahlil qolmagan.\n\n"
+                       "Davom etish uchun tanlang 👇\n"
+                       "• 1 oylik obuna — cheksiz tahlil (29,990 so'm)\n"
+                       "• 1 ta tahlil — 4,990 so'm"),
+        'balance_info': "💰 Sizda {n} ta bepul tahlil bor.",
+        'choose_pkg': "💳 Obuna:",
+        'pay_instr': ("💳 1 OYLIK OBUNA — cheksiz video tahlil (30 kun)\n\n"
                       "💰 Summa: {amount:,} so'm\n"
                       "💳 Karta: {card}\n"
                       "👤 Ega: {name}\n\n"
                       "✅ To'lagach, CHEK SKRINSHOTINI shu yerga yuboring.\n"
-                      "Admin tekshirib, tahlillarni hisobingizga qo'shadi. ⏳"),
+                      "Admin tekshirib, obunangizni faollashtiradi. ⏳"),
         'receipt_sent': "✅ Chekingiz adminga yuborildi. Tez orada tasdiqlanadi! ⏳",
-        'approved': "🎉 To'lovingiz tasdiqlandi! Hisobingizga {n} ta tahlil qo'shildi.\n💰 Jami: {total} ta",
-        'pkg_1': "1 tahlil — 3,990 so'm",
-        'pkg_5': "5 tahlil — 16,000 so'm",
-        'pkg_10': "10 tahlil — 26,000 so'm",
+        'approved': "🎉 To'lovingiz tasdiqlandi!\n✅ Obunangiz faol — {until} gacha.\nEndi cheksiz video tahlil qilishingiz mumkin! 🎬",
+        'sub_btn': "💳 Obuna sotib olish (30 kun / 29,990 so'm)",
+        'one_btn': "🎬 1 ta tahlil (4,990 so'm)",
+        'pay_instr_one': ("🎬 1 TA VIDEO TAHLIL\n\n"
+                          "💰 Summa: {amount:,} so'm\n"
+                          "💳 Karta: {card}\n"
+                          "👤 Ega: {name}\n\n"
+                          "✅ To'lagach, CHEK SKRINSHOTINI shu yerga yuboring.\n"
+                          "Admin tekshirib, hisobingizga 1 ta tahlil qo'shadi. ⏳"),
+        'sub_active': "✅ Obunangiz faol — {until} gacha.\nCheksiz video tahlil! 🎬",
+        'sub_offer': ("🎬 1 oylik obuna bilan CHEKSIZ video tahlil!\n"
+                      "💰 Narxi: 29,990 so'm / 30 kun\n\n"
+                      "Sotib olish uchun pastdagi tugmani bosing 👇"),
+        'ref_info': ("🔗 DO'STLARNI TAKLIF QILING!\n\n"
+                     "Quyidagi havolani do'stingizga yuboring. Do'stingiz kirib "
+                     "BIRINCHI video tahlilini qilsa — sizga +1 bepul tahlil qo'shamiz! 🎁\n\n"
+                     "👇 Sizning havolangiz:\n{link}"),
+        'ref_reward': "🎁 Tabriklaymiz! Siz taklif qilgan do'stingiz tahlil qildi — sizga +1 bepul tahlil qo'shildi!",
+        'menu_ref': "🔗 Do'st taklif qilish",
     },
     'ru': {
         'welcome': (
@@ -413,21 +531,41 @@ TEXTS = {
         'analyzing': "🧠 ИИ анализирует (визуал + аудио)... ⚡",
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
+        'busy_quota': ("⏳ Сейчас система сильно загружена. Пожалуйста, подождите немного "
+                       "(5-10 минут) и попробуйте снова. Баланс не списан. 🙏"),
         'send_video': "🎬 Отправьте видео для анализа! 📤",
-        'no_balance': ("💳 У вас не осталось анализов.\n\nВыберите пакет для продолжения:"),
-        'balance_info': "💰 У вас {n} анализов.",
-        'choose_pkg': "💳 Выберите пакет:",
-        'pay_instr': ("💳 Для оплаты:\n\n"
+        'no_balance': ("💳 У вас не осталось бесплатных анализов.\n\n"
+                       "Выберите, чтобы продолжить 👇\n"
+                       "• Подписка на 1 месяц — безлимит (29 990 сум)\n"
+                       "• 1 анализ — 4 990 сум"),
+        'balance_info': "💰 У вас {n} бесплатных анализов.",
+        'choose_pkg': "💳 Подписка:",
+        'pay_instr': ("💳 ПОДПИСКА НА 1 МЕСЯЦ — безлимитный анализ видео (30 дней)\n\n"
                       "💰 Сумма: {amount:,} сум\n"
                       "💳 Карта: {card}\n"
                       "👤 Владелец: {name}\n\n"
                       "✅ После оплаты отправьте СКРИНШОТ ЧЕКА сюда.\n"
-                      "Админ проверит и добавит анализы на ваш счёт. ⏳"),
+                      "Админ проверит и активирует подписку. ⏳"),
         'receipt_sent': "✅ Ваш чек отправлен админу. Скоро подтвердим! ⏳",
-        'approved': "🎉 Оплата подтверждена! На счёт добавлено {n} анализов.\n💰 Всего: {total}",
-        'pkg_1': "1 анализ — 3 990 сум",
-        'pkg_5': "5 анализов — 16 000 сум",
-        'pkg_10': "10 анализов — 26 000 сум",
+        'approved': "🎉 Оплата подтверждена!\n✅ Подписка активна — до {until}.\nТеперь безлимитный анализ видео! 🎬",
+        'sub_btn': "💳 Оформить подписку (30 дней / 29 990 сум)",
+        'one_btn': "🎬 1 анализ (4 990 сум)",
+        'pay_instr_one': ("🎬 1 АНАЛИЗ ВИДЕО\n\n"
+                          "💰 Сумма: {amount:,} сум\n"
+                          "💳 Карта: {card}\n"
+                          "👤 Владелец: {name}\n\n"
+                          "✅ После оплаты отправьте СКРИНШОТ ЧЕКА сюда.\n"
+                          "Админ проверит и добавит 1 анализ на счёт. ⏳"),
+        'sub_active': "✅ Подписка активна — до {until}.\nБезлимитный анализ видео! 🎬",
+        'sub_offer': ("🎬 С подпиской на 1 месяц — БЕЗЛИМИТНЫЙ анализ видео!\n"
+                      "💰 Цена: 29 990 сум / 30 дней\n\n"
+                      "Нажмите кнопку ниже, чтобы оформить 👇"),
+        'ref_info': ("🔗 ПРИГЛАШАЙТЕ ДРУЗЕЙ!\n\n"
+                     "Отправьте эту ссылку другу. Когда друг зайдёт и сделает "
+                     "ПЕРВЫЙ анализ видео — вам начислим +1 бесплатный анализ! 🎁\n\n"
+                     "👇 Ваша ссылка:\n{link}"),
+        'ref_reward': "🎁 Поздравляем! Приглашённый вами друг сделал анализ — вам начислен +1 бесплатный анализ!",
+        'menu_ref': "🔗 Пригласить друга",
     }
 }
 
@@ -444,8 +582,8 @@ def main_keyboard(context):
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
-            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_lang'))],
-            [KeyboardButton(t(context, 'menu_help'))],
+            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_ref'))],
+            [KeyboardButton(t(context, 'menu_lang')), KeyboardButton(t(context, 'menu_help'))],
         ],
         resize_keyboard=True
     )
@@ -460,15 +598,24 @@ def lang_keyboard():
 
 def package_keyboard(context):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(context, 'pkg_1'), callback_data='pkg_1')],
-        [InlineKeyboardButton(t(context, 'pkg_5'), callback_data='pkg_5')],
-        [InlineKeyboardButton(t(context, 'pkg_10'), callback_data='pkg_10')],
+        [InlineKeyboardButton(t(context, 'sub_btn'), callback_data='buy_sub')],
+        [InlineKeyboardButton(t(context, 'one_btn'), callback_data='buy_one')],
     ])
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    was_new = not user_exists(user.id)
     save_user(user.id, user.username, user.first_name)
+    # Referral: havola t.me/bot?start=ref_<id> orqali kelgan bo'lsa va YANGI user bo'lsa
+    if was_new and context.args:
+        arg = context.args[0]
+        if arg.startswith("ref_"):
+            try:
+                referrer_id = int(arg[4:])
+                set_referrer(user.id, referrer_id)
+            except Exception:
+                pass
     await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
 
 
@@ -489,13 +636,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['lang'] = 'ru'
         await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
-    elif data in PACKAGES:
-        count, amount = PACKAGES[data]
-        create_payment(query.from_user.id, data, amount)
-        context.user_data['pending_pkg'] = data
+    elif data == 'buy_sub':
+        create_payment(query.from_user.id, 'sub_1month', SUB_PRICE)
+        context.user_data['pending_pkg'] = 'sub_1month'
         context.user_data['mode'] = None  # profil rejimini o'chiramiz (chek bilan aralashmasin)
         await query.message.reply_text(
-            t(context, 'pay_instr').format(amount=amount, card=CARD_NUMBER, name=CARD_NAME)
+            t(context, 'pay_instr').format(amount=SUB_PRICE, card=CARD_NUMBER, name=CARD_NAME)
+        )
+    elif data == 'buy_one':
+        create_payment(query.from_user.id, 'one_1', ONE_PRICE)
+        context.user_data['pending_pkg'] = 'one_1'
+        context.user_data['mode'] = None
+        await query.message.reply_text(
+            t(context, 'pay_instr_one').format(amount=ONE_PRICE, card=CARD_NUMBER, name=CARD_NAME)
         )
     elif data.startswith('full_'):
         try:
@@ -562,18 +715,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Admin tasdiqlash: approve_{user_id}_{package}
         parts = data.split('_')
         target_user = int(parts[1])
-        package = parts[2] + '_' + parts[3] if len(parts) > 3 else parts[2]
-        count, amount = PACKAGES.get(package, (0, 0))
-        add_balance(target_user, count)
-        new_balance = get_balance(target_user)
-        try:
-            await context.bot.send_message(
-                target_user,
-                f"🎉 To'lovingiz tasdiqlandi! Hisobingizga {count} ta tahlil qo'shildi.\n💰 Jami: {new_balance} ta"
-            )
-        except Exception as e:
-            logger.error(f"Foydalanuvchiga xabar yuborilmadi: {e}")
-        await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ga {count} ta tahlil qo'shildi.")
+        package = '_'.join(parts[2:]) if len(parts) > 2 else ''
+        if package.startswith('one'):
+            # 1 martalik tahlil: hisobga +1 qo'shamiz
+            add_balance(target_user, 1)
+            new_bal = get_balance(target_user)
+            try:
+                await context.bot.send_message(
+                    target_user,
+                    f"🎉 To'lovingiz tasdiqlandi! Hisobingizga 1 ta tahlil qo'shildi.\n💰 Jami bepul tahlillar: {new_bal} ta"
+                )
+            except Exception as e:
+                logger.error(f"Foydalanuvchiga xabar yuborilmadi: {e}")
+            await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ga 1 ta tahlil qo'shildi.")
+        else:
+            # Obunani faollashtiramiz (30 kun, faol bo'lsa uzaytiriladi)
+            until = activate_subscription(target_user, SUB_DAYS)
+            try:
+                await context.bot.send_message(
+                    target_user,
+                    TEXTS['uz']['approved'].format(until=until)
+                )
+            except Exception as e:
+                logger.error(f"Foydalanuvchiga xabar yuborilmadi: {e}")
+            await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ning obunasi {until} gacha faollashtirildi.")
 
 
 def _upload_and_wait(tmp_path, max_retries=3, max_wait=300):
@@ -691,22 +856,25 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # AKS HOLDA: to'lov cheki (eski mantiq)
+    # AKS HOLDA: to'lov cheki (obuna)
     pending = context.user_data.get('pending_pkg')
     if not pending:
         return  # Chek kutilmayotgan bo'lsa, e'tibor bermaymiz
     user = update.effective_user
-    count, amount = PACKAGES.get(pending, (0, 0))
+    is_one = pending.startswith('one')
+    pkg_label = "🎬 1 ta tahlil" if is_one else "💳 1 oylik obuna (30 kun)"
+    pkg_amount = ONE_PRICE if is_one else SUB_PRICE
+    btn_label = "✅ Tasdiqlash (+1 tahlil)" if is_one else "✅ Tasdiqlash (obunani yoqish)"
     # Chekni admin ga yuboramiz
     caption = (
         f"💳 YANGI TO'LOV CHEKI\n\n"
         f"👤 {user.first_name} (@{user.username or 'username yo`q'})\n"
         f"🆔 ID: {user.id}\n"
-        f"📦 Paket: {count} ta tahlil\n"
-        f"💰 Summa: {amount:,} so'm"
+        f"📦 {pkg_label}\n"
+        f"💰 Summa: {pkg_amount:,} so'm"
     )
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_{user.id}_{pending}")
+        InlineKeyboardButton(btn_label, callback_data=f"approve_{user.id}_{pending}")
     ]])
     try:
         await context.bot.send_photo(
@@ -750,8 +918,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
 
-    # Balans tekshirish
-    if get_balance(user_id) <= 0:
+    # Kirish tekshiruvi: admin / obuna faol / bepul tahlil bor bo'lsa - o'tadi
+    if has_access(user_id) == 'none':
         await message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
         return
 
@@ -811,8 +979,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raise Exception("Tahlil bo'sh keldi")
 
             await wait_msg.edit_text(t(context, 'ready'))
-            # Balans FAQAT muvaffaqiyatli tahlildan keyin yechiladi (xatoda yechilmaydi)
-            use_balance(user_id)
+            # Faqat muvaffaqiyatda hisoblanadi (xatoda hech narsa yechilmaydi).
+            # Obuna faol bo'lsa - hech narsa yechilmaydi (cheksiz);
+            # aks holda 1 ta bepul tahlil yechiladi.
+            # Agar referral orqali kelgan bo'lsa, taklif qilgan odamga +1 qo'shiladi.
+            referrer = consume_access(user_id)
+            if referrer:
+                try:
+                    await context.bot.send_message(referrer, TEXTS['uz']['ref_reward'])
+                except Exception as e:
+                    logger.warning(f"Referrerga xabar yuborilmadi: {e}")
 
             # Tahlilni qism qism ajratamiz: foiz, qisqa, to'liq
             foiz, qisqa, toliq = _parse_analysis(tahlil)
@@ -835,7 +1011,14 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Yakuniy xato: {e}")
-        await wait_msg.edit_text(t(context, 'error'))
+        # 429 (kunlik limit) yoki 503 (server band) bo'lsa - boshqacha, aniqroq xabar
+        emsg = str(e)
+        if "RESOURCE_EXHAUSTED" in emsg or "429" in emsg or "quota" in emsg.lower():
+            await wait_msg.edit_text(t(context, 'busy_quota'))
+        elif "UNAVAILABLE" in emsg or "503" in emsg or "high demand" in emsg.lower():
+            await wait_msg.edit_text(t(context, 'busy_quota'))
+        else:
+            await wait_msg.edit_text(t(context, 'error'))
     finally:
         if tmp_path and os.path.exists(tmp_path):
             try:
@@ -854,8 +1037,23 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'profil_info'))
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
-        bal = get_balance(update.effective_user.id)
-        await update.message.reply_text(t(context, 'balance_info').format(n=bal))
+        uid = update.effective_user.id
+        access = has_access(uid)
+        if access == 'admin':
+            await update.message.reply_text("👑 Admin — cheksiz tahlil.")
+        elif access == 'sub':
+            await update.message.reply_text(t(context, 'sub_active').format(until=sub_until_str(uid)))
+        else:
+            bal = get_balance(uid)
+            await update.message.reply_text(
+                t(context, 'balance_info').format(n=bal),
+                reply_markup=package_keyboard(context)
+            )
+    elif text in (TEXTS['uz']['menu_ref'], TEXTS['ru']['menu_ref']):
+        uid = update.effective_user.id
+        bot_username = context.bot_data.get('bot_username') or (await context.bot.get_me()).username
+        link = f"https://t.me/{bot_username}?start=ref_{uid}"
+        await update.message.reply_text(t(context, 'ref_info').format(link=link))
     elif text in (TEXTS['uz']['menu_lang'], TEXTS['ru']['menu_lang']):
         await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
     elif text in (TEXTS['uz']['menu_help'], TEXTS['ru']['menu_help']):
@@ -909,6 +1107,12 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def post_init(application):
+    # Bot username'ini saqlab qo'yamiz (referral havolalari uchun)
+    try:
+        me = await application.bot.get_me()
+        application.bot_data['bot_username'] = me.username
+    except Exception as e:
+        logger.warning(f"get_me xato: {e}")
     # Pyrogram yuklab oluvchini ishga tushiramiz (agar sozlangan bo'lsa).
     # Ishga tushmasa ham bot to'xtamaydi — kichik videolar Bot API orqali ishlaydi.
     if pyro is not None:
