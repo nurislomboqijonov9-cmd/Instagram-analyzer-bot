@@ -325,7 +325,13 @@ PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan. Blogger vi
 
 Javobingni ANIQ shu formatda, shu teglar bilan ber (teglarni o'zgartirma, teglardan tashqarida hech narsa yozma):
 
-[FOIZ]videoning rekkaga (rekomendatsiyaga) chiqish ehtimoli, faqat 0-100 oralig'idagi bitta son[/FOIZ]
+[FOIZ]videoning rekkaga (rekomendatsiyaga) chiqish ehtimoli — faqat 0-100 oralig'idagi bitta son.
+MUHIM: bu foizni quyidagi mezonlarni BIRGA hisoblab chiqar (faqat montaj/sifatga qarama):
+- Hook kuchi (boshlanishi ushlab tursa) — 25%
+- Niche va auditoriya kengligi (mavzu KENG ommaga qiziqmi yoki TOR doiraga? Tor niche bo'lsa foiz PAST bo'lsin, montaj zo'r bo'lsa ham) — 30%
+- Saqlanish/ulashish/qayta ko'rish ehtimoli — 25%
+- Texnik sifat (vizual, audio, montaj) — 20%
+Tor niche (kam odamga qiziq) videolar montaji ideal bo'lsa ham 30-50% dan oshmasin. Keng ommaga mos, viral potensialli videolar yuqori foiz olsin. Bir xil video uchun har safar BIR XIL foiz chiqar (mezonlarga qat'iy amal qil).[/FOIZ]
 
 [QISQA]
 QISQA va o'qishga oson tahlil (jami 8-12 qator). Har bo'lim 1-2 qisqa qator, ko'p emoji bilan:
@@ -355,7 +361,13 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 
 Ответ дай СТРОГО в этом формате с этими тегами (не меняй теги, вне тегов ничего не пиши):
 
-[FOIZ]вероятность попадания видео в рекомендации, только одно число 0-100[/FOIZ]
+[FOIZ]вероятность попадания видео в рекомендации — только одно число 0-100.
+ВАЖНО: считай этот процент по критериям ВМЕСТЕ (не только монтаж/качество):
+- Сила хука — 25%
+- Ниша и широта аудитории (тема интересна ШИРОКОЙ публике или УЗКОМУ кругу? Узкая ниша — процент НИЗКИЙ, даже если монтаж отличный) — 30%
+- Вероятность сохранений/репостов/пересмотров — 25%
+- Техническое качество (визуал, аудио, монтаж) — 20%
+Видео узкой ниши не должны превышать 30-50%, даже при идеальном монтаже. Высокий процент — у видео с виральным потенциалом для широкой аудитории. Для одного и того же видео выдавай ОДИН И ТОТ ЖЕ процент.[/FOIZ]
 
 [QISQA]
 КОРОТКИЙ, лёгкий для чтения анализ (всего 8-12 строк). Каждый раздел 1-2 строки, с эмодзи:
@@ -415,6 +427,9 @@ TEXTS = {
             "maqtov emas, haqiqat aytaman. 💯\n\n"
             "📤 Videongizni yuboring (2GB gacha):"
         ),
+        'gift_new': ("🎁 SOVG'A! Sizga 1 ta BEPUL tahlil berildi!\n\n"
+                     "🎬 Hoziroq videongizni yuboring va sun'iy intellekt tahlilini "
+                     "BEPUL sinab ko'ring. Hech narsa to'lash shart emas! 👇"),
         'menu_video': "🎬 Video tahlil",
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
@@ -495,6 +510,9 @@ TEXTS = {
             "не хвалю, а говорю правду. 💯\n\n"
             "📤 Отправьте ваше видео (до 2ГБ):"
         ),
+        'gift_new': ("🎁 ПОДАРОК! Вам начислен 1 БЕСПЛАТНЫЙ анализ!\n\n"
+                     "🎬 Отправьте видео прямо сейчас и попробуйте анализ "
+                     "искусственным интеллектом БЕСПЛАТНО. Платить не нужно! 👇"),
         'menu_video': "🎬 Анализ видео",
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
@@ -607,6 +625,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     was_new = not user_exists(user.id)
     save_user(user.id, user.username, user.first_name)
+    context.user_data['is_new'] = was_new  # yangi user uchun sovg'a xabari ko'rsatamiz
     # Referral: havola t.me/bot?start=ref_<id> orqali kelgan bo'lsa va YANGI user bo'lsa
     if was_new and context.args:
         arg = context.args[0]
@@ -621,6 +640,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_menu(message, context):
     await message.reply_text(t(context, 'welcome'), reply_markup=main_keyboard(context))
+    # Yangi foydalanuvchiga e'tiborli SOVG'A xabari
+    if context.user_data.get('is_new'):
+        context.user_data['is_new'] = False
+        await message.reply_text(t(context, 'gift_new'))
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -789,9 +812,14 @@ def _generate(contents, max_retries=4):
     for attempt in range(max_retries):
         try:
             kwargs = {"model": "gemini-2.5-flash", "contents": contents}
-            if genai_types is not None and SAFETY_SETTINGS is not None:
+            if genai_types is not None:
                 try:
-                    kwargs["config"] = genai_types.GenerateContentConfig(safety_settings=SAFETY_SETTINGS)
+                    # temperature=0.3 -> javob barqarorroq (foiz har safar deyarli bir xil)
+                    if SAFETY_SETTINGS is not None:
+                        kwargs["config"] = genai_types.GenerateContentConfig(
+                            safety_settings=SAFETY_SETTINGS, temperature=0.3)
+                    else:
+                        kwargs["config"] = genai_types.GenerateContentConfig(temperature=0.3)
                 except Exception:
                     pass
             response = client.models.generate_content(**kwargs)
