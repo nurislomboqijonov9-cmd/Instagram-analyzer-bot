@@ -482,6 +482,7 @@ TEXTS = {
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
         'analyzing': "🧠 AI tahlil qilinmoqda (vizual + audio)... ⚡",
+        'analyzing_live': "🧠 Sun'iy intellekt videongizni tahlil qilmoqda",
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
         'busy_quota': ("⏳ Hozir tizimda yuklama juda yuqori. Iltimos, biroz (5-10 daqiqa) "
@@ -567,6 +568,7 @@ TEXTS = {
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
         'analyzing': "🧠 ИИ анализирует (визуал + аудио)... ⚡",
+        'analyzing_live': "🧠 Искусственный интеллект анализирует ваше видео",
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
         'busy_quota': ("⏳ Сейчас система сильно загружена. Пожалуйста, подождите немного "
@@ -1019,9 +1021,37 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             prompt = PROMPT_RU if get_lang(context) == 'ru' else PROMPT_UZ
 
             await wait_msg.edit_text(t(context, 'analyzing'))
+
+            # Jonli progress: tahlil davom etayotganini ko'rsatib turamiz.
+            # Bot xabarni har bir necha soniyada yangilab turadi (⏳ -> ⏳⏳ -> ...).
+            _progress_stop = asyncio.Event()
+
+            async def _show_progress():
+                base = t(context, 'analyzing_live')
+                dots = 0
+                secs = 0
+                try:
+                    while not _progress_stop.is_set():
+                        await asyncio.sleep(4)
+                        if _progress_stop.is_set():
+                            break
+                        dots = (dots % 4) + 1
+                        secs += 4
+                        try:
+                            await wait_msg.edit_text(f"{base} {'⏳' * dots}\n⌛ {secs} soniya...")
+                        except Exception:
+                            pass  # bir xil matn yoki tahrir xatosi - e'tibor bermaymiz
+                except asyncio.CancelledError:
+                    pass
+
+            progress_task = asyncio.create_task(_show_progress())
             # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi,
             # Pyrogram uzilmaydi, bir nechta odam bir vaqtda ishlatsa ham ishlaydi.
-            tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt)
+            try:
+                tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt)
+            finally:
+                _progress_stop.set()
+                progress_task.cancel()
 
             if not tahlil or not tahlil.strip():
                 raise Exception("Tahlil bo'sh keldi")
