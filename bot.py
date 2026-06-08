@@ -1,5 +1,7 @@
 import os
 import re
+import io
+import wave
 import uuid
 import asyncio
 import logging
@@ -284,6 +286,12 @@ def get_full_analysis(analysis_id):
     return row[0] if row and row[0] else None
 
 
+def get_qisqa_analysis(analysis_id):
+    """Qisqa tahlil matnini qaytaradi (ovozli eshitish uchun)."""
+    row = _db_execute("SELECT qisqa FROM analyses WHERE id = %s", (analysis_id,), fetch='one')
+    return row[0] if row and row[0] else None
+
+
 def get_last_video_foiz(user_id):
     """Foydalanuvchining eng oxirgi (avvalgi) video tahlili foizini qaytaradi."""
     row = _db_execute(
@@ -467,6 +475,9 @@ TEXTS = {
         'profile_none': "❌ Avval profil skrinshotini yuboring.",
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'full_btn': "📖 To'liq tahlilni ko'rish",
+        'tts_btn': "🔊 Ovozli eshitish",
+        'tts_loading': "🔊 Ovoz tayyorlanmoqda... ⏳",
+        'tts_fail': "😔 Ovozni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.",
         'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
         'profil_info': "📊 Profil tahlili hozircha ishlamayapti — tez orada qo'shiladi! 🔜\n\nHozircha 🎬 Video tahlil xizmatidan foydalanishingiz mumkin.",
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
@@ -554,6 +565,9 @@ TEXTS = {
         'profile_none': "❌ Сначала отправьте скриншот профиля.",
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'full_btn': "📖 Посмотреть полный анализ",
+        'tts_btn': "🔊 Прослушать голосом",
+        'tts_loading': "🔊 Готовлю озвучку... ⏳",
+        'tts_fail': "😔 Не удалось озвучить. Попробуйте позже.",
         'full_gone': "❌ Полный анализ не найден (возможно, старый).",
         'profil_info': "📊 Анализ профиля пока не работает — скоро добавим! 🔜\n\nПока можете воспользоваться 🎬 Анализом видео.",
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
@@ -709,6 +723,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             for i in range(0, len(toliq), 4000):
                 await query.message.reply_text(toliq[i:i+4000])
+    elif data.startswith('tts_'):
+        try:
+            aid = int(data.split('_', 1)[1])
+        except Exception:
+            return
+        qisqa = get_qisqa_analysis(aid)
+        if not qisqa:
+            await query.message.reply_text(t(context, 'full_gone'))
+            return
+        loading = await query.message.reply_text(t(context, 'tts_loading'))
+        # TTS tarmoq ishi - alohida thread'da (botni muzlatmaslik uchun)
+        wav = await asyncio.to_thread(_gemini_tts, qisqa)
+        if not wav:
+            await loading.edit_text(t(context, 'tts_fail'))
+            return
+        try:
+            bio = io.BytesIO(wav)
+            bio.name = "tahlil.wav"
+            await context.bot.send_audio(query.message.chat_id, audio=bio,
+                                         title="InstaDoctor tahlili")
+            await loading.delete()
+        except Exception as e:
+            logger.error(f"Audio yuborishda xato: {e}")
+            await loading.edit_text(t(context, 'tts_fail'))
     elif data == 'profile_analyze':
         user_id = query.from_user.id
         imgs = context.user_data.get('profile_imgs', [])
@@ -826,6 +864,54 @@ def _extract_text(response):
         return "".join(parts_text).strip()
     except Exception:
         return ""
+
+
+TTS_VOICE = os.getenv("TTS_VOICE", "Kore")  # Gemini ovoz nomi (Railway'dan o'zgartirsa bo'ladi)
+
+
+def _clean_for_tts(text):
+    """TTS uchun matnni tozalaydi: emoji va ortiqcha belgilarni olib tashlaydi."""
+    # \w Unicode harflar (lotin/kirill) + raqamlarni qoldiradi; emoji/belgilar olib tashlanadi
+    text = re.sub(r"[^\w\s.,!?%:;'\-]", " ", text, flags=re.UNICODE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _gemini_tts(text):
+    """Matnni Gemini TTS bilan ovozga aylantiradi. WAV bytes qaytaradi yoki None."""
+    if genai_types is None:
+        return None
+    try:
+        text = _clean_for_tts(text)
+        if not text:
+            return None
+        if len(text) > 1500:        # uzun matnni qisqartiramiz (narx va limit uchun)
+            text = text[:1500]
+        config = genai_types.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=genai_types.SpeechConfig(
+                voice_config=genai_types.VoiceConfig(
+                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(voice_name=TTS_VOICE)
+                )
+            ),
+        )
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=text,
+            config=config,
+        )
+        pcm = resp.candidates[0].content.parts[0].inline_data.data  # 24kHz 16-bit mono PCM
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(24000)
+            wf.writeframes(pcm)
+        buf.seek(0)
+        return buf.read()
+    except Exception as e:
+        logger.error(f"Gemini TTS xato: {e}")
+        return None
 
 
 def _generate(contents, max_retries=4):
@@ -1085,12 +1171,13 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     qisqa = qisqa + "\n\n" + t(context, 'cmp_same').format(now=foiz)
 
-            # Mijozga QISQA tahlil + "To'liq tahlilni ko'rish" tugmasi
+            # Mijozga QISQA tahlil + "To'liq tahlilni ko'rish" + "Eshitish" tugmalari
             kb = None
             if aid:
-                kb = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")
-                ]])
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
+                    [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}")],
+                ])
             if len(qisqa) <= 4000:
                 await message.reply_text(qisqa, reply_markup=kb)
             else:
