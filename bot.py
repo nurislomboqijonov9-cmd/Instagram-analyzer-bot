@@ -940,6 +940,22 @@ def _gemini_tts(text, max_chars=1500):
         return None
 
 
+# --- Tannarx hisobi (Gemini 2.5 Flash rasmiy narxi) ---
+# 1 million token narxi (dollar): kiruvchi $0.30, chiquvchi $2.50
+PRICE_IN_PER_TOKEN = 0.30 / 1_000_000
+PRICE_OUT_PER_TOKEN = 2.50 / 1_000_000
+# Dollar kursi (so'm) - Railway'dan o'zgartirsa bo'ladi
+USD_TO_UZS = float(os.getenv("USD_TO_UZS", "12600"))
+# Oxirgi so'rovning token sarfi (admin hisobotida ishlatiladi)
+_last_usage = {"prompt": 0, "output": 0, "total": 0}
+
+
+def _cost_uzs(prompt_tokens, output_tokens):
+    """Token sonidan taxminiy tannarxni (so'm) hisoblaydi."""
+    usd = prompt_tokens * PRICE_IN_PER_TOKEN + output_tokens * PRICE_OUT_PER_TOKEN
+    return usd, usd * USD_TO_UZS
+
+
 def _generate(contents, max_retries=4):
     """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan)."""
     last_error = None
@@ -957,6 +973,15 @@ def _generate(contents, max_retries=4):
                 except Exception:
                     pass
             response = client.models.generate_content(**kwargs)
+            # Token sarfini ushlaymiz (admin tannarx hisoboti uchun)
+            try:
+                um = getattr(response, "usage_metadata", None)
+                if um is not None:
+                    _last_usage["prompt"] = getattr(um, "prompt_token_count", 0) or 0
+                    _last_usage["output"] = getattr(um, "candidates_token_count", 0) or 0
+                    _last_usage["total"] = getattr(um, "total_token_count", 0) or 0
+            except Exception:
+                pass
             text = _extract_text(response)
             if text:
                 return text
@@ -1187,6 +1212,25 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uname = message.from_user.username or message.from_user.first_name or ""
             aid = save_analysis(user_id, username=uname, kind="video",
                                 file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq)
+
+            # Adminga tannarx hisoboti (token + so'm)
+            try:
+                p_tok = _last_usage.get("prompt", 0)
+                o_tok = _last_usage.get("output", 0)
+                tot = _last_usage.get("total", 0) or (p_tok + o_tok)
+                usd, uzs = _cost_uzs(p_tok, o_tok)
+                await context.bot.send_message(
+                    ADMIN_ID,
+                    f"📊 Tannarx hisobi (video tahlil)\n"
+                    f"👤 @{uname} (ID: {user_id})\n"
+                    f"🔢 Kiruvchi: {p_tok:,} token\n"
+                    f"🔢 Javob: {o_tok:,} token\n"
+                    f"🔢 Jami: {tot:,} token\n"
+                    f"💵 ≈ ${usd:.4f}\n"
+                    f"💰 ≈ {uzs:,.0f} so'm"
+                )
+            except Exception as e:
+                logger.warning(f"Admin tannarx hisobotini yuborishda xato: {e}")
 
             # Taqqoslash xabarini qisqa tahlilga qo'shamiz
             if prev_foiz is not None:
