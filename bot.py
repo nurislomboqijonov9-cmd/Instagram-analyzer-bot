@@ -475,7 +475,8 @@ TEXTS = {
         'profile_none': "❌ Avval profil skrinshotini yuboring.",
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'full_btn': "📖 To'liq tahlilni ko'rish",
-        'tts_btn': "🔊 Ovozli eshitish",
+        'tts_btn': "🔊 Qisqa eshitish",
+        'tts_full_btn': "🔊 To'liq eshitish",
         'tts_loading': "🔊 Ovoz tayyorlanmoqda... ⏳",
         'tts_fail': "😔 Ovozni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.",
         'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
@@ -492,8 +493,8 @@ TEXTS = {
         'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
-        'analyzing': "🧠 AI tahlil qilinmoqda (vizual + audio)... ⚡",
-        'analyzing_live': "🧠 Sun'iy intellekt videongizni tahlil qilmoqda",
+        'analyzing': "🧠 InstaDoctor AI tahlil qilmoqda (vizual + audio)... ⚡",
+        'analyzing_live': "🧠 InstaDoctor AI videongizni tahlil qilmoqda",
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
         'busy_quota': ("⏳ Hozir tizimda yuklama juda yuqori. Iltimos, biroz (5-10 daqiqa) "
@@ -565,7 +566,8 @@ TEXTS = {
         'profile_none': "❌ Сначала отправьте скриншот профиля.",
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'full_btn': "📖 Посмотреть полный анализ",
-        'tts_btn': "🔊 Прослушать голосом",
+        'tts_btn': "🔊 Кратко голосом",
+        'tts_full_btn': "🔊 Полностью голосом",
         'tts_loading': "🔊 Готовлю озвучку... ⏳",
         'tts_fail': "😔 Не удалось озвучить. Попробуйте позже.",
         'full_gone': "❌ Полный анализ не найден (возможно, старый).",
@@ -581,8 +583,8 @@ TEXTS = {
         'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
-        'analyzing': "🧠 ИИ анализирует (визуал + аудио)... ⚡",
-        'analyzing_live': "🧠 Искусственный интеллект анализирует ваше видео",
+        'analyzing': "🧠 InstaDoctor AI анализирует (визуал + аудио)... ⚡",
+        'analyzing_live': "🧠 InstaDoctor AI анализирует ваше видео",
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
         'busy_quota': ("⏳ Сейчас система сильно загружена. Пожалуйста, подождите немного "
@@ -747,6 +749,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Audio yuborishda xato: {e}")
             await loading.edit_text(t(context, 'tts_fail'))
+    elif data.startswith('ttsf_'):
+        try:
+            aid = int(data.split('_', 1)[1])
+        except Exception:
+            return
+        toliq = get_full_analysis(aid)
+        if not toliq:
+            await query.message.reply_text(t(context, 'full_gone'))
+            return
+        loading = await query.message.reply_text(t(context, 'tts_loading'))
+        # To'liq tahlil uchun ko'proq matn (3000 belgigacha)
+        wav = await asyncio.to_thread(_gemini_tts, toliq, 3000)
+        if not wav:
+            await loading.edit_text(t(context, 'tts_fail'))
+            return
+        try:
+            bio = io.BytesIO(wav)
+            bio.name = "toliq_tahlil.wav"
+            await context.bot.send_audio(query.message.chat_id, audio=bio,
+                                         title="InstaDoctor to'liq tahlil")
+            await loading.delete()
+        except Exception as e:
+            logger.error(f"To'liq audio yuborishda xato: {e}")
+            await loading.edit_text(t(context, 'tts_fail'))
     elif data == 'profile_analyze':
         user_id = query.from_user.id
         imgs = context.user_data.get('profile_imgs', [])
@@ -877,7 +903,7 @@ def _clean_for_tts(text):
     return text
 
 
-def _gemini_tts(text):
+def _gemini_tts(text, max_chars=1500):
     """Matnni Gemini TTS bilan ovozga aylantiradi. WAV bytes qaytaradi yoki None."""
     if genai_types is None:
         return None
@@ -885,8 +911,8 @@ def _gemini_tts(text):
         text = _clean_for_tts(text)
         if not text:
             return None
-        if len(text) > 1500:        # uzun matnni qisqartiramiz (narx va limit uchun)
-            text = text[:1500]
+        if len(text) > max_chars:        # uzun matnni qisqartiramiz (narx va limit uchun)
+            text = text[:max_chars]
         config = genai_types.GenerateContentConfig(
             response_modalities=["AUDIO"],
             speech_config=genai_types.SpeechConfig(
@@ -1171,12 +1197,13 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     qisqa = qisqa + "\n\n" + t(context, 'cmp_same').format(now=foiz)
 
-            # Mijozga QISQA tahlil + "To'liq tahlilni ko'rish" + "Eshitish" tugmalari
+            # Mijozga QISQA tahlil + tugmalar (To'liq ko'rish, Qisqa/To'liq eshitish)
             kb = None
             if aid:
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
-                    [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}")],
+                    [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
+                     InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
                 ])
             if len(qisqa) <= 4000:
                 await message.reply_text(qisqa, reply_markup=kb)
