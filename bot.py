@@ -30,6 +30,12 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3") or "3")
 # Navbat mexanizmi: bir vaqtda faqat MAX_CONCURRENT ta tahlil ishlaydi
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 ADMIN_ID = 7589459697
+# Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
+ADMIN_IDS = [7589459697, 5808245573]
+
+
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
 CARD_NUMBER = "6262 7300 6521 3151"
 CARD_NAME = "Boqijonov Nurislom"
 
@@ -160,7 +166,7 @@ def user_exists(user_id):
 
 
 def get_balance(user_id):
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         return 999999
     row = _db_execute("SELECT balance FROM users WHERE user_id = %s", (user_id,), fetch='one')
     return row[0] if row else 0
@@ -177,14 +183,14 @@ def add_balance(user_id, amount):
 
 
 def use_balance(user_id):
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         return
     _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
 
 
 def sub_active(user_id):
     """Obuna faolmi? (sub_until hozirgi vaqtdan keyinmi)"""
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         return True
     row = _db_execute("SELECT sub_until FROM users WHERE user_id = %s", (user_id,), fetch='one')
     if not row or not row[0]:
@@ -202,7 +208,7 @@ def sub_until_str(user_id):
 
 def has_access(user_id):
     """'admin' | 'sub' (obuna faol) | 'credit' (bepul tahlil bor) | 'none'"""
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         return 'admin'
     if sub_active(user_id):
         return 'sub'
@@ -247,7 +253,7 @@ def consume_access(user_id):
     Aks holda 1 ta bepul tahlil yechiladi.
     Agar bu user referral orqali kelgan bo'lsa va hali bonus berilmagan bo'lsa,
     TAKLIF QILGAN odamga +1 bepul tahlil qo'shadi va uning ID sini qaytaradi (xabar berish uchun)."""
-    if user_id == ADMIN_ID:
+    if is_admin(user_id):
         return None
     if not sub_active(user_id):
         _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
@@ -1064,17 +1070,51 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton(btn_label, callback_data=f"approve_{user.id}_{pending}")
     ]])
     try:
-        await context.bot.send_photo(
-            ADMIN_ID,
-            update.message.photo[-1].file_id,
-            caption=caption,
-            reply_markup=keyboard
-        )
-        await update.message.reply_text(t(context, 'receipt_sent'))
-        context.user_data['pending_pkg'] = None
+        sent_any = False
+        for _aid in ADMIN_IDS:
+            try:
+                await context.bot.send_photo(
+                    _aid,
+                    update.message.photo[-1].file_id,
+                    caption=caption,
+                    reply_markup=keyboard
+                )
+                sent_any = True
+            except Exception as e:
+                logger.warning(f"Chekni admin {_aid} ga yuborishda xato: {e}")
+        if sent_any:
+            await update.message.reply_text(t(context, 'receipt_sent'))
+            context.user_data['pending_pkg'] = None
+        else:
+            await update.message.reply_text(t(context, 'error'))
     except Exception as e:
         logger.error(f"Chek yuborishda xato: {e}")
         await update.message.reply_text(t(context, 'error'))
+
+
+def _recalc_foiz(qisqa_text, fallback_foiz):
+    """QISQA'dagi 4 ta balldan (Hook, Vizual, Audio, Kontent) foizni hisoblaydi.
+    Past ballar -> past foiz (Gemini'ning saxiy foizini kuchsizlantiramiz).
+    Egri (1.3-daraja): yomon video pastroq, zo'r video balandroq tushadi."""
+    scores = re.findall(r'(\d+(?:\.\d+)?)\s*/\s*10', qisqa_text)
+    vals = [float(s) for s in scores if 0 <= float(s) <= 10]
+    if not vals:
+        return fallback_foiz
+    avg = sum(vals) / len(vals)          # 0..10
+    foiz = int(round((avg / 10.0) ** 1.3 * 100))
+    return max(5, min(95, foiz))
+
+
+def _replace_foiz_line(text, foiz):
+    """Matndagi '📈 ... NN%' qatorini yangi foizga almashtiradi (qisqa va to'liq uchun)."""
+    if not text:
+        return text
+    out = []
+    for line in text.split('\n'):
+        if '📈' in line and '%' in line:
+            line = re.sub(r'\d+\s*%', f'{foiz}%', line, count=1)
+        out.append(line)
+    return '\n'.join(out)
 
 
 def _parse_analysis(text):
@@ -1207,20 +1247,23 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # Tahlilni qism qism ajratamiz: foiz, qisqa, to'liq
             foiz, qisqa, toliq = _parse_analysis(tahlil)
+            # MUHIM: foizni ballardan qayta hisoblaymiz (Gemini'ning saxiy foiziga ishonmaymiz)
+            foiz = _recalc_foiz(qisqa, foiz)
+            qisqa = _replace_foiz_line(qisqa, foiz)
+            toliq = _replace_foiz_line(toliq, foiz)
             # Oldingi video bilan taqqoslash (yangisini saqlashdan OLDIN olamiz)
             prev_foiz = get_last_video_foiz(user_id)
             uname = message.from_user.username or message.from_user.first_name or ""
             aid = save_analysis(user_id, username=uname, kind="video",
                                 file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq)
 
-            # Adminga tannarx hisoboti (token + so'm)
+            # Adminlarga tannarx hisoboti (token + so'm)
             try:
                 p_tok = _last_usage.get("prompt", 0)
                 o_tok = _last_usage.get("output", 0)
                 tot = _last_usage.get("total", 0) or (p_tok + o_tok)
                 usd, uzs = _cost_uzs(p_tok, o_tok)
-                await context.bot.send_message(
-                    ADMIN_ID,
+                report = (
                     f"📊 Tannarx hisobi (video tahlil)\n"
                     f"👤 @{uname} (ID: {user_id})\n"
                     f"🔢 Kiruvchi: {p_tok:,} token\n"
@@ -1229,6 +1272,11 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"💵 ≈ ${usd:.4f}\n"
                     f"💰 ≈ {uzs:,.0f} so'm"
                 )
+                for _aid in ADMIN_IDS:
+                    try:
+                        await context.bot.send_message(_aid, report)
+                    except Exception:
+                        pass
             except Exception as e:
                 logger.warning(f"Admin tannarx hisobotini yuborishda xato: {e}")
 
@@ -1318,7 +1366,7 @@ async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    if not is_admin(update.effective_user.id):
         return
     total_users, total_analyses, today_analyses, revenue = get_stats()
     text = (
@@ -1332,7 +1380,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    if not is_admin(update.effective_user.id):
         return
     rows = get_top_today(10)
     if not rows:
