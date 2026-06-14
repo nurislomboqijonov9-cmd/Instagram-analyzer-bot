@@ -483,6 +483,7 @@ TEXTS = {
         'full_btn': "📖 To'liq tahlilni ko'rish",
         'tts_btn': "🔊 Qisqa eshitish",
         'tts_full_btn': "🔊 To'liq eshitish",
+        'analyzed_footer': "\n\n━━━━━━━━━━\n📍 Videongiz InstaDoctor orqali tahlil qilindi\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Ovoz tayyorlanmoqda... ⏳",
         'tts_fail': "😔 Ovozni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.",
         'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
@@ -574,6 +575,7 @@ TEXTS = {
         'full_btn': "📖 Посмотреть полный анализ",
         'tts_btn': "🔊 Кратко голосом",
         'tts_full_btn': "🔊 Полностью голосом",
+        'analyzed_footer': "\n\n━━━━━━━━━━\n📍 Ваше видео проанализировано через InstaDoctor\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Готовлю озвучку... ⏳",
         'tts_fail': "😔 Не удалось озвучить. Попробуйте позже.",
         'full_gone': "❌ Полный анализ не найден (возможно, старый).",
@@ -726,6 +728,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not toliq:
             await query.message.reply_text(t(context, 'full_gone'))
             return
+        # Oxiriga bot havolasini qo'shamiz (ulashsa - reklama)
+        toliq = toliq + t(context, 'analyzed_footer')
         if len(toliq) <= 4000:
             await query.message.reply_text(toliq)
         else:
@@ -1288,6 +1292,9 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     qisqa = qisqa + "\n\n" + t(context, 'cmp_down').format(prev=prev_foiz, now=foiz, d=prev_foiz - foiz)
                 else:
                     qisqa = qisqa + "\n\n" + t(context, 'cmp_same').format(now=foiz)
+
+            # Tahlil oxiriga bot havolasini qo'shamiz (boshqaga ulashsa - reklama)
+            qisqa = qisqa + t(context, 'analyzed_footer')
 
             # Mijozga QISQA tahlil + tugmalar (To'liq ko'rish, Qisqa/To'liq eshitish)
             kb = None
