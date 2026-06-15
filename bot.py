@@ -12,9 +12,9 @@ from psycopg_pool import ConnectionPool
 from datetime import datetime, timedelta
 from google import genai
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
-                      ReplyKeyboardMarkup, KeyboardButton, BotCommand)
+                      ReplyKeyboardMarkup, KeyboardButton, BotCommand, LabeledPrice)
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
-                          ContextTypes, CallbackQueryHandler)
+                          ContextTypes, CallbackQueryHandler, PreCheckoutQueryHandler)
 from pyrogram import Client as PyroClient
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
@@ -40,10 +40,13 @@ CARD_NUMBER = "6262 7300 6521 3151"
 CARD_NAME = "Boqijonov Nurislom"
 
 # Obuna (1 oylik): narx (so'm) va kun
-SUB_PRICE = 29990
+SUB_PRICE = 29900
 SUB_DAYS = 30
 # 1 martalik tahlil narxi (so'm)
-ONE_PRICE = 4990
+ONE_PRICE = 5090
+
+# Payme (Telegram Payments) provider token - Railway Variables'dan olinadi
+PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -483,6 +486,13 @@ TEXTS = {
         'full_btn': "📖 To'liq tahlilni ko'rish",
         'tts_btn': "🔊 Qisqa eshitish",
         'tts_full_btn': "🔊 To'liq eshitish",
+        'inv_sub_title': "InstaDoctor — 1 oylik obuna",
+        'inv_sub_desc': "1 oy davomida cheksiz video tahlil. To'lovdan so'ng obuna avtomatik faollashadi.",
+        'inv_one_title': "InstaDoctor — 1 ta tahlil",
+        'inv_one_desc': "1 ta video tahlil. To'lovdan so'ng avtomatik qo'shiladi.",
+        'pay_unavailable': "⚠️ To'lov tizimi hozircha mavjud emas. Birozdan so'ng urinib ko'ring yoki admin bilan bog'laning.",
+        'pay_ok_sub': "✅ To'lov qabul qilindi! Obunangiz faollashtirildi — {until} gacha cheksiz tahlil. Rahmat! 🎉",
+        'pay_ok_one': "✅ To'lov qabul qilindi! Sizga +1 tahlil qo'shildi. Endi video yuboring! 🎉",
         'analyzed_footer': "\n\n━━━━━━━━━━\n🩺 Analizni AI ekspert InstaDoctor bajardi\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Ovoz tayyorlanmoqda... ⏳",
         'tts_fail': "😔 Ovozni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.",
@@ -575,6 +585,13 @@ TEXTS = {
         'full_btn': "📖 Посмотреть полный анализ",
         'tts_btn': "🔊 Кратко голосом",
         'tts_full_btn': "🔊 Полностью голосом",
+        'inv_sub_title': "InstaDoctor — подписка на 1 месяц",
+        'inv_sub_desc': "Безлимитный анализ видео в течение 1 месяца. После оплаты подписка активируется автоматически.",
+        'inv_one_title': "InstaDoctor — 1 анализ",
+        'inv_one_desc': "1 анализ видео. После оплаты добавляется автоматически.",
+        'pay_unavailable': "⚠️ Оплата пока недоступна. Попробуйте позже или свяжитесь с админом.",
+        'pay_ok_sub': "✅ Оплата принята! Подписка активирована — безлимит до {until}. Спасибо! 🎉",
+        'pay_ok_one': "✅ Оплата принята! Вам добавлен +1 анализ. Отправляйте видео! 🎉",
         'analyzed_footer': "\n\n━━━━━━━━━━\n🩺 Анализ выполнен ИИ экспертом InstaDoctor\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Готовлю озвучку... ⏳",
         'tts_fail': "😔 Не удалось озвучить. Попробуйте позже.",
@@ -706,19 +723,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
     elif data == 'buy_sub':
-        create_payment(query.from_user.id, 'sub_1month', SUB_PRICE)
-        context.user_data['pending_pkg'] = 'sub_1month'
-        context.user_data['mode'] = None  # profil rejimini o'chiramiz (chek bilan aralashmasin)
-        await query.message.reply_text(
-            t(context, 'pay_instr').format(amount=SUB_PRICE, card=CARD_NUMBER, name=CARD_NAME)
-        )
+        if not PROVIDER_TOKEN:
+            await query.message.reply_text(t(context, 'pay_unavailable'))
+            return
+        try:
+            await context.bot.send_invoice(
+                chat_id=query.from_user.id,
+                title=t(context, 'inv_sub_title'),
+                description=t(context, 'inv_sub_desc'),
+                payload="sub_1month",
+                provider_token=PROVIDER_TOKEN,
+                currency="UZS",
+                prices=[LabeledPrice(t(context, 'inv_sub_title'), SUB_PRICE * 100)],
+            )
+        except Exception as e:
+            logger.error(f"Invoice (sub) yuborishda xato: {e}")
+            await query.message.reply_text(t(context, 'pay_unavailable'))
     elif data == 'buy_one':
-        create_payment(query.from_user.id, 'one_1', ONE_PRICE)
-        context.user_data['pending_pkg'] = 'one_1'
-        context.user_data['mode'] = None
-        await query.message.reply_text(
-            t(context, 'pay_instr_one').format(amount=ONE_PRICE, card=CARD_NUMBER, name=CARD_NAME)
-        )
+        if not PROVIDER_TOKEN:
+            await query.message.reply_text(t(context, 'pay_unavailable'))
+            return
+        try:
+            await context.bot.send_invoice(
+                chat_id=query.from_user.id,
+                title=t(context, 'inv_one_title'),
+                description=t(context, 'inv_one_desc'),
+                payload="one_1",
+                provider_token=PROVIDER_TOKEN,
+                currency="UZS",
+                prices=[LabeledPrice(t(context, 'inv_one_title'), ONE_PRICE * 100)],
+            )
+        except Exception as e:
+            logger.error(f"Invoice (one) yuborishda xato: {e}")
+            await query.message.reply_text(t(context, 'pay_unavailable'))
     elif data.startswith('full_'):
         try:
             aid = int(data.split('_', 1)[1])
@@ -1040,7 +1077,7 @@ def _gemini_process(tmp_path, prompt):
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Profil rejimida — profil skrinshoti; aks holda — to'lov cheki."""
+    """Profil rejimida — profil skrinshoti. To'lovlar endi Payme orqali (chek kerak emas)."""
     # PROFIL REJIMI: rasm = profil skrinshoti
     if context.user_data.get('mode') == 'profile':
         imgs = context.user_data.setdefault('profile_imgs', [])
@@ -1052,47 +1089,65 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             t(context, 'profile_got').format(n=len(imgs)), reply_markup=kb
         )
         return
+    # Aks holda: rasmni e'tiborsiz qoldiramiz (to'lov Payme orqali avtomatik)
+    return
 
-    # AKS HOLDA: to'lov cheki (obuna)
-    pending = context.user_data.get('pending_pkg')
-    if not pending:
-        return  # Chek kutilmayotgan bo'lsa, e'tibor bermaymiz
-    user = update.effective_user
-    is_one = pending.startswith('one')
-    pkg_label = "🎬 1 ta tahlil" if is_one else "💳 1 oylik obuna (30 kun)"
-    pkg_amount = ONE_PRICE if is_one else SUB_PRICE
-    btn_label = "✅ Tasdiqlash (+1 tahlil)" if is_one else "✅ Tasdiqlash (obunani yoqish)"
-    # Chekni admin ga yuboramiz
-    caption = (
-        f"💳 YANGI TO'LOV CHEKI\n\n"
-        f"👤 {user.first_name} (@{user.username or 'username yo`q'})\n"
-        f"🆔 ID: {user.id}\n"
-        f"📦 {pkg_label}\n"
-        f"💰 Summa: {pkg_amount:,} so'm"
-    )
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton(btn_label, callback_data=f"approve_{user.id}_{pending}")
-    ]])
+
+async def precheckout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Payme pre-checkout: to'lovni tasdiqlaymiz (10 soniya ichida javob berish shart)."""
+    q = update.pre_checkout_query
     try:
-        sent_any = False
+        if q.invoice_payload in ("sub_1month", "one_1"):
+            await q.answer(ok=True)
+        else:
+            await q.answer(ok=False, error_message="Noma'lum to'lov. Qaytadan urinib ko'ring.")
+    except Exception as e:
+        logger.error(f"Pre-checkout xato: {e}")
+        try:
+            await q.answer(ok=False, error_message="Xatolik. Qaytadan urinib ko'ring.")
+        except Exception:
+            pass
+
+
+async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """To'lov muvaffaqiyatli — obunani/tahlilni AVTOMATIK faollashtiramiz."""
+    sp = update.message.successful_payment
+    user = update.effective_user
+    payload = sp.invoice_payload
+    uname = user.username or user.first_name or ""
+    # To'langan summa (tiyin -> so'm)
+    paid_uzs = int(getattr(sp, "total_amount", 0)) // 100
+
+    try:
+        if payload == "sub_1month":
+            new_until = activate_subscription(user.id, SUB_DAYS)
+            await update.message.reply_text(t(context, 'pay_ok_sub').format(until=new_until))
+            try:
+                create_payment(user.id, 'sub_1month', SUB_PRICE)
+            except Exception:
+                pass
+            admin_txt = (f"💰 YANGI TO'LOV (Payme)\n👤 @{uname} (ID: {user.id})\n"
+                         f"📦 1 oylik obuna\n💵 {paid_uzs:,} so'm\n✅ Obuna {new_until} gacha yoqildi")
+        elif payload == "one_1":
+            add_balance(user.id, 1)
+            await update.message.reply_text(t(context, 'pay_ok_one'))
+            try:
+                create_payment(user.id, 'one_1', ONE_PRICE)
+            except Exception:
+                pass
+            admin_txt = (f"💰 YANGI TO'LOV (Payme)\n👤 @{uname} (ID: {user.id})\n"
+                         f"📦 1 ta tahlil\n💵 {paid_uzs:,} so'm\n✅ +1 tahlil qo'shildi")
+        else:
+            logger.warning(f"Noma'lum to'lov payload: {payload}")
+            return
+        # Adminlarga xabar
         for _aid in ADMIN_IDS:
             try:
-                await context.bot.send_photo(
-                    _aid,
-                    update.message.photo[-1].file_id,
-                    caption=caption,
-                    reply_markup=keyboard
-                )
-                sent_any = True
-            except Exception as e:
-                logger.warning(f"Chekni admin {_aid} ga yuborishda xato: {e}")
-        if sent_any:
-            await update.message.reply_text(t(context, 'receipt_sent'))
-            context.user_data['pending_pkg'] = None
-        else:
-            await update.message.reply_text(t(context, 'error'))
+                await context.bot.send_message(_aid, admin_txt)
+            except Exception:
+                pass
     except Exception as e:
-        logger.error(f"Chek yuborishda xato: {e}")
+        logger.error(f"To'lovni faollashtirishda xato: {e}")
         await update.message.reply_text(t(context, 'error'))
 
 
@@ -1464,6 +1519,8 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(PreCheckoutQueryHandler(precheckout_handler))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, video_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
