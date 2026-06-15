@@ -487,9 +487,14 @@ TEXTS = {
         'tts_btn': "🔊 Qisqa eshitish",
         'tts_full_btn': "🔊 To'liq eshitish",
         'inv_sub_title': "InstaDoctor — 1 oylik obuna",
-        'inv_sub_desc': "1 oy davomida cheksiz video tahlil. To'lovdan so'ng obuna avtomatik faollashadi.",
+        'inv_sub_desc': "1 oy davomida cheksiz video tahlil. 🔒 To'lov Payme orqali xavfsiz. To'lovdan so'ng obuna avtomatik faollashadi.",
         'inv_one_title': "InstaDoctor — 1 ta tahlil",
-        'inv_one_desc': "1 ta video tahlil. To'lovdan so'ng avtomatik qo'shiladi.",
+        'inv_one_desc': "1 ta video tahlil. 🔒 To'lov Payme orqali xavfsiz. To'lovdan so'ng avtomatik qo'shiladi.",
+        'pay_safety': ("🔒 XAVFSIZ TO'LOV\n\n"
+                       "💳 To'lov Payme orqali amalga oshiriladi.\n"
+                       "✅ Karta ma'lumotlaringiz botda saqlanmaydi — to'g'ridan-to'g'ri Payme himoyasida.\n"
+                       "⚡ To'lovdan so'ng xizmat avtomatik faollashadi.\n\n"
+                       "Quyidagi to'lov oynasi orqali davom eting 👇"),
         'pay_unavailable': "⚠️ To'lov tizimi hozircha mavjud emas. Birozdan so'ng urinib ko'ring yoki admin bilan bog'laning.",
         'pay_ok_sub': "✅ To'lov qabul qilindi! Obunangiz faollashtirildi — {until} gacha cheksiz tahlil. Rahmat! 🎉",
         'pay_ok_one': "✅ To'lov qabul qilindi! Sizga +1 tahlil qo'shildi. Endi video yuboring! 🎉",
@@ -586,9 +591,14 @@ TEXTS = {
         'tts_btn': "🔊 Кратко голосом",
         'tts_full_btn': "🔊 Полностью голосом",
         'inv_sub_title': "InstaDoctor — подписка на 1 месяц",
-        'inv_sub_desc': "Безлимитный анализ видео в течение 1 месяца. После оплаты подписка активируется автоматически.",
+        'inv_sub_desc': "Безлимитный анализ видео в течение 1 месяца. 🔒 Оплата через Payme безопасна. После оплаты подписка активируется автоматически.",
         'inv_one_title': "InstaDoctor — 1 анализ",
-        'inv_one_desc': "1 анализ видео. После оплаты добавляется автоматически.",
+        'inv_one_desc': "1 анализ видео. 🔒 Оплата через Payme безопасна. После оплаты добавляется автоматически.",
+        'pay_safety': ("🔒 БЕЗОПАСНАЯ ОПЛАТА\n\n"
+                       "💳 Оплата производится через Payme.\n"
+                       "✅ Данные вашей карты не хранятся в боте — напрямую под защитой Payme.\n"
+                       "⚡ После оплаты услуга активируется автоматически.\n\n"
+                       "Продолжите через окно оплаты ниже 👇"),
         'pay_unavailable': "⚠️ Оплата пока недоступна. Попробуйте позже или свяжитесь с админом.",
         'pay_ok_sub': "✅ Оплата принята! Подписка активирована — безлимит до {until}. Спасибо! 🎉",
         'pay_ok_one': "✅ Оплата принята! Вам добавлен +1 анализ. Отправляйте видео! 🎉",
@@ -727,6 +737,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
         try:
+            await query.message.reply_text(t(context, 'pay_safety'))
             await context.bot.send_invoice(
                 chat_id=query.from_user.id,
                 title=t(context, 'inv_sub_title'),
@@ -744,6 +755,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
         try:
+            await query.message.reply_text(t(context, 'pay_safety'))
             await context.bot.send_invoice(
                 chat_id=query.from_user.id,
                 title=t(context, 'inv_one_title'),
