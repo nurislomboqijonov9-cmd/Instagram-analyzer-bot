@@ -524,8 +524,8 @@ TEXTS = {
         'send_video': "🎬 Tahlil uchun videoni yuboring! 📤",
         'no_balance': ("💳 Sizda bepul tahlil qolmagan.\n\n"
                        "Davom etish uchun tanlang 👇\n"
-                       "• 1 oylik obuna — cheksiz tahlil (29,990 so'm)\n"
-                       "• 1 ta tahlil — 4,990 so'm"),
+                       "• 1 oylik obuna — cheksiz tahlil (29,900 so'm)\n"
+                       "• 1 ta tahlil — 5,090 so'm"),
         'balance_info': "💰 Sizda {n} ta bepul tahlil bor.",
         'choose_pkg': "💳 Obuna:",
         'pay_instr': ("💳 1 OYLIK OBUNA — cheksiz video tahlil (30 kun)\n\n"
@@ -536,8 +536,8 @@ TEXTS = {
                       "Admin tekshirib, obunangizni faollashtiradi. ⏳"),
         'receipt_sent': "✅ Chekingiz adminga yuborildi. Tez orada tasdiqlanadi! ⏳",
         'approved': "🎉 To'lovingiz tasdiqlandi!\n✅ Obunangiz faol — {until} gacha.\nEndi cheksiz video tahlil qilishingiz mumkin! 🎬",
-        'sub_btn': "💳 Obuna sotib olish (30 kun / 29,990 so'm)",
-        'one_btn': "🎬 1 ta tahlil (4,990 so'm)",
+        'sub_btn': "💳 Obuna sotib olish (30 kun / 29,900 so'm)",
+        'one_btn': "🎬 1 ta tahlil (5,090 so'm)",
         'pay_instr_one': ("🎬 1 TA VIDEO TAHLIL\n\n"
                           "💰 Summa: {amount:,} so'm\n"
                           "💳 Karta: {card}\n"
@@ -546,7 +546,7 @@ TEXTS = {
                           "Admin tekshirib, hisobingizga 1 ta tahlil qo'shadi. ⏳"),
         'sub_active': "✅ Obunangiz faol — {until} gacha.\nCheksiz video tahlil! 🎬",
         'sub_offer': ("🎬 1 oylik obuna bilan CHEKSIZ video tahlil!\n"
-                      "💰 Narxi: 29,990 so'm / 30 kun\n\n"
+                      "💰 Narxi: 29,900 so'm / 30 kun\n\n"
                       "Sotib olish uchun pastdagi tugmani bosing 👇"),
         'ref_info': ("🔗 DO'STLARNI TAKLIF QILING!\n\n"
                      "Quyidagi havolani do'stingizga yuboring. Do'stingiz kirib "
@@ -627,8 +627,8 @@ TEXTS = {
         'send_video': "🎬 Отправьте видео для анализа! 📤",
         'no_balance': ("💳 У вас не осталось бесплатных анализов.\n\n"
                        "Выберите, чтобы продолжить 👇\n"
-                       "• Подписка на 1 месяц — безлимит (29 990 сум)\n"
-                       "• 1 анализ — 4 990 сум"),
+                       "• Подписка на 1 месяц — безлимит (29 900 сум)\n"
+                       "• 1 анализ — 5 090 сум"),
         'balance_info': "💰 У вас {n} бесплатных анализов.",
         'choose_pkg': "💳 Подписка:",
         'pay_instr': ("💳 ПОДПИСКА НА 1 МЕСЯЦ — безлимитный анализ видео (30 дней)\n\n"
@@ -639,8 +639,8 @@ TEXTS = {
                       "Админ проверит и активирует подписку. ⏳"),
         'receipt_sent': "✅ Ваш чек отправлен админу. Скоро подтвердим! ⏳",
         'approved': "🎉 Оплата подтверждена!\n✅ Подписка активна — до {until}.\nТеперь безлимитный анализ видео! 🎬",
-        'sub_btn': "💳 Оформить подписку (30 дней / 29 990 сум)",
-        'one_btn': "🎬 1 анализ (4 990 сум)",
+        'sub_btn': "💳 Оформить подписку (30 дней / 29 900 сум)",
+        'one_btn': "🎬 1 анализ (5 090 сум)",
         'pay_instr_one': ("🎬 1 АНАЛИЗ ВИДЕО\n\n"
                           "💰 Сумма: {amount:,} сум\n"
                           "💳 Карта: {card}\n"
@@ -649,7 +649,7 @@ TEXTS = {
                           "Админ проверит и добавит 1 анализ на счёт. ⏳"),
         'sub_active': "✅ Подписка активна — до {until}.\nБезлимитный анализ видео! 🎬",
         'sub_offer': ("🎬 С подпиской на 1 месяц — БЕЗЛИМИТНЫЙ анализ видео!\n"
-                      "💰 Цена: 29 990 сум / 30 дней\n\n"
+                      "💰 Цена: 29 900 сум / 30 дней\n\n"
                       "Нажмите кнопку ниже, чтобы оформить 👇"),
         'ref_info': ("🔗 ПРИГЛАШАЙТЕ ДРУЗЕЙ!\n\n"
                      "Отправьте эту ссылку другу. Когда друг зайдёт и сделает "
