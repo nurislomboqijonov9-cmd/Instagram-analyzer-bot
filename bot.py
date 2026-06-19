@@ -140,6 +140,8 @@ def init_db():
                 cur.execute("""CREATE TABLE IF NOT EXISTS payments (
                     id SERIAL PRIMARY KEY, user_id BIGINT,
                     package TEXT, amount INTEGER, status TEXT, created TEXT)""")
+                cur.execute("""CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY, value TEXT)""")
                 # users jadvaliga yangi ustunlar (obuna + referral)
                 for col, typ in [("sub_until", "TEXT"),
                                  ("referred_by", "BIGINT"),
@@ -253,6 +255,47 @@ def set_referrer(user_id, referrer_id):
     row = _db_execute("SELECT referred_by FROM users WHERE user_id = %s", (user_id,), fetch='one')
     if row is not None and row[0] is None:
         _db_execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, user_id))
+
+
+def get_setting(key, default=None):
+    row = _db_execute("SELECT value FROM settings WHERE key = %s", (key,), fetch='one')
+    return row[0] if row else default
+
+
+def set_setting(key, value):
+    _db_execute(
+        "INSERT INTO settings (key, value) VALUES (%s, %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        (key, str(value))
+    )
+
+
+def auto_aksiya_on():
+    """Avtomatik +2 aksiya yoqilganmi? (default: o'chiq)"""
+    return get_setting("auto_aksiya", "off") == "on"
+
+
+def grant_auto_aksiya(user_id):
+    """1 ta bepulni ishlatib, balansi tugagan, aksiyani hali olmagan userga
+    avtomatik +2 beradi va xabar yuborish kerakligini bildiradi (True).
+    Faqat avtomatik aksiya YOQILGAN bo'lsa ishlaydi."""
+    if is_admin(user_id):
+        return False
+    if not auto_aksiya_on():
+        return False
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    row = _db_execute(
+        "SELECT 1 FROM users WHERE user_id = %s "
+        "AND COALESCE(balance,0) <= 0 "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(aksiya_given, FALSE) = FALSE",
+        (user_id, now), fetch='one'
+    )
+    if row:
+        add_balance(user_id, 2)
+        _db_execute("UPDATE users SET aksiya_given = TRUE WHERE user_id = %s", (user_id,))
+        return True
+    return False
 
 
 def should_send_auto_offer(user_id):
@@ -1467,6 +1510,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for idx, chunk in enumerate(parts):
                     await message.reply_text(chunk, reply_markup=(kb if idx == len(parts) - 1 else None))
 
+            # AVTOMATIK +2 AKSIYA: 1 ta bepulni ishlatib, balansi tugagan bo'lsa
+            # (faqat avtomatik aksiya YOQILGAN bo'lsa). Har odam 1 marta.
+            try:
+                if grant_auto_aksiya(user_id):
+                    aksiya_kb = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(t(context, 'menu_video'), callback_data="aksiya_video")
+                    ]])
+                    await message.reply_text(t(context, 'aksiya_msg'), reply_markup=aksiya_kb)
+            except Exception as e:
+                logger.warning(f"Avtomatik +2 aksiya yuborishda xato: {e}")
+
             # AVTOMATIK obuna taklifi: +2 ni ham ishlatib, balansi tugagan bo'lsa
             try:
                 if should_send_auto_offer(user_id):
@@ -1675,6 +1729,31 @@ async def aksiya_tugadi_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(text[i:i+4000])
 
 
+async def avto_aksiya_yoq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: avtomatik +2 aksiyani YOQADI (1 ta bepul tugaganlarga o'zi beradi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("auto_aksiya", "on")
+    await update.message.reply_text(
+        "✅ Avtomatik +2 aksiya YOQILDI.\n\n"
+        "Endi 1 ta bepulni ishlatib, balansi tugagan har bir foydalanuvchiga "
+        "avtomatik +2 bepul tahlil beriladi (har biriga 1 marta).\n\n"
+        "⚠️ Diqqat: bu Gemini xarajatini oshiradi. Kerak bo'lmasa /avto_aksiya_ochir bilan o'chiring."
+    )
+
+
+async def avto_aksiya_ochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: avtomatik +2 aksiyani O'CHIRADI."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("auto_aksiya", "off")
+    await update.message.reply_text(
+        "🛑 Avtomatik +2 aksiya O'CHIRILDI.\n\n"
+        "Endi yangi foydalanuvchilarga avtomatik +2 berilmaydi. "
+        "Kerak bo'lganda /aksiya (qo'lda) yoki /avto_aksiya_yoq ishlatishingiz mumkin."
+    )
+
+
 async def obunachilar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: faol obunachilar ro'yxati (kim, qachongacha)."""
     if not is_admin(update.effective_user.id):
@@ -1842,6 +1921,8 @@ def main():
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
+    app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
+    app.add_handler(CommandHandler("avto_aksiya_ochir", avto_aksiya_ochir_command))
     app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("bugun", bugun_command))
