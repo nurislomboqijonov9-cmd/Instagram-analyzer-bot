@@ -31,7 +31,7 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3") or "3")
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 ADMIN_ID = 7589459697
 # Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
-ADMIN_IDS = [7589459697, 5808245573]
+ADMIN_IDS = [7589459697, 5808245573, 356530813]
 
 
 def is_admin(user_id):
@@ -44,6 +44,9 @@ SUB_PRICE = 29900
 SUB_DAYS = 30
 # 1 martalik tahlil narxi (so'm)
 ONE_PRICE = 5090
+
+# Yangi foydalanuvchiga beriladigan BEPUL tahlil soni
+FREE_TRIAL = 1
 
 # Payme (Telegram Payments) provider token - Railway Variables'dan olinadi
 PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "")
@@ -141,7 +144,8 @@ def init_db():
                 for col, typ in [("sub_until", "TEXT"),
                                  ("referred_by", "BIGINT"),
                                  ("ref_credited", "BOOLEAN DEFAULT FALSE"),
-                                 ("ref_reward_given", "BOOLEAN DEFAULT FALSE")]:
+                                 ("ref_reward_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("aksiya_given", "BOOLEAN DEFAULT FALSE")]:
                     cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {typ}")
                 # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
                 for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
@@ -154,12 +158,12 @@ def init_db():
 
 
 def save_user(user_id, username, first_name):
-    # Yangi foydalanuvchiga 1 ta BEPUL tahlil (balance=1). ON CONFLICT DO NOTHING
+    # Yangi foydalanuvchiga FREE_TRIAL ta BEPUL tahlil. ON CONFLICT DO NOTHING
     # tufayli faqat BIRINCHI marta beriladi - qayta /start bossa qayta berilmaydi.
     _db_execute(
         "INSERT INTO users (user_id, username, first_name, joined, balance) "
-        "VALUES (%s, %s, %s, %s, 1) ON CONFLICT (user_id) DO NOTHING",
-        (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M"))
+        "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (user_id) DO NOTHING",
+        (user_id, username or "", first_name or "", datetime.now().strftime("%Y-%m-%d %H:%M"), FREE_TRIAL)
     )
 
 
@@ -332,6 +336,18 @@ def get_all_videos(limit=100):
     return rows or []
 
 
+def get_today_all(limit=200):
+    """BUGUNGI barcha tahlil qilingan videolar (eng yangisi birinchi)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = _db_execute(
+        "SELECT id, user_id, username, foiz, file_id, created FROM analyses "
+        "WHERE kind = 'video' AND file_id IS NOT NULL AND created LIKE %s "
+        "ORDER BY id DESC LIMIT %s",
+        (today + "%", limit), fetch='all'
+    )
+    return rows or []
+
+
 def create_payment(user_id, package, amount):
     row = _db_execute(
         "INSERT INTO payments (user_id, package, amount, status, created) "
@@ -345,16 +361,25 @@ def create_payment(user_id, package, amount):
 def get_stats():
     try:
         today = datetime.now().strftime("%Y-%m-%d")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
         total_users = (_db_execute("SELECT COUNT(*) FROM users", fetch='one') or [0])[0]
         total_analyses = (_db_execute("SELECT COUNT(*) FROM analyses", fetch='one') or [0])[0]
         today_analyses = (_db_execute("SELECT COUNT(*) FROM analyses WHERE created LIKE %s",
                                       (today + "%",), fetch='one') or [0])[0]
         revenue = (_db_execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved'",
                                fetch='one') or [0])[0]
-        return total_users, total_analyses, today_analyses, revenue
+        # Obunachilar (obunasi hozir faol)
+        subs = (_db_execute("SELECT COUNT(*) FROM users WHERE sub_until IS NOT NULL AND sub_until > %s",
+                            (now,), fetch='one') or [0])[0]
+        # Bepul tahlili borlar (balansda > 0)
+        free_bal = (_db_execute("SELECT COUNT(*) FROM users WHERE balance > 0", fetch='one') or [0])[0]
+        # Aktiv (kamida 1 marta video tahlil qilgan)
+        active = (_db_execute("SELECT COUNT(DISTINCT user_id) FROM analyses WHERE kind = 'video'",
+                              fetch='one') or [0])[0]
+        return total_users, total_analyses, today_analyses, revenue, subs, free_bal, active
     except Exception as e:
         logger.error(f"get_stats xato: {e}")
-        return 0, 0, 0, 0
+        return 0, 0, 0, 0, 0, 0, 0
 
 
 PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan. Blogger videosini HALOL va OBJEKTIV bahola. Faqat HAQIQATNI ayt — yaxshi bo'lsa yaxshi, kuchsiz bo'lsa kuchsiz de.
@@ -476,6 +501,12 @@ TEXTS = {
         'cmp_down': "📉 Bu safar {now}% (oldingi videongiz {prev}% edi, {d}% ga pasaydi). Tavsiyalarga e'tibor bering! 💪",
         'cmp_same': "➡️ Bu video ham {now}% — oldingi darajada. Keyingi videoda yuqoriroq natijaga harakat qiling! 🚀",
         'menu_video': "🎬 Video tahlil",
+        'aksiya_msg': ("📣 Algoritmlarni yangiladik va sizga yana 2 ta bepul tahlil sovg'a qilamiz!\n\n"
+                       "Salom! Bitta video — bu shunchaki sinov. Haqiqiy natija va topga chiqish "
+                       "masofada, xatolar ustida ishlaganda ko'rinadi.\n\n"
+                       "Balansingizga yana 2 ta bepul imkoniyat qo'shdik 🎁\n\n"
+                       "Oldingi tavsiyamizga qarab, videongizni xuki (boshlanishi) yoki yakunini "
+                       "o'zgartirib, qaytadan yuklab ko'ring. Keling, videongizni ideal holatga keltiramiz! 🚀"),
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
@@ -580,6 +611,12 @@ TEXTS = {
         'cmp_down': "📉 Сейчас {now}% (прошлое видео было {prev}%, на {d}% ниже). Обратите внимание на рекомендации! 💪",
         'cmp_same': "➡️ Это видео тоже {now}% — на прежнем уровне. В следующем постарайтесь выше! 🚀",
         'menu_video': "🎬 Анализ видео",
+        'aksiya_msg': ("📣 Мы обновили алгоритмы и дарим тебе ещё 2 анализа бесплатно!\n\n"
+                       "Привет! Одно видео — это только тест. Настоящий результат и выход в топ "
+                       "видны на дистанции, при работе над ошибками.\n\n"
+                       "Мы начислили тебе ещё 2 бесплатных анализа 🎁\n\n"
+                       "Измени хук (начало) или концовку по нашей рекомендации и пришли видео снова. "
+                       "Давай доведём твоё видео до идеала! 🚀"),
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
@@ -779,6 +816,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Invoice (one) yuborishda xato: {e}")
             await query.message.reply_text(t(context, 'pay_unavailable'))
+    elif data == 'aksiya_video':
+        await query.message.reply_text(
+            "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
+        )
     elif data.startswith('full_'):
         try:
             aid = int(data.split('_', 1)[1])
@@ -1453,10 +1494,13 @@ async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
-    total_users, total_analyses, today_analyses, revenue = get_stats()
+    total_users, total_analyses, today_analyses, revenue, subs, free_bal, active = get_stats()
     text = (
         "📊 ADMIN STATISTIKA\n\n"
         f"👥 Jami foydalanuvchilar: {total_users}\n"
+        f"👑 Obunachilar (faol): {subs}\n"
+        f"🎁 Bepul tahlili borlar: {free_bal}\n"
+        f"📊 Aktiv (tahlil qilgan): {active}\n\n"
         f"🎬 Jami tahlillar: {total_analyses}\n"
         f"📅 Bugungi tahlillar: {today_analyses}\n"
         f"💰 Tasdiqlangan daromad: {revenue:,} so'm"
@@ -1515,16 +1559,59 @@ async def berobuna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Xatolik yuz berdi. Qaytadan urinib ko'ring.")
 
 
-async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Barcha tahlil qilingan videolarni ko'rsatadi (eng yangisi birinchi)."""
+async def aksiya_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: video tahlil qilib, balansi tugaganlarga 'yana 2 ta bepul' aksiya yuboradi.
+    Har foydalanuvchiga FAQAT 1 marta (aksiya_given bilan belgilanadi). Sekin yuboradi."""
     if not is_admin(update.effective_user.id):
         return
-    rows = get_all_videos(100)
+    # Nishon: video tahlil qilgan, hozir obunasi yo'q, balansi 0, va aksiyani hali olmagan
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT DISTINCT u.user_id FROM users u "
+        "JOIN analyses a ON a.user_id = u.user_id AND a.kind = 'video' "
+        "WHERE COALESCE(u.balance,0) <= 0 "
+        "AND (u.sub_until IS NULL OR u.sub_until <= %s) "
+        "AND COALESCE(u.aksiya_given, FALSE) = FALSE",
+        (now,), fetch='all'
+    ) or []
     if not rows:
-        await update.message.reply_text("📊 Hali tahlil qilingan video yo'q.")
+        await update.message.reply_text("📭 Aksiya yuboriladigan foydalanuvchi yo'q (hammasi olgan yoki balansi bor).")
+        return
+    await update.message.reply_text(f"📣 Aksiya boshlandi: {len(rows)} ta foydalanuvchiga yuborilmoqda...\n(Sekin yuboriladi, kuting)")
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            # +2 tahlil va belgilab qo'yamiz (takror bo'lmasin)
+            add_balance(uid, 2)
+            _db_execute("UPDATE users SET aksiya_given = TRUE WHERE user_id = %s", (uid,))
+            # Xabar + tugma (foydalanuvchi tilini bilmasak, uz default)
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎬 Video tahlil qilish", callback_data="aksiya_video")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['aksiya_msg'], reply_markup=kb)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Aksiya yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)  # Telegram limitidan oshmaslik uchun sekin
+
+    await update.message.reply_text(
+        f"✅ Aksiya tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed} (bloklagan yoki botni o'chirgan)"
+    )
+
+
+async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bugungi barcha tahlil qilingan videolarni ko'rsatadi (eng yangisi birinchi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = get_today_all(200)
+    if not rows:
+        await update.message.reply_text("📊 Bugun hali tahlil qilingan video yo'q.")
         return
     await update.message.reply_text(
-        f"🎬 BARCHA TAHLILLAR ({len(rows)} ta, eng yangisi birinchi)\n\n"
+        f"🎬 BUGUNGI TAHLILLAR ({len(rows)} ta, eng yangisi birinchi)\n\n"
         "Quyida har birini videosi bilan yuboraman 👇"
     )
     for i, row in enumerate(rows, 1):
@@ -1616,6 +1703,7 @@ def main():
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
+    app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("bugun", bugun_command))
     app.add_handler(CallbackQueryHandler(button_handler))
