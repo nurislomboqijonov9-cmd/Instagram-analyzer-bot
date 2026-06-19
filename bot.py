@@ -145,7 +145,8 @@ def init_db():
                                  ("referred_by", "BIGINT"),
                                  ("ref_credited", "BOOLEAN DEFAULT FALSE"),
                                  ("ref_reward_given", "BOOLEAN DEFAULT FALSE"),
-                                 ("aksiya_given", "BOOLEAN DEFAULT FALSE")]:
+                                 ("aksiya_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE")]:
                     cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {typ}")
                 # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
                 for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
@@ -252,6 +253,30 @@ def set_referrer(user_id, referrer_id):
     row = _db_execute("SELECT referred_by FROM users WHERE user_id = %s", (user_id,), fetch='one')
     if row is not None and row[0] is None:
         _db_execute("UPDATE users SET referred_by = %s WHERE user_id = %s", (referrer_id, user_id))
+
+
+def should_send_auto_offer(user_id):
+    """Avtomatik obuna taklifi yuborilsinmi? Shartlar:
+    - aksiya (+2) olgan
+    - hozir balansi 0
+    - obunasi yo'q
+    - bu taklifni hali olmagan
+    Mos kelsa True qaytaradi va belgilab qo'yadi (takror bo'lmasin)."""
+    if is_admin(user_id):
+        return False
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    row = _db_execute(
+        "SELECT 1 FROM users WHERE user_id = %s "
+        "AND COALESCE(aksiya_given, FALSE) = TRUE "
+        "AND COALESCE(balance,0) <= 0 "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(obuna_taklif_given, FALSE) = FALSE",
+        (user_id, now), fetch='one'
+    )
+    if row:
+        _db_execute("UPDATE users SET obuna_taklif_given = TRUE WHERE user_id = %s", (user_id,))
+        return True
+    return False
 
 
 def consume_access(user_id):
@@ -507,6 +532,12 @@ TEXTS = {
                        "Balansingizga yana 2 ta bepul imkoniyat qo'shdik 🎁\n\n"
                        "Oldingi tavsiyamizga qarab, videongizni xuki (boshlanishi) yoki yakunini "
                        "o'zgartirib, qaytadan yuklab ko'ring. Keling, videongizni ideal holatga keltiramiz! 🚀"),
+        'obuna_taklif_msg': ("Sizning Reels'dagi salohiyatingiz juda katta! 🚀\n\n"
+                             "Cheksiz video tahlil qilish, har bir hookni ideal holatga keltirish va "
+                             "ko'rishlarda barqaror o'sish uchun — obunani faollashtiring.\n\n"
+                             "Bu atigi oyiga 29 900 so'm — kuniga 1 000 so'mdan ham kam, "
+                             "shaxsiy AI-prodyuseringiz uchun! 💎"),
+        'obuna_taklif_btn': "💎 Obunani faollashtirish",
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
@@ -617,6 +648,12 @@ TEXTS = {
                        "Мы начислили тебе ещё 2 бесплатных анализа 🎁\n\n"
                        "Измени хук (начало) или концовку по нашей рекомендации и пришли видео снова. "
                        "Давай доведём твоё видео до идеала! 🚀"),
+        'obuna_taklif_msg': ("Твой потенциал в Reels огромен! 🚀\n\n"
+                             "Чтобы анализировать неограниченное количество видео, докручивать каждый "
+                             "хук до идеала и стабильно расти в охватах — активируй подписку.\n\n"
+                             "Это всего 29 900 сумов в месяц — меньше 1 000 сумов в день "
+                             "за личного AI-продюсера! 💎"),
+        'obuna_taklif_btn': "💎 Активировать подписку",
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
@@ -1430,6 +1467,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for idx, chunk in enumerate(parts):
                     await message.reply_text(chunk, reply_markup=(kb if idx == len(parts) - 1 else None))
 
+            # AVTOMATIK obuna taklifi: +2 ni ham ishlatib, balansi tugagan bo'lsa
+            try:
+                if should_send_auto_offer(user_id):
+                    offer_kb = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+                    ]])
+                    await message.reply_text(t(context, 'obuna_taklif_msg'), reply_markup=offer_kb)
+            except Exception as e:
+                logger.warning(f"Avtomatik obuna taklifini yuborishda xato: {e}")
+
     except Exception as e:
         logger.error(f"Yakuniy xato: {e}")
         # 429 (kunlik limit) yoki 503 (server band) bo'lsa - boshqacha, aniqroq xabar
@@ -1628,6 +1675,69 @@ async def aksiya_tugadi_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(text[i:i+4000])
 
 
+async def obunachilar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: faol obunachilar ro'yxati (kim, qachongacha)."""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id, username, sub_until FROM users "
+        "WHERE sub_until IS NOT NULL AND sub_until > %s "
+        "ORDER BY sub_until DESC",
+        (now,), fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Hozircha faol obunachi yo'q.")
+        return
+    lines = [f"👑 FAOL OBUNACHILAR ({len(rows)} ta):\n"]
+    for i, (uid, uname, until) in enumerate(rows, 1):
+        who = f"@{uname}" if uname else f"(username yo'q)"
+        lines.append(f"{i}. {who} — ID: {uid}\n   ⏳ {until} gacha")
+    text = "\n".join(lines)
+    for i in range(0, len(text), 4000):
+        await update.message.reply_text(text[i:i+4000])
+
+
+async def obuna_taklif_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: +2 aksiyani ham ishlatib bo'lganlarga (balansi 0, obunasi yo'q) obuna taklifini yuboradi.
+    Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Nishon: +2 aksiyani olgan, balansi 0, obunasi yo'q, va bu taklifni hali olmagan
+    rows = _db_execute(
+        "SELECT user_id FROM users "
+        "WHERE COALESCE(aksiya_given, FALSE) = TRUE "
+        "AND COALESCE(balance,0) <= 0 "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(obuna_taklif_given, FALSE) = FALSE",
+        (now,), fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Obuna taklifi yuboriladigan foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(f"💎 Obuna taklifi boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['obuna_taklif_btn'], callback_data="buy_sub")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['obuna_taklif_msg'], reply_markup=kb)
+            _db_execute("UPDATE users SET obuna_taklif_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Obuna taklifini yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+
+    await update.message.reply_text(
+        f"✅ Obuna taklifi tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed} (bloklagan yoki botni o'chirgan)"
+    )
+
+
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Bugungi barcha tahlil qilingan videolarni ko'rsatadi (eng yangisi birinchi)."""
     if not is_admin(update.effective_user.id):
@@ -1731,6 +1841,8 @@ def main():
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
+    app.add_handler(CommandHandler("obunachilar", obunachilar_command))
+    app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("bugun", bugun_command))
     app.add_handler(CallbackQueryHandler(button_handler))
