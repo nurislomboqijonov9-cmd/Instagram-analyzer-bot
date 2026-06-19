@@ -1453,6 +1453,57 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+async def berobuna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: berilgan ID ga obuna yoqadi. Foydalanish: /berobuna <ID> <kun>
+    Misol: /berobuna 5722018971 30  (30 kunlik obuna beradi)"""
+    if not is_admin(update.effective_user.id):
+        return
+    args = context.args or []
+    if len(args) < 1:
+        await update.message.reply_text(
+            "ℹ️ Foydalanish: /berobuna <ID> <kun>\n"
+            "Misol: /berobuna 5722018971 30\n"
+            "(kun yozilmasa — 30 kun)"
+        )
+        return
+    try:
+        target_id = int(args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ ID noto'g'ri. Faqat raqam yozing.\nMisol: /berobuna 5722018971 30")
+        return
+    days = 30
+    if len(args) >= 2:
+        try:
+            days = int(args[1])
+            if days < 1 or days > 3650:
+                await update.message.reply_text("⚠️ Kun 1 dan 3650 gacha bo'lsin.")
+                return
+        except ValueError:
+            await update.message.reply_text("⚠️ Kun noto'g'ri. Faqat raqam yozing.")
+            return
+    try:
+        new_until = activate_subscription(target_id, days)
+        await update.message.reply_text(
+            f"✅ Obuna yoqildi!\n👤 ID: {target_id}\n📅 {days} kun\n⏳ Tugash: {new_until}"
+        )
+        # Foydalanuvchiga ham xabar berishga harakat qilamiz
+        try:
+            await context.bot.send_message(
+                target_id,
+                f"🎁 Sizga {days} kunlik BEPUL obuna berildi!\n"
+                f"⏳ {new_until} gacha cheksiz video tahlil qilishingiz mumkin.\n"
+                f"Video yuboring — boshlaymiz! 🚀"
+            )
+        except Exception:
+            await update.message.reply_text(
+                "ℹ️ Obuna yoqildi, lekin foydalanuvchiga xabar yuborib bo'lmadi "
+                "(u botni hali ishga tushirmagan bo'lishi mumkin)."
+            )
+    except Exception as e:
+        logger.error(f"berobuna xato: {e}")
+        await update.message.reply_text("⚠️ Xatolik yuz berdi. Qaytadan urinib ko'ring.")
+
+
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -1529,6 +1580,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
+    app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(PreCheckoutQueryHandler(precheckout_handler))
