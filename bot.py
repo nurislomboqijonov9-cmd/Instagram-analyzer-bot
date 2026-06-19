@@ -1602,6 +1602,32 @@ async def aksiya_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def aksiya_tugadi_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: +2 aksiyani OLIB, ISHLATIB bo'lganlar (balansi 0, obunasi yo'q) ro'yxati."""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id, username FROM users "
+        "WHERE COALESCE(aksiya_given, FALSE) = TRUE "
+        "AND COALESCE(balance,0) <= 0 "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "ORDER BY user_id DESC",
+        (now,), fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 +2 aksiyani olib, ishlatib bo'lgan foydalanuvchi yo'q.")
+        return
+    lines = [f"📊 +2 AKSIYANI ISHLATIB BO'LGANLAR ({len(rows)} ta):\n"]
+    for i, (uid, uname) in enumerate(rows, 1):
+        who = f"@{uname}" if uname else f"(username yo'q)"
+        lines.append(f"{i}. {who} — ID: {uid}")
+    text = "\n".join(lines)
+    # Telegram xabar limiti ~4000 belgi - bo'lib yuboramiz
+    for i in range(0, len(text), 4000):
+        await update.message.reply_text(text[i:i+4000])
+
+
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Bugungi barcha tahlil qilingan videolarni ko'rsatadi (eng yangisi birinchi)."""
     if not is_admin(update.effective_user.id):
@@ -1704,6 +1730,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
+    app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("bugun", bugun_command))
     app.add_handler(CallbackQueryHandler(button_handler))
