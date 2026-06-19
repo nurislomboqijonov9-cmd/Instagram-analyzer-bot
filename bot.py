@@ -321,6 +321,17 @@ def get_top_today(limit=10):
     return rows or []
 
 
+def get_all_videos(limit=100):
+    """BARCHA tahlil qilingan videolar (admin uchun), eng yangisi birinchi."""
+    rows = _db_execute(
+        "SELECT id, user_id, username, foiz, file_id, created FROM analyses "
+        "WHERE kind = 'video' AND file_id IS NOT NULL "
+        "ORDER BY id DESC LIMIT %s",
+        (limit,), fetch='all'
+    )
+    return rows or []
+
+
 def create_payment(user_id, package, amount):
     row = _db_execute(
         "INSERT INTO payments (user_id, package, amount, status, created) "
@@ -1505,14 +1516,15 @@ async def berobuna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Barcha tahlil qilingan videolarni ko'rsatadi (eng yangisi birinchi)."""
     if not is_admin(update.effective_user.id):
         return
-    rows = get_top_today(10)
+    rows = get_all_videos(100)
     if not rows:
-        await update.message.reply_text("📊 Bugun hali tahlil qilingan video yo'q.")
+        await update.message.reply_text("📊 Hali tahlil qilingan video yo'q.")
         return
     await update.message.reply_text(
-        f"🏆 BUGUNGI TOP {len(rows)} VIDEO (rekka chiqish ehtimoli bo'yicha)\n\n"
+        f"🎬 BARCHA TAHLILLAR ({len(rows)} ta, eng yangisi birinchi)\n\n"
         "Quyida har birini videosi bilan yuboraman 👇"
     )
     for i, row in enumerate(rows, 1):
@@ -1522,7 +1534,30 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_video(update.effective_chat.id, file_id, caption=caption)
         except Exception as e:
-            logger.warning(f"Top video yuborishda xato (id={aid}): {e}")
+            logger.warning(f"Video yuborishda xato (id={aid}): {e}")
+            await update.message.reply_text(caption + "\n⚠️ (videoni yuborib bo'lmadi)")
+
+
+async def bugun_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Faqat bugungi top videolar (rekka foizi bo'yicha)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = get_top_today(50)
+    if not rows:
+        await update.message.reply_text("📊 Bugun hali tahlil qilingan video yo'q.")
+        return
+    await update.message.reply_text(
+        f"🏆 BUGUNGI TOP ({len(rows)} ta, rekka ehtimoli bo'yicha)\n\n"
+        "Quyida har birini videosi bilan yuboraman 👇"
+    )
+    for i, row in enumerate(rows, 1):
+        aid, uid, uname, foiz, file_id, created = row
+        who = f"@{uname}" if uname else f"ID {uid}"
+        caption = f"#{i} • 📈 Rekka ehtimoli: {foiz}%\n👤 {who}\n🕐 {created}"
+        try:
+            await context.bot.send_video(update.effective_chat.id, file_id, caption=caption)
+        except Exception as e:
+            logger.warning(f"Bugungi video yuborishda xato (id={aid}): {e}")
             await update.message.reply_text(caption + "\n⚠️ (videoni yuborib bo'lmadi)")
 
 
@@ -1582,6 +1617,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("top", top_command))
+    app.add_handler(CommandHandler("bugun", bugun_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(PreCheckoutQueryHandler(precheckout_handler))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
