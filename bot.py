@@ -1720,6 +1720,12 @@ async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
 
 
+async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Joriy chat ID sini ko'rsatadi (guruhda yozilsa - guruh ID)."""
+    chat = update.effective_chat
+    await update.message.reply_text(f"🆔 Chat ID: {chat.id}\nTuri: {chat.type}\nNomi: {chat.title or '-'}")
+
+
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -1886,6 +1892,8 @@ async def javoblar_bugun_command(update: Update, context: ContextTypes.DEFAULT_T
     """Admin: faqat BUGUNGI so'rov javoblari (eng yangisi birinchi)."""
     if not is_admin(update.effective_user.id):
         return
+    if update.effective_chat.type != "private":
+        return  # Guruhda ishlamaydi - faqat shaxsiy chatda
     today = datetime.now().strftime("%Y-%m-%d")
     rows = _db_execute(
         "SELECT username, javob1, javob2, created FROM sorov_javoblar "
@@ -1913,6 +1921,8 @@ async def javoblar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: barcha so'rov javoblarini bir joyda ko'rsatadi (eng yangisi birinchi)."""
     if not is_admin(update.effective_user.id):
         return
+    if update.effective_chat.type != "private":
+        return  # Guruhda ishlamaydi - faqat shaxsiy chatda
     rows = _db_execute(
         "SELECT username, javob1, javob2, created FROM sorov_javoblar ORDER BY id DESC LIMIT 300",
         fetch='all'
@@ -2141,6 +2151,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
+    app.add_handler(CommandHandler("id", id_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
