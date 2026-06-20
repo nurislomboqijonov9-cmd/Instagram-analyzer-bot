@@ -147,6 +147,9 @@ def init_db():
                     package TEXT, amount INTEGER, status TEXT, created TEXT)""")
                 cur.execute("""CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY, value TEXT)""")
+                cur.execute("""CREATE TABLE IF NOT EXISTS sorov_javoblar (
+                    id SERIAL PRIMARY KEY, user_id BIGINT, username TEXT,
+                    javob1 TEXT, javob2 TEXT, created TEXT)""")
                 # users jadvaliga yangi ustunlar (obuna + referral)
                 for col, typ in [("sub_until", "TEXT"),
                                  ("referred_by", "BIGINT"),
@@ -1645,14 +1648,16 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         a1 = context.user_data.get('sorov_a1', '')
         a2 = (text or "").strip()
         uname = update.effective_user.username or update.effective_user.first_name or ""
-        report = (f"📝 SO'ROV JAVOBI\n👤 @{uname} (ID: {uid})\n"
-                  f"1️⃣ Nima yoqdi: {a1}\n"
-                  f"2️⃣ Kamchilik/taklif: {a2}")
-        for _aid in ADMIN_IDS:
-            try:
-                await context.bot.send_message(_aid, report)
-            except Exception:
-                pass
+        # Adminlarga BITTALAB yubormaymiz (kasha bo'lmasin) - bazaga saqlaymiz.
+        # /javoblar buyrug'i bilan hammasi bir joyda ko'riladi.
+        try:
+            _db_execute(
+                "INSERT INTO sorov_javoblar (user_id, username, javob1, javob2, created) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (uid, uname, a1, a2, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            )
+        except Exception as e:
+            logger.warning(f"So'rov javobini saqlashda xato: {e}")
         # 2 savolga javob bergan har kimga 1 ta bepul (faqat 1 marta)
         row = _db_execute("SELECT COALESCE(sorov_reward, FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
         already = row[0] if row else False
@@ -1866,6 +1871,59 @@ async def avto_aksiya_ochir_command(update: Update, context: ContextTypes.DEFAUL
     )
 
 
+async def javoblar_bugun_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: faqat BUGUNGI so'rov javoblari (eng yangisi birinchi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    rows = _db_execute(
+        "SELECT username, javob1, javob2, created FROM sorov_javoblar "
+        "WHERE created LIKE %s ORDER BY id DESC LIMIT 300",
+        (today + "%",), fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Bugun hali so'rov javobi yo'q.")
+        return
+    header = f"📝 BUGUNGI SO'ROV JAVOBLARI ({len(rows)} ta):\n\n"
+    blocks = []
+    for i, (uname, j1, j2, created) in enumerate(rows, 1):
+        who = f"@{uname}" if uname else "(no username)"
+        blocks.append(
+            f"{i}. {who} • {created}\n"
+            f"   1️⃣ Yoqdi: {j1}\n"
+            f"   2️⃣ Taklif: {j2}"
+        )
+    text = header + "\n\n".join(blocks)
+    for i in range(0, len(text), 4000):
+        await update.message.reply_text(text[i:i+4000])
+
+
+async def javoblar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: barcha so'rov javoblarini bir joyda ko'rsatadi (eng yangisi birinchi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT username, javob1, javob2, created FROM sorov_javoblar ORDER BY id DESC LIMIT 300",
+        fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Hali so'rov javobi yo'q.")
+        return
+    header = f"📝 SO'ROV JAVOBLARI ({len(rows)} ta, eng yangisi birinchi):\n\n"
+    blocks = []
+    for i, (uname, j1, j2, created) in enumerate(rows, 1):
+        who = f"@{uname}" if uname else "(no username)"
+        blocks.append(
+            f"{i}. {who} • {created}\n"
+            f"   1️⃣ Yoqdi: {j1}\n"
+            f"   2️⃣ Taklif: {j2}"
+        )
+    text = header + "\n\n".join(blocks)
+    # Telegram limiti ~4000 belgi - bo'lib yuboramiz
+    for i in range(0, len(text), 4000):
+        await update.message.reply_text(text[i:i+4000])
+
+
 async def sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: video tahlil qilgan hamma foydalanuvchiga so'rov yuboradi (Ha/Yo'q + sabab).
     Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
@@ -2077,6 +2135,8 @@ def main():
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
+    app.add_handler(CommandHandler("javoblar", javoblar_command))
+    app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
     app.add_handler(CommandHandler("avto_aksiya_ochir", avto_aksiya_ochir_command))
     app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
