@@ -25,15 +25,11 @@ API_HASH = os.getenv("API_HASH", "")
 # Maksimal qabul qilinadigan video hajmi (2GB). Kerak bo'lsa pasaytiring.
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
-# Pullik Gemini (Tier 1: ~1000 RPM) + kuchli server bilan MAX_CONCURRENT yuqori bo'lishi mumkin.
-# Railway Variables'dan MAX_CONCURRENT / PRIORITY_CONCURRENT ni xohlagancha oshirish mumkin.
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "60") or "60")
-# Navbat mexanizmi: bir vaqtda faqat MAX_CONCURRENT ta TEKIN tahlil ishlaydi.
-# Pullik (admin/obuna/to'lagan) uchun ALOHIDA kengroq navbat — ular tez xizmat oladi.
+# Pullik Gemini (Tier 2) + kuchli server. Bitta umumiy navbat (hammaga).
+# Railway Variables'dan MAX_CONCURRENT ni xohlagancha oshirish mumkin.
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "100") or "100")
+# Navbat mexanizmi: bir vaqtda MAX_CONCURRENT ta tahlil ishlaydi (hammaga bitta pool).
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-# Pullik foydalanuvchilar uchun alohida, kengroq slot (deyarli kutmaydi).
-PRIORITY_CONCURRENT = int(os.getenv("PRIORITY_CONCURRENT", "100") or "100")
-_priority_semaphore = asyncio.Semaphore(PRIORITY_CONCURRENT)
 ADMIN_ID = 7589459697
 # Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
 ADMIN_IDS = [7589459697, 5808245573, 356530813]
@@ -717,19 +713,30 @@ TEXTS = {
                       "📩 Kamchiliklar yoki takliflar bo'yicha: @Nur_04yyy"),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
+        'free_wait_promo': ("⏳ Bepul tahlil navbati... {sec} soniya kuting.\n\n"
+                            "💎 Premium bilan — NAVBATSIZ, soniyalarda tahlil! ⚡\n"
+                            "Instagram algoritmlari kutib turmaydi! 🚀"),
         'analysis_timeout': ("⏳ Kechirasiz, tahlil biroz cho'zilib ketdi. Iltimos, videoni "
                              "qayta yuboring — bu safar tezroq bo'ladi! 🔄\n\n"
                              "(Balansingiz kamaymadi)"),
         'queued': "⏳ Hozir navbat bandroq, videongiz navbatga qo'yildi. Bir oz kuting... 🕐",
         'queued_promo': ("⏳ Ko'p kutishdan charchadingizmi?\n\n"
                          "Instagram algoritmlari KUTIB TURMAYDI! ⚡ Har soniya muhim.\n\n"
-                         "💎 Premium bilan — navbatsiz, soniyalarda tahlil!\n"
-                         "Raqobatchilaringizdan oldinda bo'ling 🚀\n\n"
+                         "💎 PREMIUM bilan nimalarga ega bo'lasiz:\n"
+                         "⚡ Navbatsiz — soniyalarda tahlil\n"
+                         "♾ Cheksiz video tahlil\n"
+                         "🗣 Ovozli tahlil — maslahatlarni eshitasiz\n"
+                         "🔥 Eng kuchli heshteglar va trendlar\n"
+                         "📈 Yashirin REK ehtimoli (% larda)\n\n"
                          "👇 Hoziroq obunani faollashtiring"),
         'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
         'analyzing': "🧠 InstaDoctor AI tahlil qilmoqda (vizual + audio)... ⚡",
+        'time_upsell': ("⏱ Bu tahlil <b>{vaqt}</b> vaqt oldi.\n\n"
+                        "💎 Premium bilan bu SONIYALARDA bo'lardi! ⚡\n"
+                        "Navbatsiz, cheksiz tahlil + ovozli javob + eng kuchli heshteglar.\n\n"
+                        "👇 Premiumga o'ting — vaqtingizni tejang!"),
         'analyzing_live': "🧠 InstaDoctor AI videongizni tahlil qilmoqda",
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
@@ -880,19 +887,30 @@ TEXTS = {
                       "📩 По вопросам и предложениям: @Nur_04yyy"),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
+        'free_wait_promo': ("⏳ Очередь бесплатного анализа... подождите {sec} сек.\n\n"
+                            "💎 С Premium — БЕЗ ОЧЕРЕДИ, анализ за секунды! ⚡\n"
+                            "Алгоритмы Instagram не ждут! 🚀"),
         'analysis_timeout': ("⏳ Извините, анализ немного затянулся. Пожалуйста, отправьте видео "
                              "заново — в этот раз будет быстрее! 🔄\n\n"
                              "(Баланс не уменьшился)"),
         'queued': "⏳ Сейчас очередь занята, ваше видео в очереди. Немного подождите... 🕐",
         'queued_promo': ("⏳ Устали долго ждать?\n\n"
                          "Алгоритмы Instagram НЕ ЖДУТ! ⚡ Каждая секунда важна.\n\n"
-                         "💎 С Premium — без очереди, анализ за секунды!\n"
-                         "Будьте впереди конкурентов 🚀\n\n"
+                         "💎 Что вы получите с PREMIUM:\n"
+                         "⚡ Без очереди — анализ за секунды\n"
+                         "♾ Безлимитный анализ видео\n"
+                         "🗣 Аудио-анализ — слушайте советы\n"
+                         "🔥 Самые сильные хештеги и тренды\n"
+                         "📈 Скрытая вероятность РЕК (в %)\n\n"
                          "👇 Активируйте подписку сейчас"),
         'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
         'analyzing': "🧠 InstaDoctor AI анализирует (визуал + аудио)... ⚡",
+        'time_upsell': ("⏱ Этот анализ занял <b>{vaqt}</b>.\n\n"
+                        "💎 С Premium это было бы за СЕКУНДЫ! ⚡\n"
+                        "Без очереди, безлимит + аудио-ответ + сильнейшие хештеги.\n\n"
+                        "👇 Перейдите на Premium — экономьте время!"),
         'analyzing_live': "🧠 InstaDoctor AI анализирует ваше видео",
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
@@ -1534,38 +1552,34 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'too_big'))
             return
 
-        # Navbat: pullik (admin/obuna/to'lagan) -> tez (priority) navbat;
-        # bepul (hech to'lamagan) -> oddiy navbat (MAX_CONCURRENT bilan cheklangan).
+        # Bitta umumiy navbat (hammaga). Farq: pullik (admin/obuna/to'lagan) ->
+        # darrov tahlil; bepul -> 30 soniya "cho'ziladi" + reklama (pastda).
         _is_priority = is_admin(user_id) or has_access(user_id) == 'sub' or has_paid_ever(user_id)
-        _chosen_sem = _priority_semaphore if _is_priority else _video_semaphore
-        # "Navbatda" xabarini FAQAT haqiqatan barcha slot band bo'lsa ko'rsatamiz.
-        # getattr bilan _value ni o'qiymiz (bo'sh slotlar soni); 0 bo'lsa - hammasi band.
-        try:
-            _free_slots = _chosen_sem._value
-        except Exception:
-            _free_slots = 1
-        if _free_slots <= 0:
-            # Bepul foydalanuvchi navbatda kutyapti -> marketing (obunaga undash)
-            promo_kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
-            ]])
-            # Narx qatori: chegirma faol bo'lsa 19 900 (650/kun), aks holda 29 900
-            if discount_active():
-                narx_qatori = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
-                               "Eski narx: <s>29 900 so'm</s>\n"
-                               "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
-                               "(Kuniga atigi 650 so'm! ☕️)")
-            else:
-                narx_qatori = ("\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan kam! ☕️")
-            try:
-                await wait_msg.edit_text(t(context, 'queued_promo') + narx_qatori,
-                                         reply_markup=promo_kb, parse_mode="HTML")
-            except Exception:
-                await wait_msg.edit_text(t(context, 'queued'))
+        _chosen_sem = _video_semaphore
 
         async with _chosen_sem:
             tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
             is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
+
+            # BEPUL foydalanuvchiga tahlil 30 soniya "cho'ziladi" + navbat reklamasi
+            # ko'rsatiladi (obunaga undash). Pullik (admin/obuna/to'lagan) -> darrov.
+            if not _is_priority:
+                promo_kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+                ]])
+                if discount_active():
+                    narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
+                              "Eski narx: <s>29 900 so'm</s>\n"
+                              "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
+                              "Bu — kuniga 650 so'mdan ham emas! ☕️ (bir choydan arzon)")
+                else:
+                    narx_q = "\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan ham emas! ☕️"
+                try:
+                    await wait_msg.edit_text(t(context, 'queued_promo') + narx_q,
+                                             reply_markup=promo_kb, parse_mode="HTML")
+                except Exception:
+                    pass
+                await asyncio.sleep(30)
 
             # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
             downloaded = None
@@ -1591,23 +1605,33 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await wait_msg.edit_text(t(context, 'analyzing'))
 
-            # Jonli progress: tahlil davom etayotganini ko'rsatib turamiz.
-            # Bot xabarni har bir necha soniyada yangilab turadi (⏳ -> ⏳⏳ -> ...).
+            # Tahlil boshlanish vaqti (tugagach "X daqiqa oldi" deyish uchun)
+            _analiz_start = datetime.now()
+
+            # Jonli progress: bosqichlar o'zgarib turadi (qotmagani bilinsin).
             _progress_stop = asyncio.Event()
 
             async def _show_progress():
-                base = t(context, 'analyzing_live')
-                dots = 0
+                steps = [
+                    "🔍 Video ko'rilmoqda...",
+                    "🎬 Vizual tahlil qilinmoqda...",
+                    "🗣 Audio tinglanmoqda...",
+                    "📊 Ballar hisoblanmoqda...",
+                    "📈 REK ehtimoli aniqlanmoqda...",
+                    "✍️ Tavsiyalar tayyorlanmoqda...",
+                ]
+                i = 0
                 secs = 0
                 try:
                     while not _progress_stop.is_set():
                         await asyncio.sleep(4)
                         if _progress_stop.is_set():
                             break
-                        dots = (dots % 4) + 1
                         secs += 4
+                        msg_step = steps[i % len(steps)]
+                        i += 1
                         try:
-                            await wait_msg.edit_text(f"{base} {'⏳' * dots}\n⌛ {secs} soniya...")
+                            await wait_msg.edit_text(f"{msg_step}\n⌛ {secs} soniya...")
                         except Exception:
                             pass  # bir xil matn yoki tahrir xatosi - e'tibor bermaymiz
                 except asyncio.CancelledError:
@@ -1698,6 +1722,26 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parts = [qisqa[i:i+4000] for i in range(0, len(qisqa), 4000)]
                 for idx, chunk in enumerate(parts):
                     await message.reply_text(chunk, reply_markup=(kb if idx == len(parts) - 1 else None))
+
+            # BEPULGA: tahlil necha vaqt oldi -> "Premium bilan soniyalarda bo'lardi" (undash)
+            if not _is_priority:
+                try:
+                    elapsed = int((datetime.now() - _analiz_start).total_seconds())
+                    daqiqa = elapsed // 60
+                    soniya = elapsed % 60
+                    if daqiqa >= 1:
+                        vaqt_str = f"{daqiqa} daqiqa {soniya} soniya"
+                    else:
+                        vaqt_str = f"{soniya} soniya"
+                    upsell_kb = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+                    ]])
+                    await message.reply_text(
+                        t(context, 'time_upsell').format(vaqt=vaqt_str),
+                        reply_markup=upsell_kb, parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.warning(f"Vaqt upsell yuborishda xato: {e}")
 
             # AVTOMATIK +2 AKSIYA: 1 ta bepulni ishlatib, balansi tugagan bo'lsa
             # (faqat avtomatik aksiya YOQILGAN bo'lsa). Har odam 1 marta.
