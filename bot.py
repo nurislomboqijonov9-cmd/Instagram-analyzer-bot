@@ -1862,6 +1862,40 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+async def yoz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID bo'yicha foydalanuvchiga bot orqali xabar yuboradi.
+    Foydalanish: /yoz <ID> <xabar>"""
+    if not is_admin(update.effective_user.id):
+        return
+    full = update.message.text or ""
+    parts = full.split(None, 2)  # ['/yoz', 'ID', 'xabar...']
+    if len(parts) < 3:
+        await update.message.reply_text(
+            "✍️ Foydalanish: /yoz <ID> <xabar>\n\n"
+            "Masalan:\n/yoz 8431988310 Assalomu alaykum! Obunangiz bo'yicha..."
+        )
+        return
+    try:
+        target_id = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    xabar = parts[2].strip()
+    try:
+        await context.bot.send_message(
+            target_id,
+            f"📩 InstaDoctor jamoasidan xabar:\n\n{xabar}\n\n"
+            f"💬 Javob berish uchun shu yerga yozing — biz ko'ramiz."
+        )
+        # Javobni kutish rejimi (foydalanuvchi yozsa - adminlarga boradi)
+        await update.message.reply_text(f"✅ Xabar yuborildi (ID: {target_id})")
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ Yuborib bo'lmadi: {e}\n\n"
+            f"Sabab: foydalanuvchi botni bloklagan yoki ID noto'g'ri bo'lishi mumkin."
+        )
+
+
 async def berobuna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: berilgan ID ga obuna yoqadi. Foydalanish: /berobuna <ID> <kun>
     Misol: /berobuna 5722018971 30  (30 kunlik obuna beradi)"""
@@ -2366,6 +2400,7 @@ def main():
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
+    app.add_handler(CommandHandler("yoz", yoz_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
