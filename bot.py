@@ -160,7 +160,8 @@ def init_db():
                                  ("aksiya_given", "BOOLEAN DEFAULT FALSE"),
                                  ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
-                                 ("sorov_reward", "BOOLEAN DEFAULT FALSE")]:
+                                 ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
+                                 ("chegirma_kun", "TEXT")]:
                     cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {typ}")
                 # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
                 for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
@@ -2193,12 +2194,14 @@ async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📤 Sotuv xabari obunasizlarga yuborilmoqda..."
     )
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    # Nishon: video tahlil qilgan, obunasi yo'q hamma
+    today = datetime.now().strftime("%Y-%m-%d")
+    # Nishon: video tahlil qilgan, obunasi yo'q, BUGUN chegirma olmagan
     rows = _db_execute(
         "SELECT DISTINCT u.user_id FROM users u "
         "JOIN analyses a ON a.user_id = u.user_id AND a.kind = 'video' "
-        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s)",
-        (now,), fetch='all'
+        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s) "
+        "AND (u.chegirma_kun IS NULL OR u.chegirma_kun <> %s)",
+        (now, today), fetch='all'
     ) or []
     sent, failed = 0, 0
     for row in rows:
@@ -2209,13 +2212,16 @@ async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]])
             await context.bot.send_message(uid, get_sotuv_msg(),
                                            reply_markup=kb, parse_mode="HTML")
+            # Bugun olgani belgilaymiz (kuniga 1 marta)
+            _db_execute("UPDATE users SET chegirma_kun = %s WHERE user_id = %s", (today, uid))
             sent += 1
         except Exception as e:
             failed += 1
             logger.warning(f"Sotuv xabarini yuborishda xato (uid={uid}): {e}")
         await asyncio.sleep(0.4)
     await update.message.reply_text(
-        f"✅ Sotuv xabari tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed}"
+        f"✅ Sotuv xabari tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed}\n"
+        f"(Bugun olganlarga takror yuborilmadi)"
     )
 
 
