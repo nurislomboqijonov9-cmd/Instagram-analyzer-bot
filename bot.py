@@ -1588,11 +1588,10 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Tahlil boshlanish vaqti (tugagach "X daqiqa oldi" deyish uchun)
             _analiz_start = datetime.now()
 
-            # Jonli progress: bosqichlar o'zgarib turadi (qotmagani bilinsin).
-            # BEPUL uchun: o'rtada reklama ("kutishdan charchadizmi") ko'rsatamiz.
+            # Jonli progress mexanizmi
             _progress_stop = asyncio.Event()
 
-            # Bepul uchun reklama matni (progress o'rtasida ko'rsatiladi)
+            # Bepul uchun reklama matni
             if not _is_priority:
                 if discount_active():
                     _narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
@@ -1604,6 +1603,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 _promo_kb = InlineKeyboardMarkup([[
                     InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
                 ]])
+                # BEPUL oqim: 1) "Tahlil qilinmoqda" 12 soniya turadi
+                await asyncio.sleep(12)
+                # 2) keyin reklama chiqadi va 10 soniya turadi
+                try:
+                    await wait_msg.edit_text(t(context, 'queued_promo') + _narx_q,
+                                             reply_markup=_promo_kb, parse_mode="HTML")
+                except Exception:
+                    pass
+                await asyncio.sleep(10)
+                # 3) keyin progress boshlanadi (pastda)
 
             async def _show_progress():
                 steps = [
@@ -1616,24 +1625,12 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 i = 0
                 secs = 0
-                shown_ad = False
                 try:
                     while not _progress_stop.is_set():
                         await asyncio.sleep(4)
                         if _progress_stop.is_set():
                             break
                         secs += 4
-                        # BEPUL: o'rtada (12-soniyada) reklamani bir marta ko'rsatamiz
-                        if (not _is_priority) and (not shown_ad) and secs >= 12:
-                            shown_ad = True
-                            try:
-                                await wait_msg.edit_text(
-                                    t(context, 'queued_promo') + _narx_q,
-                                    reply_markup=_promo_kb, parse_mode="HTML"
-                                )
-                            except Exception:
-                                pass
-                            continue  # reklama bir tsikl turadi
                         msg_step = steps[i % len(steps)]
                         i += 1
                         try:
