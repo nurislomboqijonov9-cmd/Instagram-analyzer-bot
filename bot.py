@@ -1561,26 +1561,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
             is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
 
-            # BEPUL foydalanuvchiga tahlil 30 soniya "cho'ziladi" + navbat reklamasi
-            # ko'rsatiladi (obunaga undash). Pullik (admin/obuna/to'lagan) -> darrov.
-            if not _is_priority:
-                promo_kb = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
-                ]])
-                if discount_active():
-                    narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
-                              "Eski narx: <s>29 900 so'm</s>\n"
-                              "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
-                              "Bu — kuniga 650 so'mdan ham emas! ☕️ (bir choydan arzon)")
-                else:
-                    narx_q = "\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan ham emas! ☕️"
-                try:
-                    await wait_msg.edit_text(t(context, 'queued_promo') + narx_q,
-                                             reply_markup=promo_kb, parse_mode="HTML")
-                except Exception:
-                    pass
-                await asyncio.sleep(30)
-
             # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
             downloaded = None
             if pyro is not None:
@@ -1609,7 +1589,21 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _analiz_start = datetime.now()
 
             # Jonli progress: bosqichlar o'zgarib turadi (qotmagani bilinsin).
+            # BEPUL uchun: o'rtada reklama ("kutishdan charchadizmi") ko'rsatamiz.
             _progress_stop = asyncio.Event()
+
+            # Bepul uchun reklama matni (progress o'rtasida ko'rsatiladi)
+            if not _is_priority:
+                if discount_active():
+                    _narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
+                               "Eski narx: <s>29 900 so'm</s>\n"
+                               "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
+                               "Bu — kuniga 650 so'mdan ham emas! ☕️")
+                else:
+                    _narx_q = "\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan ham emas! ☕️"
+                _promo_kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+                ]])
 
             async def _show_progress():
                 steps = [
@@ -1622,29 +1616,46 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ]
                 i = 0
                 secs = 0
+                shown_ad = False
                 try:
                     while not _progress_stop.is_set():
                         await asyncio.sleep(4)
                         if _progress_stop.is_set():
                             break
                         secs += 4
+                        # BEPUL: o'rtada (12-soniyada) reklamani bir marta ko'rsatamiz
+                        if (not _is_priority) and (not shown_ad) and secs >= 12:
+                            shown_ad = True
+                            try:
+                                await wait_msg.edit_text(
+                                    t(context, 'queued_promo') + _narx_q,
+                                    reply_markup=_promo_kb, parse_mode="HTML"
+                                )
+                            except Exception:
+                                pass
+                            continue  # reklama bir tsikl turadi
                         msg_step = steps[i % len(steps)]
                         i += 1
                         try:
                             await wait_msg.edit_text(f"{msg_step}\n⌛ {secs} soniya...")
                         except Exception:
-                            pass  # bir xil matn yoki tahrir xatosi - e'tibor bermaymiz
+                            pass
                 except asyncio.CancelledError:
                     pass
 
             progress_task = asyncio.create_task(_show_progress())
-            # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi,
-            # Pyrogram uzilmaydi, bir nechta odam bir vaqtda ishlatsa ham ishlaydi.
+            # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi.
             try:
                 tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt)
             finally:
                 _progress_stop.set()
                 progress_task.cancel()
+
+            # BEPUL: kamida 30 soniya "cho'zilsin" (tahlil tez tugasa ham kutadi).
+            if not _is_priority:
+                elapsed_so_far = (datetime.now() - _analiz_start).total_seconds()
+                if elapsed_so_far < 30:
+                    await asyncio.sleep(30 - elapsed_so_far)
 
             if not tahlil or not tahlil.strip():
                 raise Exception("Tahlil bo'sh keldi")
@@ -1944,6 +1955,42 @@ async def yoz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Yuborib bo'lmadi: {e}\n\n"
             f"Sabab: foydalanuvchi botni bloklagan yoki ID noto'g'ri bo'lishi mumkin."
         )
+
+
+async def berbalans_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID bo'yicha bepul tahlil (balans) qo'shadi.
+    Foydalanish: /berbalans <ID> <son>  (son yozilmasa - 1 ta)"""
+    if not is_admin(update.effective_user.id):
+        return
+    parts = (update.message.text or "").split()
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "✍️ Foydalanish: /berbalans <ID> <son>\n\n"
+            "Masalan:\n/berbalans 8431988310 1  (1 ta bepul tahlil)\n"
+            "/berbalans 8431988310 5  (5 ta bepul tahlil)"
+        )
+        return
+    try:
+        target_id = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    son = 1
+    if len(parts) >= 3:
+        try:
+            son = int(parts[2])
+        except ValueError:
+            son = 1
+    add_balance(target_id, son)
+    await update.message.reply_text(f"✅ {target_id} ga {son} ta bepul tahlil qo'shildi.")
+    # Foydalanuvchini xabardor qilamiz
+    try:
+        await context.bot.send_message(
+            target_id,
+            f"🎁 Sizga {son} ta BEPUL tahlil qo'shildi! 🎬\n\nVideo yuboring va sinab ko'ring!"
+        )
+    except Exception:
+        pass
 
 
 async def berobuna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2450,6 +2497,7 @@ def main():
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
+    app.add_handler(CommandHandler("berbalans", berbalans_command))
     app.add_handler(CommandHandler("yoz", yoz_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
