@@ -622,6 +622,9 @@ TEXTS = {
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
+        'menu_fikr': "💬 Fikr va takliflar",
+        'fikr_ask': "💬 Fikr yoki taklifingizni yozib qoldiring 👇\nBiz uchun har bir fikr muhim! 🙏",
+        'fikr_thanks': "Rahmat fikringiz uchun! ❤️🙏 Biz uni albatta ko'rib chiqamiz.",
         'menu_profile': "📊 Profil tahlili",
         'profile_instr': ("📊 PROFIL TAHLILI\n\n"
                           "Instagram profilingizni chuqur tahlil qilaman: kuchli va kuchsiz tomonlari, kontent va aniq tavsiyalar.\n\n"
@@ -757,6 +760,9 @@ TEXTS = {
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
+        'menu_fikr': "💬 Отзывы и предложения",
+        'fikr_ask': "💬 Напишите ваш отзыв или предложение 👇\nКаждое мнение важно для нас! 🙏",
+        'fikr_thanks': "Спасибо за отзыв! ❤️🙏 Мы обязательно его рассмотрим.",
         'menu_profile': "📊 Анализ профиля",
         'profile_instr': ("📊 АНАЛИЗ ПРОФИЛЯ\n\n"
                           "Глубоко проанализирую ваш Instagram-профиль: сильные и слабые стороны, контент и конкретные рекомендации.\n\n"
@@ -863,6 +869,7 @@ def main_keyboard(context):
             [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
             [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_ref'))],
             [KeyboardButton(t(context, 'menu_lang')), KeyboardButton(t(context, 'menu_help'))],
+            [KeyboardButton(t(context, 'menu_fikr'))],
         ],
         resize_keyboard=True
     )
@@ -1679,6 +1686,31 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(t(context, 'sorov_thanks'))
         return
+    # Menyu "Fikr va takliflar" rejimi - foydalanuvchi erkin fikr yozadi (bonussiz)
+    if context.user_data.get('mode') == 'fikr':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        fikr = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        # Bazaga saqlaymiz (javob2 bo'sh - bu menyu fikri)
+        try:
+            _db_execute(
+                "INSERT INTO sorov_javoblar (user_id, username, javob1, javob2, created) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (uid, uname, "(menyu fikri) " + fikr, "", datetime.now().strftime("%Y-%m-%d %H:%M"))
+            )
+        except Exception as e:
+            logger.warning(f"Menyu fikrini saqlashda xato: {e}")
+        # Guruhga yuboramiz
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                grp_txt = f"💬 YANGI FIKR (menyu)\n👤 {who}\n\n{fikr}"
+                await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
+            except Exception as e:
+                logger.warning(f"Menyu fikrini guruhga yuborishda xato: {e}")
+        await update.message.reply_text(t(context, 'fikr_thanks'))
+        return
     if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
         context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'send_video'))
@@ -1708,6 +1740,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
     elif text in (TEXTS['uz']['menu_help'], TEXTS['ru']['menu_help']):
         await update.message.reply_text(t(context, 'help_text'))
+    elif text in (TEXTS['uz']['menu_fikr'], TEXTS['ru']['menu_fikr']):
+        context.user_data['mode'] = 'fikr'
+        await update.message.reply_text(t(context, 'fikr_ask'))
     else:
         await update.message.reply_text(t(context, 'send_video'))
 
