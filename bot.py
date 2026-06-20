@@ -1434,8 +1434,13 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # bepul (hech to'lamagan) -> oddiy navbat (MAX_CONCURRENT bilan cheklangan).
         _is_priority = is_admin(user_id) or has_access(user_id) == 'sub' or has_paid_ever(user_id)
         _chosen_sem = _priority_semaphore if _is_priority else _video_semaphore
-        # Faqat bepul foydalanuvchilarga "navbatda" deb bildiramiz (pullik deyarli kutmaydi)
-        if (not _is_priority) and _video_semaphore.locked():
+        # "Navbatda" xabarini FAQAT haqiqatan barcha slot band bo'lsa ko'rsatamiz.
+        # getattr bilan _value ni o'qiymiz (bo'sh slotlar soni); 0 bo'lsa - hammasi band.
+        try:
+            _free_slots = _chosen_sem._value
+        except Exception:
+            _free_slots = 1
+        if _free_slots <= 0:
             await wait_msg.edit_text(t(context, 'queued'))
 
         async with _chosen_sem:
