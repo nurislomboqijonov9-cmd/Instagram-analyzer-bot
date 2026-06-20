@@ -38,7 +38,7 @@ ADMIN_ID = 7589459697
 # Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
 ADMIN_IDS = [7589459697, 5808245573, 356530813]
 # So'rov javoblari (fikrlar) yuboriladigan guruh ID (Railway'dan ham o'zgartirish mumkin)
-FIKR_GROUP_ID = os.getenv("FIKR_GROUP_ID", "-5433441380")
+FIKR_GROUP_ID = os.getenv("FIKR_GROUP_ID", "-1003784847158")
 
 
 def is_admin(user_id):
@@ -1720,12 +1720,6 @@ async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
 
 
-async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Joriy chat ID sini ko'rsatadi (guruhda yozilsa - guruh ID)."""
-    chat = update.effective_chat
-    await update.message.reply_text(f"🆔 Chat ID: {chat.id}\nTuri: {chat.type}\nNomi: {chat.title or '-'}")
-
-
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -2151,7 +2145,6 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
-    app.add_handler(CommandHandler("id", id_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
