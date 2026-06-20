@@ -148,7 +148,9 @@ def init_db():
                                  ("ref_credited", "BOOLEAN DEFAULT FALSE"),
                                  ("ref_reward_given", "BOOLEAN DEFAULT FALSE"),
                                  ("aksiya_given", "BOOLEAN DEFAULT FALSE"),
-                                 ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE")]:
+                                 ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sorov_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sorov_reward", "BOOLEAN DEFAULT FALSE")]:
                     cur.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col} {typ}")
                 # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
                 for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
@@ -581,6 +583,15 @@ TEXTS = {
                              "Bu atigi oyiga 29 900 so'm — kuniga 1 000 so'mdan ham kam, "
                              "shaxsiy AI-prodyuseringiz uchun! 💎"),
         'obuna_taklif_btn': "💎 Obunani faollashtirish",
+        'sorov_msg': ("🙏 Bir daqiqa vaqtingizni ajrating!\n\n"
+                      "🎉 Bizga allaqachon {n} dan ortiq foydalanuvchi qo'shildi!\n\n"
+                      "Botimiz sizga foydali bo'ldimi? Fikringiz biz uchun juda muhim."),
+        'sorov_yes': "👍 Ha, foydali",
+        'sorov_no': "👎 Yo'q",
+        'sorov_ask_yes': "Zo'r! 😊 Aytingchi, botimizning nimasi sizga yoqdi? Fikringizni yozib qoldiring 👇",
+        'sorov_ask_no': "Afsus 🙏 Nega yoqmadi yoki nimasi yetishmadi? Iltimos, yozib qoldiring — biz yaxshilaymiz 👇",
+        'sorov_thanks_reward': "Rahmat fikringiz uchun! 🎁 Sizga 1 ta BEPUL tahlil qo'shdik. Video yuboring! 🎬",
+        'sorov_thanks': "Rahmat fikringiz uchun! 🙏",
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
@@ -697,6 +708,15 @@ TEXTS = {
                              "Это всего 29 900 сумов в месяц — меньше 1 000 сумов в день "
                              "за личного AI-продюсера! 💎"),
         'obuna_taklif_btn': "💎 Активировать подписку",
+        'sorov_msg': ("🙏 Уделите минуту!\n\n"
+                      "🎉 К нам уже присоединилось более {n} пользователей!\n\n"
+                      "Был ли наш бот полезен для вас? Ваше мнение очень важно для нас."),
+        'sorov_yes': "👍 Да, полезен",
+        'sorov_no': "👎 Нет",
+        'sorov_ask_yes': "Отлично! 😊 Расскажите, что именно вам понравилось в боте? Напишите ниже 👇",
+        'sorov_ask_no': "Жаль 🙏 Почему не понравилось или чего не хватило? Пожалуйста, напишите — мы улучшим 👇",
+        'sorov_thanks_reward': "Спасибо за отзыв! 🎁 Мы добавили вам 1 БЕСПЛАТНЫЙ анализ. Отправьте видео! 🎬",
+        'sorov_thanks': "Спасибо за отзыв! 🙏",
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
@@ -900,6 +920,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
         )
+    elif data in ('sorov_yes', 'sorov_no'):
+        # So'rovga javob berdi - endi sababini so'raymiz
+        context.user_data['sorov_answer'] = 'Ha' if data == 'sorov_yes' else "Yo'q"
+        context.user_data['mode'] = 'sorov_sabab'
+        if data == 'sorov_yes':
+            await query.message.reply_text(t(context, 'sorov_ask_yes'))
+        else:
+            await query.message.reply_text(t(context, 'sorov_ask_no'))
     elif data.startswith('full_'):
         try:
             aid = int(data.split('_', 1)[1])
@@ -1551,6 +1579,32 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    # So'rov sababini kutyapmizmi?
+    if context.user_data.get('mode') == 'sorov_sabab':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        answer = context.user_data.get('sorov_answer', '?')
+        sabab = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        # Adminlarga javobni yuboramiz
+        emoji = "👍" if answer == "Ha" else "👎"
+        report = f"📝 SO'ROV JAVOBI\n👤 @{uname} (ID: {uid})\n{emoji} {answer}\n💬 {sabab}"
+        for _aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(_aid, report)
+            except Exception:
+                pass
+        # Ha desa 10 harf, Yo'q desa 15 harfdan ko'p yozsa - 1 ta bepul (faqat 1 marta)
+        row = _db_execute("SELECT COALESCE(sorov_reward, FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        already = row[0] if row else False
+        min_len = 10 if answer == "Ha" else 15
+        if len(sabab) > min_len and not already:
+            add_balance(uid, 1)
+            _db_execute("UPDATE users SET sorov_reward = TRUE WHERE user_id = %s", (uid,))
+            await update.message.reply_text(t(context, 'sorov_thanks_reward'))
+        else:
+            await update.message.reply_text(t(context, 'sorov_thanks'))
+        return
     if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
         context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'send_video'))
@@ -1754,6 +1808,50 @@ async def avto_aksiya_ochir_command(update: Update, context: ContextTypes.DEFAUL
     )
 
 
+async def sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: video tahlil qilgan hamma foydalanuvchiga so'rov yuboradi (Ha/Yo'q + sabab).
+    Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT DISTINCT u.user_id FROM users u "
+        "JOIN analyses a ON a.user_id = u.user_id AND a.kind = 'video' "
+        "WHERE COALESCE(u.sorov_given, FALSE) = FALSE",
+        fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 So'rov yuboriladigan foydalanuvchi yo'q (hammasi olgan).")
+        return
+    await update.message.reply_text(f"📊 So'rov boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+
+    # Foydalanuvchilar sonini yuzlikka yumaloqlab "2500+" ko'rinishida ko'rsatamiz
+    total_users = (_db_execute("SELECT COUNT(*) FROM users", fetch='one') or [0])[0]
+    rounded = (total_users // 100) * 100  # 2547 -> 2500
+    if rounded < 100:
+        rounded = total_users
+    count_str = f"{rounded:,}"
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['sorov_yes'], callback_data="sorov_yes"),
+                InlineKeyboardButton(TEXTS['uz']['sorov_no'], callback_data="sorov_no"),
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['sorov_msg'].format(n=count_str), reply_markup=kb)
+            _db_execute("UPDATE users SET sorov_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"So'rov yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+
+    await update.message.reply_text(
+        f"✅ So'rov tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed} (bloklagan yoki botni o'chirgan)"
+    )
+
+
 async def obunachilar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: faol obunachilar ro'yxati (kim, qachongacha)."""
     if not is_admin(update.effective_user.id):
@@ -1921,6 +2019,7 @@ def main():
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
+    app.add_handler(CommandHandler("sorov", sorov_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
     app.add_handler(CommandHandler("avto_aksiya_ochir", avto_aksiya_ochir_command))
     app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
