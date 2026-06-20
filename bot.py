@@ -666,7 +666,9 @@ TEXTS = {
                       "⏳ Shoshiling — bu narx atigi <b>24 soat!</b> Keyin yana ko'tariladi.\n\n"
                       "Bitta REKka chiqqan video bu pulni qoplaydi! 🚀\n\n"
                       "👇 Hoziroq faollashtiring — imkoniyatni boy bermang!"),
-        'fikr_ask': "💬 Fikr yoki taklifingizni yozib qoldiring 👇\nBiz uchun har bir fikr muhim! 🙏",
+        'fikr_ask': ("💬 Fikr yoki taklifingizni yozib qoldiring 👇\n"
+                     "Biz uchun har bir fikr muhim! 🙏\n\n"
+                     "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nur_04yyy"),
         'fikr_thanks': "Rahmat fikringiz uchun! ❤️🙏 Biz uni albatta ko'rib chiqamiz.",
         'menu_profile': "📊 Profil tahlili",
         'profile_instr': ("📊 PROFIL TAHLILI\n\n"
@@ -711,7 +713,8 @@ TEXTS = {
                       "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
-                      "📏 Video 2GB dan kichik bo'lsin."),
+                      "📏 Video 2GB dan kichik bo'lsin.\n\n"
+                      "📩 Kamchiliklar yoki takliflar bo'yicha: @Nur_04yyy"),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
         'queued': "⏳ Hozir navbat bandroq, videongiz navbatga qo'yildi. Bir oz kuting... 🕐",
@@ -824,7 +827,9 @@ TEXTS = {
                       "⏳ Торопитесь — цена только <b>24 часа!</b> Потом снова поднимется.\n\n"
                       "Одно видео в РЕК окупит эту сумму! 🚀\n\n"
                       "👇 Активируйте сейчас — не упустите шанс!"),
-        'fikr_ask': "💬 Напишите ваш отзыв или предложение 👇\nКаждое мнение важно для нас! 🙏",
+        'fikr_ask': ("💬 Напишите ваш отзыв или предложение 👇\n"
+                     "Каждое мнение важно для нас! 🙏\n\n"
+                     "📩 Или напишите напрямую: @Nur_04yyy"),
         'fikr_thanks': "Спасибо за отзыв! ❤️🙏 Мы обязательно его рассмотрим.",
         'menu_profile': "📊 Анализ профиля",
         'profile_instr': ("📊 АНАЛИЗ ПРОФИЛЯ\n\n"
@@ -868,7 +873,8 @@ TEXTS = {
                       "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
                       "💰 Мой баланс — сколько анализов осталось.\n\n"
                       "🌐 Язык — сменить язык.\n\n"
-                      "📏 Видео должно быть меньше 2ГБ."),
+                      "📏 Видео должно быть меньше 2ГБ.\n\n"
+                      "📩 По вопросам и предложениям: @Nur_04yyy"),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
         'queued': "⏳ Сейчас очередь занята, ваше видео в очереди. Немного подождите... 🕐",
