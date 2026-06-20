@@ -664,7 +664,7 @@ TEXTS = {
                       "👇 Hoziroq faollashtiring — imkoniyatni boy bermang!"),
         'fikr_ask': ("💬 Fikr yoki taklifingizni yozib qoldiring 👇\n"
                      "Biz uchun har bir fikr muhim! 🙏\n\n"
-                     "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nur_04yyy"),
+                     "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nur_04y"),
         'fikr_thanks': "Rahmat fikringiz uchun! ❤️🙏 Biz uni albatta ko'rib chiqamiz.",
         'menu_profile': "📊 Profil tahlili",
         'profile_instr': ("📊 PROFIL TAHLILI\n\n"
@@ -710,7 +710,7 @@ TEXTS = {
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
                       "📏 Video 2GB dan kichik bo'lsin.\n\n"
-                      "📩 Kamchiliklar yoki takliflar bo'yicha: @Nur_04yyy"),
+                      "📩 Kamchiliklar yoki takliflar bo'yicha: @Nur_04y"),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
         'free_wait_promo': ("⏳ Bepul tahlil navbati... {sec} soniya kuting.\n\n"
@@ -839,7 +839,7 @@ TEXTS = {
                       "👇 Активируйте сейчас — не упустите шанс!"),
         'fikr_ask': ("💬 Напишите ваш отзыв или предложение 👇\n"
                      "Каждое мнение важно для нас! 🙏\n\n"
-                     "📩 Или напишите напрямую: @Nur_04yyy"),
+                     "📩 Или напишите напрямую: @Nur_04y"),
         'fikr_thanks': "Спасибо за отзыв! ❤️🙏 Мы обязательно его рассмотрим.",
         'menu_profile': "📊 Анализ профиля",
         'profile_instr': ("📊 АНАЛИЗ ПРОФИЛЯ\n\n"
@@ -884,7 +884,7 @@ TEXTS = {
                       "💰 Мой баланс — сколько анализов осталось.\n\n"
                       "🌐 Язык — сменить язык.\n\n"
                       "📏 Видео должно быть меньше 2ГБ.\n\n"
-                      "📩 По вопросам и предложениям: @Nur_04yyy"),
+                      "📩 По вопросам и предложениям: @Nur_04y"),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
         'free_wait_promo': ("⏳ Очередь бесплатного анализа... подождите {sec} сек.\n\n"
