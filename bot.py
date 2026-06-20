@@ -287,6 +287,33 @@ def auto_aksiya_on():
     return get_setting("auto_aksiya", "off") == "on"
 
 
+SUB_PRICE_DISCOUNT = 19900  # Chegirma narxi
+
+def discount_active():
+    """Chegirma faolmi? (yoqilgan va 24 soat o'tmagan)"""
+    until = get_setting("chegirma_until", "")
+    if not until:
+        return False
+    try:
+        until_dt = datetime.strptime(until, "%Y-%m-%d %H:%M:%S")
+        return datetime.now() < until_dt
+    except Exception:
+        return False
+
+
+def current_sub_price():
+    """Obunaning joriy narxi (chegirma faol bo'lsa - chegirma narxi)."""
+    return SUB_PRICE_DISCOUNT if discount_active() else SUB_PRICE
+
+
+def get_sotuv_msg():
+    """Sotuv xabari matni: agar admin o'zgartirgan bo'lsa - o'sha, aks holda koddagi default."""
+    custom = get_setting("sotuv_matn", "")
+    if custom:
+        return custom
+    return TEXTS['uz']['sotuv_msg']
+
+
 def grant_auto_aksiya(user_id):
     """1 ta bepulni ishlatib, balansi tugagan, aksiyani hali olmagan userga
     avtomatik +2 beradi va xabar yuborish kerakligini bildiradi (True).
@@ -623,6 +650,21 @@ TEXTS = {
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
         'menu_fikr': "💬 Fikr va takliflar",
+        'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
+                      "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
+                      "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
+                      "💎 PREMIUM tarifda nimalarga ega bo'lasiz?\n\n"
+                      "⚡ <b>Maksimal tezlik</b> — navbatsiz, soniyalarda tahlil\n"
+                      "♾ <b>Cheksiz tahlil</b> — kuniga xohlagancha video\n"
+                      "🗣 <b>Audio</b> — tahlilni ovozli eshitish\n"
+                      "📈 <b>Yashirin trendlar</b> — algoritm yangiliklari birinchi sizga\n\n"
+                      "🔥 FAQAT BUGUN — MAXSUS CHEGIRMA!\n"
+                      "Hozirgi narx: <s>29 900 so'm</s>\n"
+                      "Faqat bugun: <b>19 900 so'm/oy</b> 🎉\n"
+                      "(Kuniga atigi 650 so'm! ☕️ bir choydan ham arzon)\n\n"
+                      "⏳ Shoshiling — bu narx atigi <b>24 soat!</b> Keyin yana ko'tariladi.\n\n"
+                      "Bitta REKka chiqqan video bu pulni qoplaydi! 🚀\n\n"
+                      "👇 Hoziroq faollashtiring — imkoniyatni boy bermang!"),
         'fikr_ask': "💬 Fikr yoki taklifingizni yozib qoldiring 👇\nBiz uchun har bir fikr muhim! 🙏",
         'fikr_thanks': "Rahmat fikringiz uchun! ❤️🙏 Biz uni albatta ko'rib chiqamiz.",
         'menu_profile': "📊 Profil tahlili",
@@ -761,6 +803,21 @@ TEXTS = {
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
         'menu_fikr': "💬 Отзывы и предложения",
+        'sotuv_msg': ("Знаете, почему некоторые блогеры всегда в ТОПе? 🤔\n\n"
+                      "Потому что они исправляют недостатки видео перед публикацией. "
+                      "Но алгоритмы не стоят на месте — нужно анализировать каждый день и быть в тренде! 📊\n\n"
+                      "💎 Что вы получите в PREMIUM?\n\n"
+                      "⚡ <b>Максимальная скорость</b> — без очереди, анализ за секунды\n"
+                      "♾ <b>Безлимитный анализ</b> — сколько угодно видео в день\n"
+                      "🗣 <b>Аудио</b> — озвучка анализа\n"
+                      "📈 <b>Скрытые тренды</b> — новинки алгоритмов первыми для вас\n\n"
+                      "🔥 ТОЛЬКО СЕГОДНЯ — СКИДКА!\n"
+                      "Текущая цена: <s>29 900 сум</s>\n"
+                      "Только сегодня: <b>19 900 сум/мес</b> 🎉\n"
+                      "(Всего 650 сум в день! ☕️ дешевле чашки чая)\n\n"
+                      "⏳ Торопитесь — цена только <b>24 часа!</b> Потом снова поднимется.\n\n"
+                      "Одно видео в РЕК окупит эту сумму! 🚀\n\n"
+                      "👇 Активируйте сейчас — не упустите шанс!"),
         'fikr_ask': "💬 Напишите ваш отзыв или предложение 👇\nКаждое мнение важно для нас! 🙏",
         'fikr_thanks': "Спасибо за отзыв! ❤️🙏 Мы обязательно его рассмотрим.",
         'menu_profile': "📊 Анализ профиля",
@@ -940,7 +997,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 payload="sub_1month",
                 provider_token=PROVIDER_TOKEN,
                 currency="UZS",
-                prices=[LabeledPrice(t(context, 'inv_sub_title'), SUB_PRICE * 100)],
+                prices=[LabeledPrice(t(context, 'inv_sub_title'), current_sub_price() * 100)],
             )
         except Exception as e:
             logger.error(f"Invoice (sub) yuborishda xato: {e}")
@@ -1352,7 +1409,7 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
             new_until = activate_subscription(user.id, SUB_DAYS)
             await update.message.reply_text(t(context, 'pay_ok_sub').format(until=new_until))
             try:
-                create_payment(user.id, 'sub_1month', SUB_PRICE)
+                create_payment(user.id, 'sub_1month', current_sub_price())
             except Exception:
                 pass
             admin_txt = (f"💰 YANGI TO'LOV (Payme)\n👤 @{uname} (ID: {user.id})\n"
@@ -2080,6 +2137,96 @@ async def obuna_taklif_command(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
+async def sotuv_matn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: sotuv (chegirma) xabari matnini o'zgartiradi.
+    Foydalanish: /sotuv_matn keyin yangi matn (bitta xabarda)."""
+    if not is_admin(update.effective_user.id):
+        return
+    # Buyruqdan keyingi matnni olamiz
+    full = update.message.text or ""
+    parts = full.split(None, 1)
+    if len(parts) < 2 or not parts[1].strip():
+        await update.message.reply_text(
+            "✍️ Yangi sotuv matnini buyruq bilan birga yuboring.\n\n"
+            "Masalan:\n/sotuv_matn Bizning yangi taklif...\n\n"
+            "💡 Qalin uchun <b>matn</b>, chizilgan uchun <s>matn</s> ishlating.\n"
+            "Joriy matnni ko'rish: /sotuv_korish"
+        )
+        return
+    yangi = parts[1].strip()
+    set_setting("sotuv_matn", yangi)
+    await update.message.reply_text(
+        "✅ Sotuv matni yangilandi!\n\nKo'rish: /sotuv_korish\nYuborish: /chegirma"
+    )
+
+
+async def sotuv_korish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: joriy sotuv matnini ko'rsatadi (qanday ko'rinishini)."""
+    if not is_admin(update.effective_user.id):
+        return
+    msg = get_sotuv_msg()
+    try:
+        await update.message.reply_text("👁 Joriy sotuv matni:\n\n" + msg, parse_mode="HTML")
+    except Exception:
+        await update.message.reply_text("👁 Joriy sotuv matni (formatsiz):\n\n" + msg)
+
+
+async def sotuv_matn_tikla_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: sotuv matnini koddagi asl (default) holatiga qaytaradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("sotuv_matn", "")
+    await update.message.reply_text("♻️ Sotuv matni asl holatiga qaytarildi.")
+
+
+async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 24 soatlik chegirmani YOQADI (19 900) va sotuv xabarini obunasizlarga yuboradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    # Chegirmani 24 soatga yoqamiz
+    until_dt = datetime.now() + timedelta(hours=24)
+    set_setting("chegirma_until", until_dt.strftime("%Y-%m-%d %H:%M:%S"))
+    await update.message.reply_text(
+        f"🔥 Chegirma YOQILDI! (19 900 so'm)\n"
+        f"⏳ Tugash: {until_dt.strftime('%Y-%m-%d %H:%M')} (24 soat)\n"
+        f"Keyin avtomatik 29 900 ga qaytadi.\n\n"
+        f"📤 Sotuv xabari obunasizlarga yuborilmoqda..."
+    )
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Nishon: video tahlil qilgan, obunasi yo'q hamma
+    rows = _db_execute(
+        "SELECT DISTINCT u.user_id FROM users u "
+        "JOIN analyses a ON a.user_id = u.user_id AND a.kind = 'video' "
+        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s)",
+        (now,), fetch='all'
+    ) or []
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['obuna_taklif_btn'], callback_data="buy_sub")
+            ]])
+            await context.bot.send_message(uid, get_sotuv_msg(),
+                                           reply_markup=kb, parse_mode="HTML")
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Sotuv xabarini yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+    await update.message.reply_text(
+        f"✅ Sotuv xabari tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed}"
+    )
+
+
+async def chegirma_ochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: chegirmani qo'lda O'CHIRADI (29 900 ga qaytadi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("chegirma_until", "")
+    await update.message.reply_text("🛑 Chegirma o'chirildi. Narx 29 900 ga qaytdi.")
+
+
 async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Bugungi barcha tahlil qilingan videolarni ko'rsatadi (eng yangisi birinchi)."""
     if not is_admin(update.effective_user.id):
@@ -2190,6 +2337,11 @@ def main():
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
     app.add_handler(CommandHandler("avto_aksiya_ochir", avto_aksiya_ochir_command))
     app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
+    app.add_handler(CommandHandler("chegirma", chegirma_command))
+    app.add_handler(CommandHandler("sotuv_matn", sotuv_matn_command))
+    app.add_handler(CommandHandler("sotuv_korish", sotuv_korish_command))
+    app.add_handler(CommandHandler("sotuv_matn_tikla", sotuv_matn_tikla_command))
+    app.add_handler(CommandHandler("chegirma_ochir", chegirma_ochir_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("bugun", bugun_command))
     app.add_handler(CallbackQueryHandler(button_handler))
