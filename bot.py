@@ -715,6 +715,11 @@ TEXTS = {
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
         'queued': "⏳ Hozir navbat bandroq, videongiz navbatga qo'yildi. Bir oz kuting... 🕐",
+        'queued_promo': ("⏳ Ko'p kutishdan charchadingizmi?\n\n"
+                         "Instagram algoritmlari KUTIB TURMAYDI! ⚡ Har soniya muhim.\n\n"
+                         "💎 Premium bilan — navbatsiz, soniyalarda tahlil!\n"
+                         "Raqobatchilaringizdan oldinda bo'ling 🚀\n\n"
+                         "👇 Hoziroq obunani faollashtiring"),
         'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
@@ -867,6 +872,11 @@ TEXTS = {
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
         'queued': "⏳ Сейчас очередь занята, ваше видео в очереди. Немного подождите... 🕐",
+        'queued_promo': ("⏳ Устали долго ждать?\n\n"
+                         "Алгоритмы Instagram НЕ ЖДУТ! ⚡ Каждая секунда важна.\n\n"
+                         "💎 С Premium — без очереди, анализ за секунды!\n"
+                         "Будьте впереди конкурентов 🚀\n\n"
+                         "👇 Активируйте подписку сейчас"),
         'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
@@ -1523,7 +1533,23 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             _free_slots = 1
         if _free_slots <= 0:
-            await wait_msg.edit_text(t(context, 'queued'))
+            # Bepul foydalanuvchi navbatda kutyapti -> marketing (obunaga undash)
+            promo_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            # Narx qatori: chegirma faol bo'lsa 19 900 (650/kun), aks holda 29 900
+            if discount_active():
+                narx_qatori = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
+                               "Eski narx: <s>29 900 so'm</s>\n"
+                               "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
+                               "(Kuniga atigi 650 so'm! ☕️)")
+            else:
+                narx_qatori = ("\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan kam! ☕️")
+            try:
+                await wait_msg.edit_text(t(context, 'queued_promo') + narx_qatori,
+                                         reply_markup=promo_kb, parse_mode="HTML")
+            except Exception:
+                await wait_msg.edit_text(t(context, 'queued'))
 
         async with _chosen_sem:
             tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
