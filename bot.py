@@ -1206,7 +1206,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(f"✅ Tasdiqlandi! {target_user} ning obunasi {until} gacha faollashtirildi.")
 
 
-def _upload_and_wait(tmp_path, max_retries=2, max_wait=120):
+def _upload_and_wait(tmp_path, max_retries=3, max_wait=300):
     """Videoni Gemini'ga yuklaydi va ACTIVE bo'lguncha kutadi (qayta urinish bilan)."""
     last_error = None
     for attempt in range(max_retries):
@@ -1372,26 +1372,7 @@ def _gemini_process_images(image_paths, prompt):
 
 def _gemini_process(tmp_path, prompt):
     """BLOKLAYDIGAN to'liq Gemini ishi. Faqat alohida thread'da chaqiriladi
-    (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi.
-    Kichik video (<=20MB) -> INLINE (to'g'ridan, processing yo'q, TEZ).
-    Katta video (>20MB) -> File API (yuklash + processing)."""
-    try:
-        file_size = os.path.getsize(tmp_path)
-    except Exception:
-        file_size = 0
-
-    # Kichik video -> inline (eng tez, File API processing kutilmaydi)
-    if file_size and file_size <= 20 * 1024 * 1024 and genai_types is not None:
-        try:
-            with open(tmp_path, "rb") as f:
-                video_bytes = f.read()
-            part = genai_types.Part.from_bytes(data=video_bytes, mime_type="video/mp4")
-            return _generate([part, prompt])
-        except Exception as e:
-            logger.warning(f"Inline yo'l ishlamadi, File API'ga o'tamiz: {e}")
-            # Inline ishlamasa - File API zaxira
-
-    # Katta video (yoki inline ishlamadi) -> File API
+    (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi."""
     uploaded = None
     try:
         uploaded = _upload_and_wait(tmp_path)
@@ -1635,17 +1616,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             progress_task = asyncio.create_task(_show_progress())
             # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi,
             # Pyrogram uzilmaydi, bir nechta odam bir vaqtda ishlatsa ham ishlaydi.
-            # TIMEOUT: 180 soniyada javob bermasa - bekor (navbat sloti band qolmaydi).
             try:
-                tahlil = await asyncio.wait_for(
-                    asyncio.to_thread(_gemini_process, tmp_path, prompt),
-                    timeout=180
-                )
-            except asyncio.TimeoutError:
-                _progress_stop.set()
-                progress_task.cancel()
-                await wait_msg.edit_text(t(context, 'analysis_timeout'))
-                return
+                tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt)
             finally:
                 _progress_stop.set()
                 progress_task.cancel()
