@@ -597,15 +597,26 @@ TEXTS = {
                              "Bu atigi oyiga 29 900 so'm — kuniga 1 000 so'mdan ham kam, "
                              "shaxsiy AI-prodyuseringiz uchun! 💎"),
         'obuna_taklif_btn': "💎 Obunani faollashtirish",
-        'sorov_msg': ("🙏 Bir daqiqa vaqtingizni ajrating!\n\n"
-                      "🎉 Bizga allaqachon {n} dan ortiq foydalanuvchi qo'shildi!\n\n"
-                      "Botimiz sizga foydali bo'ldimi? Fikringiz biz uchun juda muhim."),
+        'sorov_msg': ("🆘 Yordamingiz kerak! Evaziga BONUS sovg'a qilamiz 🎁\n\n"
+                      "🎉 Qisqa vaqt ichida botimizdan foydalanuvchilar soni {n} tadan oshdi!\n\n"
+                      "Sizga yanada ko'proq foyda keltirishni va videolaringiz REKka chiqishiga "
+                      "yordam berishni xohlaymiz 🚀\n\n"
+                      "Fikringiz biz uchun juda muhim 🙏 Botimiz sizga foydali bo'ldimi?"),
         'sorov_yes': "👍 Ha, foydali",
         'sorov_no': "👎 Yo'q",
-        'sorov_ask_yes': "Zo'r! 😊 Aytingchi, botimizning nimasi sizga yoqdi? Fikringizni yozib qoldiring 👇",
-        'sorov_ask_no': "Afsus 🙏 Nega yoqmadi yoki nimasi yetishmadi? Iltimos, yozib qoldiring — biz yaxshilaymiz 👇",
-        'sorov_thanks_reward': "Rahmat fikringiz uchun! 🎁 Sizga 1 ta BEPUL tahlil qo'shdik. Video yuboring! 🎬",
-        'sorov_thanks': "Rahmat fikringiz uchun! 🙏",
+        'sorov_ask_yes': ("Zo'r! 😊 Botimizda sizga aynan nima yoqdi?\n"
+                          "(Masalan: tushuntirishlar, tezlik, aniqlik, ballar, audio...) ✨\n\n"
+                          "Fikringizni yozib qoldiring 👇"),
+        'sorov_ask_no': ("🙏 Iltimos, qisqa sababini yozing.\n\n"
+                         "Sizning fikringiz biz uchun juda muhim 💡 Yozib qoldiring 👇"),
+        'sorov_finish_btn': "✅ So'rovnomani yakunlash",
+        'sorov_own_btn': "✍️ O'z fikrimni yozaman",
+        'sorov_yes_b1': "🎯 Aniq tushuntirishlar",
+        'sorov_yes_b2': "⚡ Tezlik",
+        'sorov_yes_b3': "📊 Ballar va REK ehtimoli",
+        'sorov_yes_b4': "🗣 Audio (ovozli tahlil)",
+        'sorov_thanks_reward': "Katta rahmat fikringiz uchun! ❤️🎁 Balansingizga +1 ta BEPUL tahlil qo'shdik. Video yuboring! 🎬",
+        'sorov_thanks': "Katta rahmat fikringiz uchun! ❤️🙏",
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
         'menu_help': "ℹ️ Yordam",
@@ -725,15 +736,25 @@ TEXTS = {
                              "Это всего 29 900 сумов в месяц — меньше 1 000 сумов в день "
                              "за личного AI-продюсера! 💎"),
         'obuna_taklif_btn': "💎 Активировать подписку",
-        'sorov_msg': ("🙏 Уделите минуту!\n\n"
-                      "🎉 К нам уже присоединилось более {n} пользователей!\n\n"
-                      "Был ли наш бот полезен для вас? Ваше мнение очень важно для нас."),
+        'sorov_msg': ("🆘 Нам нужна ваша помощь! Взамен дарим БОНУС 🎁\n\n"
+                      "🎉 За короткое время число пользователей бота превысило {n}!\n\n"
+                      "Мы хотим приносить вам ещё больше пользы и помогать вашим видео выходить в РЕК 🚀\n\n"
+                      "Ваше мнение очень важно 🙏 Был ли наш бот полезен для вас?"),
         'sorov_yes': "👍 Да, полезен",
         'sorov_no': "👎 Нет",
-        'sorov_ask_yes': "Отлично! 😊 Расскажите, что именно вам понравилось в боте? Напишите ниже 👇",
-        'sorov_ask_no': "Жаль 🙏 Почему не понравилось или чего не хватило? Пожалуйста, напишите — мы улучшим 👇",
-        'sorov_thanks_reward': "Спасибо за отзыв! 🎁 Мы добавили вам 1 БЕСПЛАТНЫЙ анализ. Отправьте видео! 🎬",
-        'sorov_thanks': "Спасибо за отзыв! 🙏",
+        'sorov_ask_yes': ("Отлично! 😊 Что именно вам понравилось в боте?\n"
+                          "(Например: объяснения, скорость, точность, баллы, аудио...) ✨\n\n"
+                          "Напишите ниже 👇"),
+        'sorov_ask_no': ("🙏 Пожалуйста, напишите краткую причину.\n\n"
+                         "Ваше мнение очень важно для нас 💡 Напишите ниже 👇"),
+        'sorov_finish_btn': "✅ Завершить опрос",
+        'sorov_own_btn': "✍️ Напишу своё мнение",
+        'sorov_yes_b1': "🎯 Чёткие объяснения",
+        'sorov_yes_b2': "⚡ Скорость",
+        'sorov_yes_b3': "📊 Баллы и вероятность РЕК",
+        'sorov_yes_b4': "🗣 Аудио (озвучка)",
+        'sorov_thanks_reward': "Большое спасибо за отзыв! ❤️🎁 Мы добавили +1 БЕСПЛАТНЫЙ анализ. Отправьте видео! 🎬",
+        'sorov_thanks': "Большое спасибо за отзыв! ❤️🙏",
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
         'menu_help': "ℹ️ Помощь",
@@ -941,13 +962,80 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
         )
     elif data in ('sorov_yes', 'sorov_no'):
-        # So'rovga javob berdi - endi sababini so'raymiz
         context.user_data['sorov_answer'] = 'Ha' if data == 'sorov_yes' else "Yo'q"
-        context.user_data['mode'] = 'sorov_sabab'
         if data == 'sorov_yes':
-            await query.message.reply_text(t(context, 'sorov_ask_yes'))
+            # Ha -> tayyor sabab tugmalari + o'z fikri + yakunlash
+            context.user_data['mode'] = None
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(context, 'sorov_yes_b1'), callback_data="sorovr_tushuntirish")],
+                [InlineKeyboardButton(t(context, 'sorov_yes_b2'), callback_data="sorovr_tezlik")],
+                [InlineKeyboardButton(t(context, 'sorov_yes_b3'), callback_data="sorovr_ballar")],
+                [InlineKeyboardButton(t(context, 'sorov_yes_b4'), callback_data="sorovr_audio")],
+                [InlineKeyboardButton(t(context, 'sorov_own_btn'), callback_data="sorov_own")],
+                [InlineKeyboardButton(t(context, 'sorov_finish_btn'), callback_data="sorov_finish")],
+            ])
+            await query.message.reply_text(t(context, 'sorov_ask_yes'), reply_markup=kb)
         else:
-            await query.message.reply_text(t(context, 'sorov_ask_no'))
+            # Yo'q -> to'g'ridan sabab yozish (yoki yakunlash)
+            context.user_data['mode'] = 'sorov_sabab'
+            finish_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'sorov_finish_btn'), callback_data="sorov_finish")
+            ]])
+            await query.message.reply_text(t(context, 'sorov_ask_no'), reply_markup=finish_kb)
+    elif data == 'sorov_own':
+        # "O'z fikrimni yozaman" - matn kutamiz
+        context.user_data['mode'] = 'sorov_sabab'
+        finish_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t(context, 'sorov_finish_btn'), callback_data="sorov_finish")
+        ]])
+        await query.message.reply_text("✍️ Fikringizni yozib qoldiring 👇", reply_markup=finish_kb)
+    elif data.startswith('sorovr_'):
+        # Tayyor sabab tanlandi (Ha javobida) -> +1 bepul, adminga yuboramiz
+        context.user_data['mode'] = None
+        uid = query.from_user.id
+        tanlov_map = {
+            'sorovr_tushuntirish': 'Aniq tushuntirishlar',
+            'sorovr_tezlik': 'Tezlik',
+            'sorovr_ballar': 'Ballar va REK ehtimoli',
+            'sorovr_audio': 'Audio',
+        }
+        tanlov = tanlov_map.get(data, '?')
+        uname = query.from_user.username or query.from_user.first_name or ""
+        report = f"📝 SO'ROV JAVOBI\n👤 @{uname} (ID: {uid})\n👍 Ha\n💬 Yoqdi: {tanlov}"
+        for _aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(_aid, report)
+            except Exception:
+                pass
+        row = _db_execute("SELECT COALESCE(sorov_reward, FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        already = row[0] if row else False
+        if not already:
+            add_balance(uid, 1)
+            _db_execute("UPDATE users SET sorov_reward = TRUE WHERE user_id = %s", (uid,))
+            await query.message.reply_text(t(context, 'sorov_thanks_reward'))
+        else:
+            await query.message.reply_text(t(context, 'sorov_thanks'))
+    elif data == 'sorov_finish':
+        # Yozmasdan yakunladi - baribir +1 bepul (faqat 1 marta)
+        context.user_data['mode'] = None
+        uid = query.from_user.id
+        answer = context.user_data.get('sorov_answer', '?')
+        uname = query.from_user.username or query.from_user.first_name or ""
+        emoji = "👍" if answer == "Ha" else "👎"
+        report = f"📝 SO'ROV JAVOBI\n👤 @{uname} (ID: {uid})\n{emoji} {answer}\n💬 (fikr yozmadi)"
+        for _aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(_aid, report)
+            except Exception:
+                pass
+        row = _db_execute("SELECT COALESCE(sorov_reward, FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        already = row[0] if row else False
+        if not already:
+            add_balance(uid, 1)
+            _db_execute("UPDATE users SET sorov_reward = TRUE WHERE user_id = %s", (uid,))
+            await query.message.reply_text(t(context, 'sorov_thanks_reward'))
+        else:
+            await query.message.reply_text(t(context, 'sorov_thanks'))
     elif data.startswith('full_'):
         try:
             aid = int(data.split('_', 1)[1])
@@ -1636,11 +1724,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(_aid, report)
             except Exception:
                 pass
-        # Ha desa 10 harf, Yo'q desa 15 harfdan ko'p yozsa - 1 ta bepul (faqat 1 marta)
+        # Sabab yozgan har kimga 1 ta bepul (faqat 1 marta, uzunlik sharti yo'q).
+        # Bo'sh bo'lmasligi yetadi.
         row = _db_execute("SELECT COALESCE(sorov_reward, FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
         already = row[0] if row else False
-        min_len = 10 if answer == "Ha" else 15
-        if len(sabab) > min_len and not already:
+        if len(sabab) >= 1 and not already:
             add_balance(uid, 1)
             _db_execute("UPDATE users SET sorov_reward = TRUE WHERE user_id = %s", (uid,))
             await update.message.reply_text(t(context, 'sorov_thanks_reward'))
