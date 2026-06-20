@@ -25,13 +25,14 @@ API_HASH = os.getenv("API_HASH", "")
 # Maksimal qabul qilinadigan video hajmi (2GB). Kerak bo'lsa pasaytiring.
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
-# Pullik Gemini + kattaroq serverga o'tganda Railway'dan MAX_CONCURRENT ni oshiring.
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "10") or "10")
+# Pullik Gemini (Tier 1: ~1000 RPM) + kuchli server bilan MAX_CONCURRENT yuqori bo'lishi mumkin.
+# Railway Variables'dan MAX_CONCURRENT / PRIORITY_CONCURRENT ni xohlagancha oshirish mumkin.
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "60") or "60")
 # Navbat mexanizmi: bir vaqtda faqat MAX_CONCURRENT ta TEKIN tahlil ishlaydi.
 # Pullik (admin/obuna/to'lagan) uchun ALOHIDA kengroq navbat — ular tez xizmat oladi.
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 # Pullik foydalanuvchilar uchun alohida, kengroq slot (deyarli kutmaydi).
-PRIORITY_CONCURRENT = int(os.getenv("PRIORITY_CONCURRENT", "20") or "20")
+PRIORITY_CONCURRENT = int(os.getenv("PRIORITY_CONCURRENT", "100") or "100")
 _priority_semaphore = asyncio.Semaphore(PRIORITY_CONCURRENT)
 ADMIN_ID = 7589459697
 # Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
