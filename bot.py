@@ -37,6 +37,8 @@ _priority_semaphore = asyncio.Semaphore(PRIORITY_CONCURRENT)
 ADMIN_ID = 7589459697
 # Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
 ADMIN_IDS = [7589459697, 5808245573, 356530813]
+# So'rov javoblari (fikrlar) yuboriladigan guruh ID (Railway'dan ham o'zgartirish mumkin)
+FIKR_GROUP_ID = os.getenv("FIKR_GROUP_ID", "-5433441380")
 
 
 def is_admin(user_id):
@@ -1658,6 +1660,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logger.warning(f"So'rov javobini saqlashda xato: {e}")
+        # Fikrlar guruhiga ham yuboramiz (agar guruh ID sozlangan bo'lsa)
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                grp_txt = (f"📝 YANGI FIKR\n👤 {who}\n\n"
+                           f"1️⃣ Yoqdi: {a1}\n2️⃣ Taklif: {a2}")
+                await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
+            except Exception as e:
+                logger.warning(f"Fikrni guruhga yuborishda xato: {e}")
         # 2 savolga javob bergan har kimga 1 ta bepul (faqat 1 marta)
         row = _db_execute("SELECT COALESCE(sorov_reward, FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
         already = row[0] if row else False
