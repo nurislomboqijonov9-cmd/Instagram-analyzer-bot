@@ -640,6 +640,9 @@ TEXTS = {
         'pay_ok_one': "✅ To'lov qabul qilindi! Sizga +1 tahlil qo'shildi. Endi video yuboring! 🎉",
         'analyzed_footer': "\n\n━━━━━━━━━━\n🩺 Analizni AI ekspert InstaDoctor bajardi\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Ovoz tayyorlanmoqda... ⏳",
+        'tts_premium': ("🔒 Bu funksiya faqat PREMIUM obunachilar uchun!\n\n"
+                        "🔊 Audio (ovozli tahlil) — obuna afzalligi.\n"
+                        "💎 Obuna oling va barcha tahlillarni ovozli eshiting (va cheksiz tahlil qiling)!"),
         'tts_fail': "😔 Ovozni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.",
         'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
         'profil_info': "📊 Profil tahlili hozircha ishlamayapti — tez orada qo'shiladi! 🔜\n\nHozircha 🎬 Video tahlil xizmatidan foydalanishingiz mumkin.",
@@ -765,6 +768,9 @@ TEXTS = {
         'pay_ok_one': "✅ Оплата принята! Вам добавлен +1 анализ. Отправляйте видео! 🎉",
         'analyzed_footer': "\n\n━━━━━━━━━━\n🩺 Анализ выполнен ИИ экспертом InstaDoctor\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Готовлю озвучку... ⏳",
+        'tts_premium': ("🔒 Эта функция только для PREMIUM подписчиков!\n\n"
+                        "🔊 Аудио (озвучка анализа) — преимущество подписки.\n"
+                        "💎 Оформите подписку и слушайте все анализы голосом (и анализируйте без лимита)!"),
         'tts_fail': "😔 Не удалось озвучить. Попробуйте позже.",
         'full_gone': "❌ Полный анализ не найден (возможно, старый).",
         'profil_info': "📊 Анализ профиля пока не работает — скоро добавим! 🔜\n\nПока можете воспользоваться 🎬 Анализом видео.",
@@ -958,6 +964,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i in range(0, len(toliq), 4000):
                 await query.message.reply_text(toliq[i:i+4000])
     elif data.startswith('tts_'):
+        # Audio faqat PREMIUM (admin yoki obunachi) uchun
+        if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
+            premium_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            await query.message.reply_text(t(context, 'tts_premium'), reply_markup=premium_kb)
+            return
         try:
             aid = int(data.split('_', 1)[1])
         except Exception:
@@ -982,6 +995,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Audio yuborishda xato: {e}")
             await loading.edit_text(t(context, 'tts_fail'))
     elif data.startswith('ttsf_'):
+        # Audio faqat PREMIUM (admin yoki obunachi) uchun
+        if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
+            premium_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            await query.message.reply_text(t(context, 'tts_premium'), reply_markup=premium_kb)
+            return
         try:
             aid = int(data.split('_', 1)[1])
         except Exception:
