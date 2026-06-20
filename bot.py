@@ -26,9 +26,13 @@ API_HASH = os.getenv("API_HASH", "")
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
 # Pullik Gemini + kattaroq serverga o'tganda Railway'dan MAX_CONCURRENT ni oshiring.
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3") or "3")
-# Navbat mexanizmi: bir vaqtda faqat MAX_CONCURRENT ta tahlil ishlaydi
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "10") or "10")
+# Navbat mexanizmi: bir vaqtda faqat MAX_CONCURRENT ta TEKIN tahlil ishlaydi.
+# Pullik (admin/obuna/to'lagan) uchun ALOHIDA kengroq navbat — ular tez xizmat oladi.
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+# Pullik foydalanuvchilar uchun alohida, kengroq slot (deyarli kutmaydi).
+PRIORITY_CONCURRENT = int(os.getenv("PRIORITY_CONCURRENT", "20") or "20")
+_priority_semaphore = asyncio.Semaphore(PRIORITY_CONCURRENT)
 ADMIN_ID = 7589459697
 # Barcha adminlar (cheksiz tahlil, /top, tannarx hisoboti va h.k.)
 ADMIN_IDS = [7589459697, 5808245573, 356530813]
@@ -418,14 +422,23 @@ def get_today_all(limit=200):
     return rows or []
 
 
-def create_payment(user_id, package, amount):
+def create_payment(user_id, package, amount, status='approved'):
     row = _db_execute(
         "INSERT INTO payments (user_id, package, amount, status, created) "
-        "VALUES (%s, %s, %s, 'pending', %s) RETURNING id",
-        (user_id, package, amount, datetime.now().strftime("%Y-%m-%d %H:%M")),
+        "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+        (user_id, package, amount, status, datetime.now().strftime("%Y-%m-%d %H:%M")),
         fetch='one'
     )
     return row[0] if row else None
+
+
+def has_paid_ever(user_id):
+    """Foydalanuvchi biror marta haqiqiy to'lov qilganmi? (obuna yoki 1 martalik)"""
+    row = _db_execute(
+        "SELECT 1 FROM payments WHERE user_id = %s AND status = 'approved' LIMIT 1",
+        (user_id,), fetch='one'
+    )
+    return bool(row)
 
 
 def get_stats():
@@ -1397,12 +1410,15 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'too_big'))
             return
 
-        # Navbat: bir vaqtda faqat MAX_CONCURRENT ta tahlil ishlaydi.
-        # Hamma slot band bo'lsa, foydalanuvchiga "navbatda" deb bildiramiz.
-        if _video_semaphore.locked():
+        # Navbat: pullik (admin/obuna/to'lagan) -> tez (priority) navbat;
+        # bepul (hech to'lamagan) -> oddiy navbat (MAX_CONCURRENT bilan cheklangan).
+        _is_priority = is_admin(user_id) or has_access(user_id) == 'sub' or has_paid_ever(user_id)
+        _chosen_sem = _priority_semaphore if _is_priority else _video_semaphore
+        # Faqat bepul foydalanuvchilarga "navbatda" deb bildiramiz (pullik deyarli kutmaydi)
+        if (not _is_priority) and _video_semaphore.locked():
             await wait_msg.edit_text(t(context, 'queued'))
 
-        async with _video_semaphore:
+        async with _chosen_sem:
             tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
             is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
 
