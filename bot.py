@@ -593,30 +593,44 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 Оценка должна соответствовать реальному качеству. Процент реальный. Ты не обычный AI, а эксперт, глубоко знающий узбекский рынок Instagram — давай местные, конкретные, полезные советы."""
 
 
-PROMPT_PROFILE_UZ = """Sen Instagram bo'yicha tajribali, xolis ekspertsan. Senga foydalanuvchining Instagram profili va/yoki statistikasi (Insights) skrinshot(lar)i berildi. Ularni diqqat bilan ko'rib chiqib, professional va halol tahlil ber:
+PROMPT_PROFILE_UZ = """Sen Instagram bo'yicha tajribali, xolis ekspertsan. Senga foydalanuvchining Instagram profili va/yoki statistikasi (Insights) skrinshot(lar)i berildi.
 
+AVVAL TEKSHIR: Agar skrinshot(lar)dan profil MAVZUSINI (nima haqida ekanini) aniq tushuna olmasang (rasm xira, kam ma'lumot, bio yo'q, postlar ko'rinmaydi) — boshqa hech narsa yozma, FAQAT shu so'zni yoz: [MAVZU_KERAK]
+Agar mavzuni tushunsang — quyidagi to'liq tahlilni ber.
+
+OHANG: Sen ekspertsan, lekin sovuq emas — DO'STONA, ILIQ va RUHLANTIRUVCHI yoz. Kamchilikni ham aytsang, blogger tushkunlikka tushmasin, "shuni tuzatsang — zo'r bo'ladi!" deb motivatsiya olsin. LEKIN ortiqcha maqtov (paxta) QILMA. Halol ekspert bahosini iliq ohangda yetkaz.
+
+Tahlil formati:
 📊 UMUMIY TAASSUROT — profil haqida qisqacha.
 👤 BIO VA PROFIL — ism, bio, profil rasmi, havola: nimasi yaxshi, nimasi kam.
 🎯 KONTENT — postlar mavzusi, sifati, izchilligi.
 📈 ENGAGEMENT — layk, izoh, ko'rishlar bo'yicha baho (agar ko'rinsa).
 ✅ KUCHLI TOMONLAR — faqat real plyuslar.
-❌ KAMCHILIKLAR — barcha jiddiy minuslar, ochiq va halol.
+❌ KAMCHILIKLAR — barcha jiddiy minuslar, ochiq lekin samimiy.
 💡 TAVSIYALAR — 🚀 5 ta aniq, amaliy qadam.
+🇺🇿 O'ZBEK BOZORI — O'zbek auditoriyasi uchun 2-3 ta aniq maslahat.
 
-Faqat skrinshotda haqiqatan ko'ringan narsaga asoslan, ko'rinmaganini o'ylab topma. Do'st emas, ekspertsan — halol baho blogerni o'stiradi."""
+Faqat skrinshotda haqiqatan ko'ringan narsaga asoslan, ko'rinmaganini o'ylab topma."""
 
 
-PROMPT_PROFILE_RU = """Ты опытный, объективный эксперт по Instagram. Тебе дали скриншот(ы) профиля и/или статистики (Insights) пользователя. Внимательно изучи их и дай профессиональный, честный анализ:
+PROMPT_PROFILE_RU = """Ты опытный, объективный эксперт по Instagram. Тебе дали скриншот(ы) профиля и/или статистики (Insights) пользователя.
 
+СНАЧАЛА ПРОВЕРЬ: Если по скриншоту(ам) не можешь точно понять ТЕМУ профиля (о чём он) — изображение размытое, мало данных, нет био, не видно постов — не пиши больше ничего, напиши ТОЛЬКО это слово: [MAVZU_KERAK]
+Если тему понимаешь — дай полный анализ ниже.
+
+ТОН: Ты эксперт, но не холодный — пиши ДРУЖЕЛЮБНО, ТЕПЛО и ВДОХНОВЛЯЮЩЕ. Даже указывая на недостаток, подавай так, чтобы блогер не падал духом: "исправишь это — будет супер!". НО не льсти попусту. Честную оценку передавай в тёплом тоне.
+
+Формат анализа:
 📊 ОБЩЕЕ ВПЕЧАТЛЕНИЕ — кратко о профиле.
 👤 БИО И ПРОФИЛЬ — имя, био, аватар, ссылка: что хорошо, чего не хватает.
 🎯 КОНТЕНТ — тема, качество, регулярность постов.
 📈 ВОВЛЕЧЁННОСТЬ — оценка по лайкам, комментариям, просмотрам (если видно).
 ✅ СИЛЬНЫЕ СТОРОНЫ — только реальные плюсы.
-❌ НЕДОСТАТКИ — все серьёзные минусы, честно.
+❌ НЕДОСТАТКИ — все серьёзные минусы, честно но дружелюбно.
 💡 РЕКОМЕНДАЦИИ — 🚀 5 конкретных шагов.
+🇺🇿 УЗБЕКСКИЙ РЫНОК — 2-3 конкретных совета для узбекской аудитории.
 
-Опирайся только на то, что реально видно на скриншоте, не выдумывай. Ты не друг, ты эксперт — честная оценка помогает расти."""
+Опирайся только на то, что реально видно на скриншоте, не выдумывай."""
 
 TEXTS = {
     'uz': {
@@ -716,19 +730,28 @@ TEXTS = {
                      "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nurislom_admin"),
         'fikr_thanks': "Rahmat fikringiz uchun! ❤️🙏 Biz uni albatta ko'rib chiqamiz.",
         'menu_profile': "📊 Profil tahlili",
-        'profile_instr': ("📊 PROFIL TAHLILI\n\n"
-                          "Instagram profilingizni chuqur tahlil qilaman: kuchli va kuchsiz tomonlari, kontent va aniq tavsiyalar.\n\n"
-                          "📸 SKRINSHOT YO'LI (eng tez va aniq):\n"
-                          "1. Instagram'da profilingizni oching\n"
-                          "2. Profil sahifangiz skrinshotini oling (bio, postlar ko'rinsin)\n"
-                          "3. Bo'lsa, statistika (Insights) skrinshotlarini ham oling\n"
-                          "4. Skrinshot(lar)ni shu yerga yuboring\n"
-                          "5. Tugagach '✅ Tahlil qilish' tugmasini bosing\n\n"
-                          "💡 Qancha ko'p skrinshot — shuncha aniq natija.\n\n"
+        'profile_instr': ("📊 <b>PROFIL TAHLILI</b>\n\n"
+                          "Instagram profilingizni ekspert darajasida tahlil qilaman — "
+                          "kuchli/kuchsiz tomonlari, kontent strategiyasi va aniq tavsiyalar.\n\n"
+                          "📸 <b>Qaysi skrinshotlarni yuborasiz:</b>\n\n"
+                          "<b>1️⃣ Profil bosh sahifasi</b> (eng muhim!)\n"
+                          "Instagram'da profilingizni oching → ekran skrinshotini oling. "
+                          "Unda <b>bio, ism, follower soni va birinchi postlar</b> ko'rinsin.\n\n"
+                          "<b>2️⃣ Postlar to'ri (gallery)</b>\n"
+                          "Pastga tushib, postlaringiz to'rini (9-12 ta post) skrin oling — "
+                          "uslubingiz va mavzuingiz ko'rinsin.\n\n"
+                          "<b>3️⃣ Statistika (ixtiyoriy, lekin foydali)</b>\n"
+                          "Agar biznes akkaunt bo'lsa: <b>Insights / Statistika</b> sahifasini oching "
+                          "(qamrov, erishish, eng yaxshi vaqtlar) → skrin oling.\n\n"
+                          "✅ Skrinshot(lar)ni shu yerga yuboring → '✅ Tahlil qilish' tugmasini bosing.\n\n"
+                          "💡 Qancha aniq skrinshot — shuncha kuchli tahlil!\n\n"
                           "Boshlash uchun skrinshot yuboring 👇"),
         'profile_got': "✅ Rasm qabul qilindi ({n} ta).\n\nYana yuboring yoki tahlilni boshlang 👇",
         'profile_btn': "✅ Tahlil qilish",
         'profile_none': "❌ Avval profil skrinshotini yuboring.",
+        'profile_mavzu_ask': ("🤔 Skrinshotdan profil mavzusini aniq tushunolmadim.\n\n"
+                              "Iltimos, profilingiz qaysi mavzuda ekanini qisqacha yozing "
+                              "(masalan: fitnes, oshxona, biznes, go'zallik) 👇"),
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'full_btn': "📖 To'liq tahlilni ko'rish",
         'qisqa_btn': "🔙 Qisqa tahlilga qaytish",
@@ -754,6 +777,13 @@ TEXTS = {
         'tts_fail': "😔 Ovozni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.",
         'full_gone': "❌ To'liq tahlil topilmadi (eski bo'lishi mumkin).",
         'profil_info': "📊 Profil tahlili hozircha ishlamayapti — tez orada qo'shiladi! 🔜\n\nHozircha 🎬 Video tahlil xizmatidan foydalanishingiz mumkin.",
+        'profile_premium': ("🔒 <b>Profil tahlili — faqat PREMIUM uchun!</b>\n\n"
+                            "Premium bilan butun Instagram profilingizni chuqur tahlil qilamiz:\n"
+                            "👤 Bio va profil — nimasi yaxshi, nimasi kam\n"
+                            "🎨 Umumiy uslub va kontent\n"
+                            "📈 TOPga chiqish uchun aniq strategiya\n"
+                            "🇺🇿 O'zbek bozori uchun maslahatlar\n\n"
+                            "👇 Premiumga o'ting va profilingizni yangi bosqichga olib chiqing!"),
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
                       "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
@@ -937,19 +967,28 @@ TEXTS = {
                      "📩 Или напишите напрямую: @Nurislom_admin"),
         'fikr_thanks': "Спасибо за отзыв! ❤️🙏 Мы обязательно его рассмотрим.",
         'menu_profile': "📊 Анализ профиля",
-        'profile_instr': ("📊 АНАЛИЗ ПРОФИЛЯ\n\n"
-                          "Глубоко проанализирую ваш Instagram-профиль: сильные и слабые стороны, контент и конкретные рекомендации.\n\n"
-                          "📸 ЧЕРЕЗ СКРИНШОТ (быстро и точно):\n"
-                          "1. Откройте свой профиль в Instagram\n"
-                          "2. Сделайте скриншот страницы профиля (видны био, посты)\n"
-                          "3. Если есть — сделайте скриншоты статистики (Insights)\n"
-                          "4. Отправьте скриншот(ы) сюда\n"
-                          "5. После — нажмите '✅ Анализировать'\n\n"
-                          "💡 Чем больше скриншотов — тем точнее результат.\n\n"
-                          "Чтобы начать, отправьте скриншот 👇"),
+        'profile_instr': ("📊 <b>АНАЛИЗ ПРОФИЛЯ</b>\n\n"
+                          "Проанализирую ваш Instagram-профиль на экспертном уровне — "
+                          "сильные/слабые стороны, стратегия контента и конкретные рекомендации.\n\n"
+                          "📸 <b>Какие скриншоты прислать:</b>\n\n"
+                          "<b>1️⃣ Главная страница профиля</b> (самое важное!)\n"
+                          "Откройте свой профиль в Instagram → сделайте скриншот. "
+                          "Чтобы было видно <b>био, имя, число подписчиков и первые посты</b>.\n\n"
+                          "<b>2️⃣ Сетка постов (галерея)</b>\n"
+                          "Прокрутите вниз и сделайте скриншот сетки постов (9-12 штук) — "
+                          "чтобы был виден ваш стиль и тематика.\n\n"
+                          "<b>3️⃣ Статистика (по желанию, но полезно)</b>\n"
+                          "Если бизнес-аккаунт: откройте <b>Insights / Статистику</b> "
+                          "(охват, показы, лучшее время) → сделайте скриншот.\n\n"
+                          "✅ Отправьте скриншот(ы) сюда → нажмите '✅ Анализировать'.\n\n"
+                          "💡 Чем точнее скриншоты — тем сильнее анализ!\n\n"
+                          "Для начала отправьте скриншот 👇"),
         'profile_got': "✅ Изображение получено ({n} шт.).\n\nОтправьте ещё или начните анализ 👇",
         'profile_btn': "✅ Анализировать",
         'profile_none': "❌ Сначала отправьте скриншот профиля.",
+        'profile_mavzu_ask': ("🤔 Не смог точно понять тему профиля по скриншоту.\n\n"
+                              "Пожалуйста, кратко напишите, на какую тему ваш профиль "
+                              "(например: фитнес, кухня, бизнес, красота) 👇"),
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'full_btn': "📖 Посмотреть полный анализ",
         'qisqa_btn': "🔙 Вернуться к краткому",
@@ -975,6 +1014,13 @@ TEXTS = {
         'tts_fail': "😔 Не удалось озвучить. Попробуйте позже.",
         'full_gone': "❌ Полный анализ не найден (возможно, старый).",
         'profil_info': "📊 Анализ профиля пока не работает — скоро добавим! 🔜\n\nПока можете воспользоваться 🎬 Анализом видео.",
+        'profile_premium': ("🔒 <b>Анализ профиля — только для PREMIUM!</b>\n\n"
+                            "С Premium мы глубоко проанализируем весь ваш Instagram-профиль:\n"
+                            "👤 Био и профиль — что хорошо, что улучшить\n"
+                            "🎨 Общий стиль и контент\n"
+                            "📈 Точная стратегия выхода в ТОП\n"
+                            "🇺🇿 Советы для узбекского рынка\n\n"
+                            "👇 Перейдите на Premium и выведите профиль на новый уровень!"),
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
                       "🎬 Анализ видео — отправьте видео, я полностью его проанализирую.\n\n"
                       "💰 Мой баланс — сколько анализов осталось.\n\n"
@@ -1323,8 +1369,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not imgs:
             await query.message.reply_text(t(context, 'profile_none'))
             return
-        if get_balance(user_id) <= 0:
-            await query.message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
+        # Profil tahlil FAQAT PREMIUM (balansdan yechilmaydi)
+        if not (is_admin(user_id) or has_access(user_id) in ('admin', 'sub')):
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            await query.message.reply_text(t(context, 'profile_premium'), reply_markup=kb, parse_mode="HTML")
             return
         wait_msg = await query.message.reply_text(t(context, 'profile_analyzing'))
         tmp_paths = []
@@ -1337,17 +1387,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     tmp_paths.append(p)
 
                 prompt = PROMPT_PROFILE_RU if get_lang(context) == 'ru' else PROMPT_PROFILE_UZ
+                # Mavzu qo'lda berilgan bo'lsa - promptga qo'shamiz
+                mavzu = context.user_data.get('profile_mavzu')
+                if mavzu:
+                    prompt = prompt + f"\n\nFoydalanuvchi profil mavzusini aytdi: {mavzu}"
                 tahlil = await asyncio.to_thread(_gemini_process_images, tmp_paths, prompt)
 
                 if not tahlil or not tahlil.strip():
                     raise Exception("Profil tahlili bo'sh keldi")
 
+                # Gemini mavzuni tushunmagan bo'lsa - mavzu so'raymiz
+                if "[MAVZU_KERAK]" in tahlil and not mavzu:
+                    await wait_msg.delete()
+                    context.user_data['mode'] = 'profile_mavzu'
+                    await query.message.reply_text(t(context, 'profile_mavzu_ask'))
+                    return
+
                 await wait_msg.edit_text(t(context, 'ready'))
-                use_balance(user_id)       # balans faqat muvaffaqiyatda yechiladi
                 _uname = query.from_user.username or query.from_user.first_name or ""
                 save_analysis(user_id, username=_uname, kind="profile", toliq=tahlil)
                 context.user_data['mode'] = None
                 context.user_data['profile_imgs'] = []
+                context.user_data['profile_mavzu'] = None
 
                 if len(tahlil) <= 4000:
                     await query.message.reply_text(tahlil)
@@ -1985,6 +2046,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     # So'rov 1-savol javobini kutyapmizmi?
+    if context.user_data.get('mode') == 'profile_mavzu':
+        context.user_data['profile_mavzu'] = (text or "").strip()
+        context.user_data['mode'] = 'profile'
+        # Qayta tahlil - profile_analyze tugmasini ko'rsatamiz
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(t(context, 'profile_btn'), callback_data='profile_analyze')
+        ]])
+        await update.message.reply_text(
+            "✅ Rahmat! Endi tahlilni boshlaymiz 👇", reply_markup=kb
+        )
+        return
     if context.user_data.get('mode') == 'test_sorov_q1':
         context.user_data['test_sorov_a1'] = (text or "").strip()
         context.user_data['mode'] = 'test_sorov_q2'
@@ -2086,9 +2158,18 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'send_video'))
     elif text in (TEXTS['uz']['menu_profile'], TEXTS['ru']['menu_profile']):
-        # Profil tahlili hozircha vaqtincha o'chirilgan ("tez orada")
-        context.user_data['mode'] = None
-        await update.message.reply_text(t(context, 'profil_info'))
+        uid = update.effective_user.id
+        # Profil tahlili FAQAT PREMIUM (admin yoki obunachi) uchun
+        if is_admin(uid) or has_access(uid) in ('admin', 'sub'):
+            context.user_data['mode'] = 'profile'
+            context.user_data['profile_imgs'] = []
+            await update.message.reply_text(t(context, 'profile_instr'), parse_mode="HTML")
+        else:
+            # Bepul -> premium kerak
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            await update.message.reply_text(t(context, 'profile_premium'), reply_markup=kb, parse_mode="HTML")
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
         uid = update.effective_user.id
         access = has_access(uid)
