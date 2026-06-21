@@ -47,6 +47,9 @@ SUB_PRICE = 29900
 SUB_DAYS = 30
 # 1 martalik tahlil narxi (so'm)
 ONE_PRICE = 5090
+# Haftalik test paketi: 7 kun / 7000 so'm
+TEST_PRICE = 7000
+TEST_DAYS = 7
 
 # Yangi foydalanuvchiga beriladigan BEPUL tahlil soni
 FREE_TRIAL = 1
@@ -155,6 +158,7 @@ def init_db():
                                  ("ref_reward_given", "BOOLEAN DEFAULT FALSE"),
                                  ("aksiya_given", "BOOLEAN DEFAULT FALSE"),
                                  ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("test_taklif_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -640,6 +644,18 @@ TEXTS = {
                              "Bu atigi oyiga 29 900 so'm — kuniga 1 000 so'mdan ham kam, "
                              "shaxsiy AI-prodyuseringiz uchun! 💎"),
         'obuna_taklif_btn': "💎 Obunani faollashtirish",
+        'test_taklif_msg': ("Hali to'liq obunaga shoshilmayapsizmi? Tushunamiz! 😊\n"
+                            "Avval <b>kichik qadamdan</b> boshlang:\n\n"
+                            "⚡️ <b>7 KUNLIK PREMIUM — atigi 7 000 so'm</b>\n"
+                            "━━━━━━━━━━━━━\n"
+                            "🚀 <b>VIP TEZLIK</b> — navbatsiz tahlil\n"
+                            "🔍 <b>CHUQURROQ TAHLIL</b> — eng aniq baho\n"
+                            "♾ <b>CHEKSIZ video</b> — 7 kun limitsiz\n"
+                            "🎙 <b>OVOZLI MASLAHAT</b> + kuchli xeshteglar\n"
+                            "📈 <b>REK EHTIMOLI</b> — TOPga chiqish % larda\n"
+                            "━━━━━━━━━━━━━\n"
+                            "Bir hafta sinab ko'ring — yoqsa, to'liq obunaga o'tasiz! 🔥"),
+        'test_taklif_btn': "⚡ 7 kunlik Premium — faollashtirish",
         'sorov_msg': ("🆘 Yordamingiz kerak! Evaziga BONUS sovg'a qilamiz 🎁\n\n"
                       "🎉 Do'stlar, qisqa vaqt ichida botimizdan foydalanuvchilar soni {n} tadan oshdi!\n\n"
                       "Biz sizga yanada ko'proq foyda keltirishni va videolaringizni REKga "
@@ -832,6 +848,18 @@ TEXTS = {
                              "Это всего 29 900 сумов в месяц — меньше 1 000 сумов в день "
                              "за личного AI-продюсера! 💎"),
         'obuna_taklif_btn': "💎 Активировать подписку",
+        'test_taklif_msg': ("Ещё не готовы к полной подписке? Понимаем! 😊\n"
+                            "Начните с <b>малого шага</b>:\n\n"
+                            "⚡️ <b>7 ДНЕЙ PREMIUM — всего 7 000 сум</b>\n"
+                            "━━━━━━━━━━━━━\n"
+                            "🚀 <b>VIP СКОРОСТЬ</b> — без очереди\n"
+                            "🔍 <b>ГЛУБОКИЙ АНАЛИЗ</b> — точная оценка\n"
+                            "♾ <b>БЕЗЛИМИТ</b> — 7 дней без ограничений\n"
+                            "🎙 <b>АУДИО-СОВЕТЫ</b> + сильные хештеги\n"
+                            "📈 <b>ВЕРОЯТНОСТЬ РЕК</b> — выход в ТОП в %\n"
+                            "━━━━━━━━━━━━━\n"
+                            "Попробуйте неделю — понравится, перейдёте на полную! 🔥"),
+        'test_taklif_btn': "⚡ 7 дней Premium — активировать",
         'sorov_msg': ("🆘 Нам нужна ваша помощь! Взамен дарим БОНУС 🎁\n\n"
                       "🎉 Друзья, за короткое время число пользователей бота превысило {n}!\n\n"
                       "Мы хотим приносить вам ещё больше пользы и помогать вашим видео "
@@ -1088,6 +1116,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logger.error(f"Invoice (sub) yuborishda xato: {e}")
+            await query.message.reply_text(t(context, 'pay_unavailable'))
+    elif data == 'buy_test':
+        if not PROVIDER_TOKEN:
+            await query.message.reply_text(t(context, 'pay_unavailable'))
+            return
+        try:
+            await query.message.reply_text(t(context, 'pay_safety'))
+            await context.bot.send_invoice(
+                chat_id=query.from_user.id,
+                title="7 kunlik Premium",
+                description="7 kun davomida to'liq Premium: cheksiz tahlil, VIP tezlik, ovozli maslahatlar.",
+                payload="test_7day",
+                provider_token=PROVIDER_TOKEN,
+                currency="UZS",
+                prices=[LabeledPrice("7 kunlik Premium", TEST_PRICE * 100)],
+            )
+        except Exception as e:
+            logger.error(f"Invoice (test) yuborishda xato: {e}")
             await query.message.reply_text(t(context, 'pay_unavailable'))
     elif data == 'buy_one':
         if not PROVIDER_TOKEN:
@@ -1486,7 +1532,7 @@ async def precheckout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Payme pre-checkout: to'lovni tasdiqlaymiz (10 soniya ichida javob berish shart)."""
     q = update.pre_checkout_query
     try:
-        if q.invoice_payload in ("sub_1month", "one_1"):
+        if q.invoice_payload in ("sub_1month", "one_1", "test_7day"):
             await q.answer(ok=True)
         else:
             await q.answer(ok=False, error_message="Noma'lum to'lov. Qaytadan urinib ko'ring.")
@@ -1517,6 +1563,15 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
                 pass
             admin_txt = (f"💰 YANGI TO'LOV (Payme)\n👤 @{uname} (ID: {user.id})\n"
                          f"📦 1 oylik obuna\n💵 {paid_uzs:,} so'm\n✅ Obuna {new_until} gacha yoqildi")
+        elif payload == "test_7day":
+            new_until = activate_subscription(user.id, TEST_DAYS)
+            await update.message.reply_text(t(context, 'pay_ok_sub').format(until=new_until))
+            try:
+                create_payment(user.id, 'test_7day', TEST_PRICE)
+            except Exception:
+                pass
+            admin_txt = (f"💰 YANGI TO'LOV (Payme)\n👤 @{uname} (ID: {user.id})\n"
+                         f"📦 7 kunlik test Premium\n💵 {paid_uzs:,} so'm\n✅ Obuna {new_until} gacha yoqildi")
         elif payload == "one_1":
             add_balance(user.id, 1)
             await update.message.reply_text(t(context, 'pay_ok_one'))
@@ -2391,6 +2446,45 @@ async def obunachilar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(text[i:i+4000])
 
 
+async def test_taklif_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: balansi 0, obunasi yo'q hammaga 7 kunlik test paketi taklifini yuboradi.
+    Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id FROM users "
+        "WHERE COALESCE(balance,0) <= 0 "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(test_taklif_given, FALSE) = FALSE",
+        (now,), fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Test taklifi yuboriladigan foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(f"⚡ Test taklifi boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['test_taklif_btn'], callback_data="buy_test")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['test_taklif_msg'],
+                                           reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET test_taklif_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Test taklifini yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+
+    await update.message.reply_text(
+        f"✅ Test taklifi tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed} (bloklagan yoki botni o'chirgan)"
+    )
+
+
 async def obuna_taklif_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: +2 aksiyani ham ishlatib bo'lganlarga (balansi 0, obunasi yo'q) obuna taklifini yuboradi.
     Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
@@ -2644,6 +2738,7 @@ def main():
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
     app.add_handler(CommandHandler("avto_aksiya_ochir", avto_aksiya_ochir_command))
     app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
+    app.add_handler(CommandHandler("test_taklif", test_taklif_command))
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("sotuv_matn", sotuv_matn_command))
     app.add_handler(CommandHandler("sotuv_korish", sotuv_korish_command))
