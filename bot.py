@@ -731,6 +731,7 @@ TEXTS = {
         'profile_none': "❌ Avval profil skrinshotini yuboring.",
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'full_btn': "📖 To'liq tahlilni ko'rish",
+        'qisqa_btn': "🔙 Qisqa tahlilga qaytish",
         'tts_btn': "🔊 Qisqa eshitish",
         'tts_full_btn': "🔊 To'liq eshitish",
         'inv_sub_title': "InstaDoctor — 1 oylik obuna",
@@ -951,6 +952,7 @@ TEXTS = {
         'profile_none': "❌ Сначала отправьте скриншот профиля.",
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'full_btn': "📖 Посмотреть полный анализ",
+        'qisqa_btn': "🔙 Вернуться к краткому",
         'tts_btn': "🔊 Кратко голосом",
         'tts_full_btn': "🔊 Полностью голосом",
         'inv_sub_title': "InstaDoctor — подписка на 1 месяц",
@@ -1214,12 +1216,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(t(context, 'full_gone'))
             return
         # Oxiriga bot havolasini qo'shamiz (ulashsa - reklama)
-        toliq = toliq + t(context, 'analyzed_footer')
-        if len(toliq) <= 4000:
-            await query.message.reply_text(toliq)
+        toliq_text = toliq + t(context, 'analyzed_footer')
+        # Tugmalar: Qisqaga qaytish + audio
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")],
+            [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
+             InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+        ])
+        # O'SHA xabarni to'liqqa o'zgartiramiz (yangi xabar emas) - agar sig'sa
+        if len(toliq_text) <= 4000:
+            try:
+                await query.edit_message_text(toliq_text, reply_markup=kb)
+            except Exception:
+                await query.message.reply_text(toliq_text, reply_markup=kb)
         else:
-            for i in range(0, len(toliq), 4000):
-                await query.message.reply_text(toliq[i:i+4000])
+            # Juda uzun - edit qila olmaymiz, alohida yuboramiz
+            for i in range(0, len(toliq_text), 4000):
+                last = i + 4000 >= len(toliq_text)
+                await query.message.reply_text(toliq_text[i:i+4000], reply_markup=(kb if last else None))
+    elif data.startswith('qisqa_'):
+        # To'liqdan qisqaga qaytish - o'sha xabarni qisqa tahlilga o'zgartiramiz
+        try:
+            aid = int(data.split('_', 1)[1])
+        except Exception:
+            return
+        qisqa = get_qisqa_analysis(aid)
+        if not qisqa:
+            return
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
+            [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
+             InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+        ])
+        if len(qisqa) <= 4000:
+            try:
+                await query.edit_message_text(qisqa, reply_markup=kb)
+            except Exception:
+                await query.message.reply_text(qisqa, reply_markup=kb)
+        else:
+            await query.message.reply_text(qisqa, reply_markup=kb)
     elif data.startswith('tts_'):
         # Audio faqat PREMIUM (admin yoki obunachi) uchun
         if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
