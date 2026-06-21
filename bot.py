@@ -305,6 +305,12 @@ def current_sub_price():
     return SUB_PRICE_DISCOUNT if discount_active() else SUB_PRICE
 
 
+def sub_btn_label(context):
+    """Obuna tugmasi matni - joriy narx bilan (chegirma bo'lsa 19 900, aks holda 29 900)."""
+    narx = f"{current_sub_price():,}".replace(",", " ")
+    return t(context, 'sub_btn_price').format(narx=narx)
+
+
 def get_sotuv_msg():
     """Sotuv xabari matni: agar admin o'zgartirgan bo'lsa - o'sha, aks holda koddagi default."""
     custom = get_setting("sotuv_matn", "")
@@ -769,7 +775,8 @@ TEXTS = {
                       "Admin tekshirib, obunangizni faollashtiradi. ⏳"),
         'receipt_sent': "✅ Chekingiz adminga yuborildi. Tez orada tasdiqlanadi! ⏳",
         'approved': "🎉 To'lovingiz tasdiqlandi!\n✅ Obunangiz faol — {until} gacha.\nEndi cheksiz video tahlil qilishingiz mumkin! 🎬",
-        'sub_btn': "💳 Obuna sotib olish (30 kun / 29,900 so'm)",
+        'sub_btn': "💳 Obuna sotib olish",
+        'sub_btn_price': "💳 Obuna sotib olish (30 kun / {narx} so'm)",
         'one_btn': "🎬 1 ta tahlil (5,090 so'm)",
         'pay_instr_one': ("🎬 1 TA VIDEO TAHLIL\n\n"
                           "💰 Summa: {amount:,} so'm\n"
@@ -958,7 +965,8 @@ TEXTS = {
                       "Админ проверит и активирует подписку. ⏳"),
         'receipt_sent': "✅ Ваш чек отправлен админу. Скоро подтвердим! ⏳",
         'approved': "🎉 Оплата подтверждена!\n✅ Подписка активна — до {until}.\nТеперь безлимитный анализ видео! 🎬",
-        'sub_btn': "💳 Оформить подписку (30 дней / 29 900 сум)",
+        'sub_btn': "💳 Оформить подписку",
+        'sub_btn_price': "💳 Оформить подписку (30 дней / {narx} сум)",
         'one_btn': "🎬 1 анализ (5 090 сум)",
         'pay_instr_one': ("🎬 1 АНАЛИЗ ВИДЕО\n\n"
                           "💰 Сумма: {amount:,} сум\n"
@@ -1003,10 +1011,9 @@ def main_keyboard(context):
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
-            [KeyboardButton(t(context, 'menu_premium'))],
-            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_ref'))],
-            [KeyboardButton(t(context, 'menu_lang')), KeyboardButton(t(context, 'menu_help'))],
-            [KeyboardButton(t(context, 'menu_fikr'))],
+            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_premium'))],
+            [KeyboardButton(t(context, 'menu_ref')), KeyboardButton(t(context, 'menu_lang'))],
+            [KeyboardButton(t(context, 'menu_help')), KeyboardButton(t(context, 'menu_fikr'))],
         ],
         resize_keyboard=True
     )
@@ -1021,7 +1028,7 @@ def lang_keyboard():
 
 def package_keyboard(context):
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(t(context, 'sub_btn'), callback_data='buy_sub')],
+        [InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')],
         [InlineKeyboardButton(t(context, 'one_btn'), callback_data='buy_one')],
     ])
 
@@ -1964,7 +1971,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Premium taklifi + sotib olish tugmasi
             kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton(t(context, 'sub_btn'), callback_data='buy_sub')
+                InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')
             ]])
             # Chegirma faol bo'lsa - sotuv xabari, aks holda oddiy taklif
             if discount_active():
