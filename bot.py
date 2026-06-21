@@ -741,10 +741,13 @@ TEXTS = {
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
         'analyzing': "🧠 InstaDoctor tahlil qilmoqda... ⚡",
-        'time_upsell': ("⏱ Bu tahlil <b>{vaqt}</b> vaqt oldi.\n\n"
-                        "💎 Premium bilan bu SONIYALARDA bo'lardi! ⚡\n"
-                        "Navbatsiz, cheksiz tahlil + ovozli javob + eng kuchli heshteglar.\n\n"
-                        "👇 Premiumga o'ting — vaqtingizni tejang!"),
+        'time_upsell': ("💎 Bu — qisqacha bepul tahlil edi.\n\n"
+                        "Premium bilan SIZ quyidagilarni olasiz:\n"
+                        "🔍 Yanada CHUQURROQ va batafsil tahlil\n"
+                        "🗣 Ovozli javob — maslahatlarni eshitasiz\n"
+                        "🔥 Eng kuchli heshteglar va yashirin trendlar\n"
+                        "♾ Cheksiz tahlil — har kuni xohlagancha\n\n"
+                        "👇 Premiumga o'ting — to'liq imkoniyatdan foydalaning!"),
         'analyzing_live': "🧠 InstaDoctor AI videongizni tahlil qilmoqda",
         'ready': "✅ Tahlil tayyor!",
         'error': "😔 Kechirasiz, tahlil qilib bo'lmadi. Iltimos, videoni qayta yuboring. 🔄",
@@ -915,10 +918,13 @@ TEXTS = {
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
         'analyzing': "🧠 InstaDoctor анализирует... ⚡",
-        'time_upsell': ("⏱ Этот анализ занял <b>{vaqt}</b>.\n\n"
-                        "💎 С Premium это было бы за СЕКУНДЫ! ⚡\n"
-                        "Без очереди, безлимит + аудио-ответ + сильнейшие хештеги.\n\n"
-                        "👇 Перейдите на Premium — экономьте время!"),
+        'time_upsell': ("💎 Это был краткий бесплатный анализ.\n\n"
+                        "С Premium вы получите:\n"
+                        "🔍 Ещё более ГЛУБОКИЙ и подробный анализ\n"
+                        "🗣 Аудио-ответ — слушайте советы\n"
+                        "🔥 Сильнейшие хештеги и скрытые тренды\n"
+                        "♾ Безлимитный анализ — каждый день сколько хотите\n\n"
+                        "👇 Перейдите на Premium — раскройте все возможности!"),
         'analyzing_live': "🧠 InstaDoctor AI анализирует ваше видео",
         'ready': "✅ Анализ готов!",
         'error': "😔 Извините, не удалось проанализировать. Отправьте видео ещё раз. 🔄",
@@ -1770,25 +1776,18 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for idx, chunk in enumerate(parts):
                     await message.reply_text(chunk, reply_markup=(kb if idx == len(parts) - 1 else None))
 
-            # BEPULGA: tahlil necha vaqt oldi -> "Premium bilan soniyalarda bo'lardi" (undash)
+            # BEPULGA: chuqurroq tahlil uchun Premium undovi (vaqt haqida emas)
             if not _is_priority:
                 try:
-                    elapsed = int((datetime.now() - _analiz_start).total_seconds())
-                    daqiqa = elapsed // 60
-                    soniya = elapsed % 60
-                    if daqiqa >= 1:
-                        vaqt_str = f"{daqiqa} daqiqa {soniya} soniya"
-                    else:
-                        vaqt_str = f"{soniya} soniya"
                     upsell_kb = InlineKeyboardMarkup([[
                         InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
                     ]])
                     await message.reply_text(
-                        t(context, 'time_upsell').format(vaqt=vaqt_str),
+                        t(context, 'time_upsell'),
                         reply_markup=upsell_kb, parse_mode="HTML"
                     )
                 except Exception as e:
-                    logger.warning(f"Vaqt upsell yuborishda xato: {e}")
+                    logger.warning(f"Premium upsell yuborishda xato: {e}")
 
             # AVTOMATIK +2 AKSIYA: 1 ta bepulni ishlatib, balansi tugagan bo'lsa
             # (faqat avtomatik aksiya YOQILGAN bo'lsa). Har odam 1 marta.
