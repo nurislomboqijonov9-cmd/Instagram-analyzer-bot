@@ -313,7 +313,7 @@ def get_sotuv_msg():
 
 def grant_auto_aksiya(user_id):
     """1 ta bepulni ishlatib, balansi tugagan, aksiyani hali olmagan userga
-    avtomatik +2 beradi va xabar yuborish kerakligini bildiradi (True).
+    avtomatik +1 beradi va xabar yuborish kerakligini bildiradi (True).
     Faqat avtomatik aksiya YOQILGAN bo'lsa ishlaydi."""
     if is_admin(user_id):
         return False
@@ -328,7 +328,7 @@ def grant_auto_aksiya(user_id):
         (user_id, now), fetch='one'
     )
     if row:
-        add_balance(user_id, 2)
+        add_balance(user_id, 1)
         _db_execute("UPDATE users SET aksiya_given = TRUE WHERE user_id = %s", (user_id,))
         return True
     return False
@@ -614,10 +614,10 @@ TEXTS = {
         'cmp_down': "📉 Bu safar {now}% (oldingi videongiz {prev}% edi, {d}% ga pasaydi). Tavsiyalarga e'tibor bering! 💪",
         'cmp_same': "➡️ Bu video ham {now}% — oldingi darajada. Keyingi videoda yuqoriroq natijaga harakat qiling! 🚀",
         'menu_video': "🎬 Video tahlil",
-        'aksiya_msg': ("📣 Algoritmlarni yangiladik va sizga yana 2 ta bepul tahlil sovg'a qilamiz!\n\n"
+        'aksiya_msg': ("📣 Algoritmlarni yangiladik va sizga yana 1 ta bepul tahlil sovg'a qilamiz!\n\n"
                        "Salom! Bitta video — bu shunchaki sinov. Haqiqiy natija va topga chiqish "
                        "masofada, xatolar ustida ishlaganda ko'rinadi.\n\n"
-                       "Balansingizga yana 2 ta bepul imkoniyat qo'shdik 🎁\n\n"
+                       "Balansingizga yana 1 ta bepul imkoniyat qo'shdik 🎁\n\n"
                        "Oldingi tavsiyamizga qarab, videongizni xuki (boshlanishi) yoki yakunini "
                        "o'zgartirib, qaytadan yuklab ko'ring. Keling, videongizni ideal holatga keltiramiz! 🚀"),
         'obuna_taklif_msg': ("Sizning Reels'dagi salohiyatingiz juda katta! 🚀\n\n"
@@ -732,7 +732,7 @@ TEXTS = {
         'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
         'uploading': "📤 Video yuklanmoqda...",
-        'analyzing': "🧠 InstaDoctor AI tahlil qilmoqda (vizual + audio)... ⚡",
+        'analyzing': "🧠 InstaDoctor tahlil qilmoqda... ⚡",
         'time_upsell': ("⏱ Bu tahlil <b>{vaqt}</b> vaqt oldi.\n\n"
                         "💎 Premium bilan bu SONIYALARDA bo'lardi! ⚡\n"
                         "Navbatsiz, cheksiz tahlil + ovozli javob + eng kuchli heshteglar.\n\n"
@@ -790,10 +790,10 @@ TEXTS = {
         'cmp_down': "📉 Сейчас {now}% (прошлое видео было {prev}%, на {d}% ниже). Обратите внимание на рекомендации! 💪",
         'cmp_same': "➡️ Это видео тоже {now}% — на прежнем уровне. В следующем постарайтесь выше! 🚀",
         'menu_video': "🎬 Анализ видео",
-        'aksiya_msg': ("📣 Мы обновили алгоритмы и дарим тебе ещё 2 анализа бесплатно!\n\n"
+        'aksiya_msg': ("📣 Мы обновили алгоритмы и дарим тебе ещё 1 анализ бесплатно!\n\n"
                        "Привет! Одно видео — это только тест. Настоящий результат и выход в топ "
                        "видны на дистанции, при работе над ошибками.\n\n"
-                       "Мы начислили тебе ещё 2 бесплатных анализа 🎁\n\n"
+                       "Мы начислили тебе ещё 1 бесплатный анализ 🎁\n\n"
                        "Измени хук (начало) или концовку по нашей рекомендации и пришли видео снова. "
                        "Давай доведём твоё видео до идеала! 🚀"),
         'obuna_taklif_msg': ("Твой потенциал в Reels огромен! 🚀\n\n"
@@ -906,7 +906,7 @@ TEXTS = {
         'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
         'uploading': "📤 Видео загружается...",
-        'analyzing': "🧠 InstaDoctor AI анализирует (визуал + аудио)... ⚡",
+        'analyzing': "🧠 InstaDoctor анализирует... ⚡",
         'time_upsell': ("⏱ Этот анализ занял <b>{vaqt}</b>.\n\n"
                         "💎 С Premium это было бы за СЕКУНДЫ! ⚡\n"
                         "Без очереди, безлимит + аудио-ответ + сильнейшие хештеги.\n\n"
@@ -1318,24 +1318,33 @@ def _gemini_tts(text, max_chars=1500):
 # 1 million token narxi (dollar): kiruvchi $0.30, chiquvchi $2.50
 PRICE_IN_PER_TOKEN = 0.30 / 1_000_000
 PRICE_OUT_PER_TOKEN = 2.50 / 1_000_000
+# Flash-Lite narxi (arzon): kiruvchi $0.10, chiquvchi $0.40
+PRICE_IN_LITE = 0.10 / 1_000_000
+PRICE_OUT_LITE = 0.40 / 1_000_000
 # Dollar kursi (so'm) - Railway'dan o'zgartirsa bo'ladi
-USD_TO_UZS = float(os.getenv("USD_TO_UZS", "12600"))
-# Oxirgi so'rovning token sarfi (admin hisobotida ishlatiladi)
-_last_usage = {"prompt": 0, "output": 0, "total": 0}
+USD_TO_UZS = float(os.getenv("USD_TO_UZS", "12000"))
+# Oxirgi so'rovning token sarfi va modeli (admin hisobotida ishlatiladi)
+_last_usage = {"prompt": 0, "output": 0, "total": 0, "model": "gemini-2.5-flash"}
 
 
-def _cost_uzs(prompt_tokens, output_tokens):
-    """Token sonidan taxminiy tannarxni (so'm) hisoblaydi."""
-    usd = prompt_tokens * PRICE_IN_PER_TOKEN + output_tokens * PRICE_OUT_PER_TOKEN
-    return usd, usd * USD_TO_UZS
+def _cost_uzs(prompt_tokens, output_tokens, model="gemini-2.5-flash"):
+    """Token sonidan taxminiy tannarxni (so'm) hisoblaydi. VAT (~11%) ham qo'shiladi.
+    Flash-Lite uchun arzon narx ishlatiladi."""
+    if "lite" in model:
+        usd = prompt_tokens * PRICE_IN_LITE + output_tokens * PRICE_OUT_LITE
+    else:
+        usd = prompt_tokens * PRICE_IN_PER_TOKEN + output_tokens * PRICE_OUT_PER_TOKEN
+    usd_with_vat = usd * 1.11  # Google VAT (soliq) ~11%
+    return usd_with_vat, usd_with_vat * USD_TO_UZS
 
 
-def _generate(contents, max_retries=4):
-    """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan)."""
+def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
+    """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan).
+    model: 'gemini-2.5-flash' (sifatli, pullik) yoki 'gemini-2.5-flash-lite' (arzon, bepul)."""
     last_error = None
     for attempt in range(max_retries):
         try:
-            kwargs = {"model": "gemini-2.5-flash", "contents": contents}
+            kwargs = {"model": model, "contents": contents}
             if genai_types is not None:
                 try:
                     # temperature=0.3 -> javob barqarorroq (foiz har safar deyarli bir xil)
@@ -1351,9 +1360,15 @@ def _generate(contents, max_retries=4):
             try:
                 um = getattr(response, "usage_metadata", None)
                 if um is not None:
-                    _last_usage["prompt"] = getattr(um, "prompt_token_count", 0) or 0
-                    _last_usage["output"] = getattr(um, "candidates_token_count", 0) or 0
-                    _last_usage["total"] = getattr(um, "total_token_count", 0) or 0
+                    p_tok = getattr(um, "prompt_token_count", 0) or 0
+                    c_tok = getattr(um, "candidates_token_count", 0) or 0
+                    # MUHIM: Gemini 2.5 "thinking" (fikrlash) tokeni ham PUL oladi
+                    # (output narxida), lekin candidates_token_count ga kirmaydi.
+                    think_tok = getattr(um, "thoughts_token_count", 0) or 0
+                    _last_usage["prompt"] = p_tok
+                    _last_usage["output"] = c_tok + think_tok  # thinking ham output narxida
+                    _last_usage["total"] = getattr(um, "total_token_count", 0) or (p_tok + c_tok + think_tok)
+                    _last_usage["model"] = model
             except Exception:
                 pass
             text = _extract_text(response)
@@ -1367,9 +1382,9 @@ def _generate(contents, max_retries=4):
     raise last_error
 
 
-def _analyze(uploaded_file, prompt, max_retries=4):
+def _analyze(uploaded_file, prompt, max_retries=4, model="gemini-2.5-flash"):
     """Bitta video uchun tahlil."""
-    return _generate([uploaded_file, prompt], max_retries=max_retries)
+    return _generate([uploaded_file, prompt], max_retries=max_retries, model=model)
 
 
 def _gemini_process_images(image_paths, prompt):
@@ -1388,13 +1403,14 @@ def _gemini_process_images(image_paths, prompt):
                 pass
 
 
-def _gemini_process(tmp_path, prompt):
+def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     """BLOKLAYDIGAN to'liq Gemini ishi. Faqat alohida thread'da chaqiriladi
-    (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi."""
+    (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi.
+    model: bepul -> flash-lite (arzon), pullik -> flash (sifatli)."""
     uploaded = None
     try:
         uploaded = _upload_and_wait(tmp_path)
-        return _analyze(uploaded, prompt)
+        return _analyze(uploaded, prompt, model=model)
     finally:
         if uploaded is not None:
             try:
@@ -1588,10 +1604,13 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Tahlil boshlanish vaqti (tugagach "X daqiqa oldi" deyish uchun)
             _analiz_start = datetime.now()
 
+            # "Tahlil boshlanmoqda" faqat 3 soniya turadi, keyin sanoq boshlanadi
+            await asyncio.sleep(3)
+
             # Jonli progress mexanizmi
             _progress_stop = asyncio.Event()
 
-            # Bepul uchun reklama matni
+            # Bepul uchun reklama matni (progress o'rtasida ko'rsatiladi)
             if not _is_priority:
                 if discount_active():
                     _narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
@@ -1603,16 +1622,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 _promo_kb = InlineKeyboardMarkup([[
                     InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
                 ]])
-                # BEPUL oqim: 1) "Tahlil qilinmoqda" 12 soniya turadi
-                await asyncio.sleep(12)
-                # 2) keyin reklama chiqadi va 10 soniya turadi
-                try:
-                    await wait_msg.edit_text(t(context, 'queued_promo') + _narx_q,
-                                             reply_markup=_promo_kb, parse_mode="HTML")
-                except Exception:
-                    pass
-                await asyncio.sleep(10)
-                # 3) keyin progress boshlanadi (pastda)
 
             async def _show_progress():
                 steps = [
@@ -1624,35 +1633,51 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "✍️ Tavsiyalar tayyorlanmoqda...",
                 ]
                 i = 0
-                secs = 0
+                secs = 3  # 3 soniyadan boshlaymiz (analyzing tugagandan keyin)
+                shown_ad = False
                 try:
                     while not _progress_stop.is_set():
                         await asyncio.sleep(4)
                         if _progress_stop.is_set():
                             break
                         secs += 4
+                        # Sanoq HECH TO'XTAMAYDI - wait_msg'da doim yangilanadi
                         msg_step = steps[i % len(steps)]
                         i += 1
                         try:
                             await wait_msg.edit_text(f"{msg_step}\n⌛ {secs} soniya...")
                         except Exception:
                             pass
+                        # BEPUL: o'rtada (15s) reklama ALOHIDA xabar bo'lib keladi (SMS kabi),
+                        # bir marta. Sanoqqa xalal bermaydi (alohida xabar).
+                        if (not _is_priority) and (not shown_ad) and secs >= 15:
+                            shown_ad = True
+                            try:
+                                await message.reply_text(
+                                    t(context, 'queued_promo') + _narx_q,
+                                    reply_markup=_promo_kb, parse_mode="HTML"
+                                )
+                            except Exception:
+                                pass
                 except asyncio.CancelledError:
                     pass
 
             progress_task = asyncio.create_task(_show_progress())
+            # Model tanlash: pullik (admin/obuna/to'lagan) -> 2.5 Flash (sifatli);
+            # bepul -> 2.5 Flash-Lite (4-5 barobar arzon, sifat biroz pastroq).
+            _model = "gemini-2.5-flash" if _is_priority else "gemini-2.5-flash-lite"
             # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi.
             try:
-                tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt)
+                tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt, _model)
+                # BEPUL: tahlil tez tugasa ham, sanoq kamida 30 soniyagacha ketaveradi
+                # (kutish bo'ladi, lekin sanoq to'xtamaydi - progress hali ishlab turibdi).
+                if not _is_priority:
+                    elapsed = (datetime.now() - _analiz_start).total_seconds()
+                    if elapsed < 30:
+                        await asyncio.sleep(30 - elapsed)
             finally:
                 _progress_stop.set()
                 progress_task.cancel()
-
-            # BEPUL: kamida 30 soniya "cho'zilsin" (tahlil tez tugasa ham kutadi).
-            if not _is_priority:
-                elapsed_so_far = (datetime.now() - _analiz_start).total_seconds()
-                if elapsed_so_far < 30:
-                    await asyncio.sleep(30 - elapsed_so_far)
 
             if not tahlil or not tahlil.strip():
                 raise Exception("Tahlil bo'sh keldi")
@@ -1686,7 +1711,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 p_tok = _last_usage.get("prompt", 0)
                 o_tok = _last_usage.get("output", 0)
                 tot = _last_usage.get("total", 0) or (p_tok + o_tok)
-                usd, uzs = _cost_uzs(p_tok, o_tok)
+                usd, uzs = _cost_uzs(p_tok, o_tok, _last_usage.get("model", "gemini-2.5-flash"))
                 report = (
                     f"📊 Tannarx hisobi (video tahlil)\n"
                     f"👤 @{uname} (ID: {user_id})\n"
@@ -2065,8 +2090,8 @@ async def aksiya_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for row in rows:
         uid = row[0]
         try:
-            # +2 tahlil va belgilab qo'yamiz (takror bo'lmasin)
-            add_balance(uid, 2)
+            # +1 tahlil va belgilab qo'yamiz (takror bo'lmasin)
+            add_balance(uid, 1)
             _db_execute("UPDATE users SET aksiya_given = TRUE WHERE user_id = %s", (uid,))
             # Xabar + tugma (foydalanuvchi tilini bilmasak, uz default)
             kb = InlineKeyboardMarkup([[
