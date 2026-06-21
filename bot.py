@@ -162,7 +162,9 @@ def init_db():
                 # analyses jadvaliga yangi ustunlar (bor bo'lsa - tegmaydi)
                 for col, typ in [("username", "TEXT"), ("kind", "TEXT"),
                                  ("file_id", "TEXT"), ("foiz", "INTEGER DEFAULT 0"),
-                                 ("qisqa", "TEXT"), ("toliq", "TEXT")]:
+                                 ("qisqa", "TEXT"), ("toliq", "TEXT"),
+                                 ("tokens", "INTEGER DEFAULT 0"),
+                                 ("narx", "REAL DEFAULT 0")]:
                     cur.execute(f"ALTER TABLE analyses ADD COLUMN IF NOT EXISTS {col} {typ}")
         logger.info("PostgreSQL baza tayyor (jadvallar mavjud)")
     except Exception as e:
@@ -385,12 +387,12 @@ def consume_access(user_id):
     return None
 
 
-def save_analysis(user_id, username="", kind="video", file_id=None, foiz=0, qisqa=None, toliq=None):
+def save_analysis(user_id, username="", kind="video", file_id=None, foiz=0, qisqa=None, toliq=None, tokens=0, narx=0):
     """Tahlilni saqlaydi va yangi yozuv ID sini qaytaradi (To'liq tugmasi uchun)."""
     row = _db_execute(
-        "INSERT INTO analyses (user_id, username, kind, file_id, foiz, qisqa, toliq, created) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-        (user_id, username or "", kind, file_id, foiz, qisqa, toliq,
+        "INSERT INTO analyses (user_id, username, kind, file_id, foiz, qisqa, toliq, tokens, narx, created) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (user_id, username or "", kind, file_id, foiz, qisqa, toliq, tokens, narx,
          datetime.now().strftime("%Y-%m-%d %H:%M")),
         fetch='one'
     )
@@ -670,7 +672,7 @@ TEXTS = {
                       "👇 Hoziroq faollashtiring — imkoniyatni boy bermang!"),
         'fikr_ask': ("💬 Fikr yoki taklifingizni yozib qoldiring 👇\n"
                      "Biz uchun har bir fikr muhim! 🙏\n\n"
-                     "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nur_04y"),
+                     "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nurislom_admin"),
         'fikr_thanks': "Rahmat fikringiz uchun! ❤️🙏 Biz uni albatta ko'rib chiqamiz.",
         'menu_profile': "📊 Profil tahlili",
         'profile_instr': ("📊 PROFIL TAHLILI\n\n"
@@ -716,7 +718,7 @@ TEXTS = {
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
                       "📏 Video 2GB dan kichik bo'lsin.\n\n"
-                      "📩 Kamchiliklar yoki takliflar bo'yicha: @Nur_04y"),
+                      "📩 Kamchiliklar yoki takliflar bo'yicha: @Nurislom_admin"),
         'lang_changed': "✅ Til o'zgartirildi!",
         'received': "⏳ Video qabul qilindi! Tahlil boshlanmoqda... ⚡",
         'free_wait_promo': ("⏳ Bepul tahlil navbati... {sec} soniya kuting.\n\n"
@@ -845,7 +847,7 @@ TEXTS = {
                       "👇 Активируйте сейчас — не упустите шанс!"),
         'fikr_ask': ("💬 Напишите ваш отзыв или предложение 👇\n"
                      "Каждое мнение важно для нас! 🙏\n\n"
-                     "📩 Или напишите напрямую: @Nur_04y"),
+                     "📩 Или напишите напрямую: @Nurislom_admin"),
         'fikr_thanks': "Спасибо за отзыв! ❤️🙏 Мы обязательно его рассмотрим.",
         'menu_profile': "📊 Анализ профиля",
         'profile_instr': ("📊 АНАЛИЗ ПРОФИЛЯ\n\n"
@@ -890,7 +892,7 @@ TEXTS = {
                       "💰 Мой баланс — сколько анализов осталось.\n\n"
                       "🌐 Язык — сменить язык.\n\n"
                       "📏 Видео должно быть меньше 2ГБ.\n\n"
-                      "📩 По вопросам и предложениям: @Nur_04y"),
+                      "📩 По вопросам и предложениям: @Nurislom_admin"),
         'lang_changed': "✅ Язык изменён!",
         'received': "⏳ Видео получено! Начинаю анализ... ⚡",
         'free_wait_promo': ("⏳ Очередь бесплатного анализа... подождите {sec} сек.\n\n"
@@ -1711,15 +1713,19 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Oldingi video bilan taqqoslash (yangisini saqlashdan OLDIN olamiz)
             prev_foiz = get_last_video_foiz(user_id)
             uname = message.from_user.username or message.from_user.first_name or ""
+
+            # Token va tannarxni hisoblaymiz (bazaga saqlash + admin hisoboti uchun)
+            p_tok = _last_usage.get("prompt", 0)
+            o_tok = _last_usage.get("output", 0)
+            tot = _last_usage.get("total", 0) or (p_tok + o_tok)
+            usd, uzs = _cost_uzs(p_tok, o_tok, _last_usage.get("model", "gemini-2.5-flash"))
+
             aid = save_analysis(user_id, username=uname, kind="video",
-                                file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq)
+                                file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq,
+                                tokens=tot, narx=uzs)
 
             # Adminlarga tannarx hisoboti (token + so'm)
             try:
-                p_tok = _last_usage.get("prompt", 0)
-                o_tok = _last_usage.get("output", 0)
-                tot = _last_usage.get("total", 0) or (p_tok + o_tok)
-                usd, uzs = _cost_uzs(p_tok, o_tok, _last_usage.get("model", "gemini-2.5-flash"))
                 report = (
                     f"📊 Tannarx hisobi (video tahlil)\n"
                     f"👤 @{uname} (ID: {user_id})\n"
@@ -2268,6 +2274,52 @@ async def sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def premium_xarajat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: har obunachining tahlil soni + jami xarajati (foyda/zarar).
+    Faqat shaxsiy chatda. Bugundan boshlab to'plangan ma'lumot."""
+    if not is_admin(update.effective_user.id):
+        return
+    if update.effective_chat.type != "private":
+        await update.message.reply_text("🔒 Bu buyruq faqat shaxsiy chatda ishlaydi.")
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Faol obunachilar
+    subs = _db_execute(
+        "SELECT user_id, username, sub_until FROM users "
+        "WHERE sub_until IS NOT NULL AND sub_until > %s ORDER BY sub_until DESC",
+        (now,), fetch='all'
+    ) or []
+    if not subs:
+        await update.message.reply_text("📭 Hozir faol obunachi yo'q.")
+        return
+    lines = ["💎 PREMIUM XARAJAT (saqlanган ma'lumot bo'yicha):\n"]
+    jami_tahlil, jami_narx = 0, 0.0
+    for uid, uname, sub_until in subs:
+        row = _db_execute(
+            "SELECT COUNT(*), COALESCE(SUM(narx),0) FROM analyses WHERE user_id = %s",
+            (uid,), fetch='one'
+        )
+        cnt = row[0] if row else 0
+        narx = row[1] if row and row[1] else 0
+        jami_tahlil += cnt
+        jami_narx += narx
+        # To'lov (oxirgi approved)
+        tolov_row = _db_execute(
+            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE user_id = %s AND status = 'approved'",
+            (uid,), fetch='one'
+        )
+        tolov = tolov_row[0] if tolov_row and tolov_row[0] else 0
+        belgi = "✅" if narx <= tolov else "❌ ZARAR"
+        uname_str = f"@{uname}" if uname else f"ID:{uid}"
+        lines.append(f"{uname_str} — {cnt} tahlil — {narx:,.0f} so'm (to'lov: {tolov:,} so'm) {belgi}")
+    lines.append(f"\n📊 JAMI: {jami_tahlil} tahlil, {jami_narx:,.0f} so'm xarajat")
+    text = "\n".join(lines)
+    # Telegram 4096 belgi cheklovi
+    if len(text) > 4000:
+        text = text[:3990] + "\n…"
+    await update.message.reply_text(text)
+
+
 async def obunachilar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: faol obunachilar ro'yxati (kim, qachongacha)."""
     if not is_admin(update.effective_user.id):
@@ -2532,6 +2584,7 @@ def main():
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
+    app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
