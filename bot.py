@@ -1906,18 +1906,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for idx, chunk in enumerate(parts):
                     await message.reply_text(chunk, reply_markup=(kb if idx == len(parts) - 1 else None))
 
-            # BEPULGA: chuqurroq tahlil uchun Premium undovi (vaqt haqida emas)
-            if not _is_priority:
-                try:
-                    upsell_kb = InlineKeyboardMarkup([[
-                        InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
-                    ]])
-                    await message.reply_text(
-                        t(context, 'time_upsell'),
-                        reply_markup=upsell_kb, parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logger.warning(f"Premium upsell yuborishda xato: {e}")
+            # BEPULGA: tugagandan keyingi reklama OLIB TASHLANDI (o'rtadagi reklama yetarli)
 
             # AVTOMATIK +2 AKSIYA: 1 ta bepulni ishlatib, balansi tugagan bo'lsa
             # (faqat avtomatik aksiya YOQILGAN bo'lsa). Har odam 1 marta.
@@ -2420,6 +2409,8 @@ async def test_sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "AND COALESCE(test_sorov_given, FALSE) = FALSE",
         (now,), fetch='all'
     ) or []
+    # Adminlar va faol premiumlarni chiqarib tashlaymiz
+    rows = [r for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
     if not rows:
         await update.message.reply_text("📭 So'rov yuboriladigan foydalanuvchi yo'q (hammasi olgan).")
         return
@@ -2571,6 +2562,8 @@ async def test_taklif_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         "AND COALESCE(test_taklif_given, FALSE) = FALSE",
         (now,), fetch='all'
     ) or []
+    # Adminlar va faol premiumlarni chiqarib tashlaymiz
+    rows = [r for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
     if not rows:
         await update.message.reply_text("📭 Test taklifi yuboriladigan foydalanuvchi yo'q.")
         return
