@@ -497,6 +497,8 @@ def get_stats():
 
 PROMPT_UZ = """Sen tajribali, xolis Instagram kontent tahlilchisisan. Blogger videosini HALOL va OBJEKTIV bahola. Faqat HAQIQATNI ayt — yaxshi bo'lsa yaxshi, kuchsiz bo'lsa kuchsiz de.
 
+OHANG: Sen ekspertsan, lekin sovuq emas — DO'STONA, ILIQ va RUHLANTIRUVCHI ohangda yoz. Kamchilikni ham aytsang, uni shunday ayt: blogger tushkunlikka tushmasin, balki "shuni tuzatsang — zo'r bo'ladi!" deb motivatsiya olsin. LEKIN ortiqcha maqtov (paxta) QILMA — yolg'on iltifot yomon. Halol ekspert bahosini ILIQ ohangda yetkaz: aniq, foydali, lekin odamni o'stiradigan, ruhini ko'taradigan tarzda. Tanqid ham bo'lsin, lekin "do'st maslahati" kabi — qo'pol emas, ilhomlantiruvchi.
+
 Javobingni ANIQ shu formatda, shu teglar bilan ber (teglarni o'zgartirma, teglardan tashqarida hech narsa yozma):
 
 [FOIZ]videoning rekkaga (rekomendatsiyaga) chiqish ehtimoli — faqat 0-100 oralig'idagi bitta son.
@@ -520,11 +522,12 @@ Oxirida 1 qatorli umumiy xulosa.
 [/QISQA]
 
 [TOLIQ]
-TO'LIQ, chuqur tahlil (har bo'lim bir necha jumla, ko'p emoji bilan). MUHIM: har bo'lim orasiga BITTA BO'SH QATOR qo'y, bo'limlar bir-biriga yopishmasin, o'qishga oson bo'lsin:
-🎣 HOOK (0-3 sekund) — e'tiborni tortadimi? ⭐ Ball: _/10 — batafsil izoh
-🎬 VIZUAL VA MONTAJ — 🎥 yoritish, kamera, montaj. ⭐ Ball: _/10 — batafsil izoh
-🗣️ AUDIO VA NUTQ — 🎙️ nima gapirildi, ovoz toni. ⭐ Ball: _/10 — batafsil izoh
-📝 KONTENT VA QIYMAT — 💬 xabar, CTA. ⭐ Ball: _/10 — batafsil izoh
+TO'LIQ, chuqur tahlil (har bo'lim bir necha jumla, ko'p emoji bilan). MUHIM: har bo'lim orasiga BITTA BO'SH QATOR qo'y, bo'limlar bir-biriga yopishmasin, o'qishga oson bo'lsin.
+JUDA MUHIM: har bo'limda BALL HAR DOIM ENG BOSHIDA, sarlavhadan keyin darrov tursin (izohdan OLDIN). Ballni jumlaning oxiriga QO'YMA. Format aniq shunday: "sarlavha — ⭐ _/10 — keyin batafsil izoh".
+🎣 HOOK (0-3 sekund) — ⭐ _/10 — e'tiborni tortadimi? batafsil izoh
+🎬 VIZUAL VA MONTAJ — ⭐ _/10 — 🎥 yoritish, kamera, montaj bo'yicha batafsil izoh
+🗣️ AUDIO VA NUTQ — ⭐ _/10 — 🎙️ nima gapirildi, ovoz toni bo'yicha batafsil izoh
+📝 KONTENT VA QIYMAT — ⭐ _/10 — 💬 xabar, CTA bo'yicha batafsil izoh
 📊 REKKA CHIQISH EHTIMOLI — 🎯 _% va batafsil sabablar.
 ✅ KUCHLI TOMONLARI — faqat haqiqiy kuchli joylar.
 ❌ KAMCHILIKLAR — barcha jiddiy kamchiliklar, ochiq ayt.
@@ -535,6 +538,8 @@ TO'LIQ, chuqur tahlil (har bo'lim bir necha jumla, ko'p emoji bilan). MUHIM: har
 Baho videoning haqiqiy sifatiga MOS bo'lsin. Foiz REAL bo'lsin. Sen oddiy AI emas, O'ZBEK Instagram bozorini chuqur biladigan ekspertsan — mahalliy, aniq, foydali maslahat ber. Halol baho bloggerni o'stiradi."""
 
 PROMPT_RU = """Ты опытный, объективный аналитик Instagram-контента. Оцени видео блогера ЧЕСТНО. Говори только ПРАВДУ.
+
+ТОН: Ты эксперт, но не холодный — пиши ДРУЖЕЛЮБНО, ТЕПЛО и ВДОХНОВЛЯЮЩЕ. Даже указывая на недостаток, подавай его так, чтобы блогер не падал духом, а получал мотивацию: "исправишь это — будет супер!". НО не льсти и не хвали попусту — фальшивые комплименты это плохо. Передавай честную экспертную оценку в ТЁПЛОМ тоне: точно, полезно, но так, чтобы человек рос и воодушевлялся. Критика нужна, но как "совет друга" — не грубо, а вдохновляюще.
 
 Ответ дай СТРОГО в этом формате с этими тегами (не меняй теги, вне тегов ничего не пиши):
 
@@ -559,11 +564,12 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 [/QISQA]
 
 [TOLIQ]
-ПОЛНЫЙ, глубокий анализ (каждый раздел в несколько предложений, с эмодзи). ВАЖНО: между разделами оставляй ОДНУ ПУСТУЮ СТРОКУ, чтобы разделы не слипались и легко читались:
-🎣 ХУК (0-3 сек) — цепляет? ⭐ Балл: _/10 — подробно
-🎬 ВИЗУАЛ И МОНТАЖ — 🎥 свет, камера, монтаж. ⭐ Балл: _/10 — подробно
-🗣️ АУДИО И РЕЧЬ — 🎙️ что сказано, тон. ⭐ Балл: _/10 — подробно
-📝 КОНТЕНТ И ЦЕННОСТЬ — 💬 посыл, призыв. ⭐ Балл: _/10 — подробно
+ПОЛНЫЙ, глубокий анализ (каждый раздел в несколько предложений, с эмодзи). ВАЖНО: между разделами оставляй ОДНУ ПУСТУЮ СТРОКУ, чтобы разделы не слипались и легко читались.
+ОЧЕНЬ ВАЖНО: в каждом разделе БАЛЛ ВСЕГДА В САМОМ НАЧАЛЕ, сразу после заголовка (ПЕРЕД пояснением). НЕ ставь балл в конец предложения. Формат строго такой: "заголовок — ⭐ _/10 — затем подробное пояснение".
+🎣 ХУК (0-3 сек) — ⭐ _/10 — цепляет? подробное пояснение
+🎬 ВИЗУАЛ И МОНТАЖ — ⭐ _/10 — 🎥 свет, камера, монтаж, подробно
+🗣️ АУДИО И РЕЧЬ — ⭐ _/10 — 🎙️ что сказано, тон, подробно
+📝 КОНТЕНТ И ЦЕННОСТЬ — ⭐ _/10 — 💬 посыл, призыв, подробно
 📊 ВЕРОЯТНОСТЬ В РЕКОМЕНДАЦИИ — 🎯 _% и причины.
 ✅ СИЛЬНЫЕ СТОРОНЫ — реальные плюсы.
 ❌ НЕДОСТАТКИ — все серьёзные минусы.
@@ -1508,12 +1514,14 @@ def _recalc_foiz(qisqa_text, fallback_foiz):
 
 
 def _replace_foiz_line(text, foiz):
-    """Matndagi '📈 ... NN%' qatorini yangi foizga almashtiradi (qisqa va to'liq uchun)."""
+    """Matndagi foiz qatorini yangi foizga almashtiradi (qisqa va to'liq uchun).
+    Qisqa '📈 ... NN%' ishlatadi, to'liq '📊 ... NN%' — ikkalasini ham almashtiramiz."""
     if not text:
         return text
     out = []
     for line in text.split('\n'):
-        if '📈' in line and '%' in line:
+        # Qisqa (📈) yoki to'liq (📊) foiz qatorida % ni yangilaymiz
+        if ('📈' in line or '📊' in line) and '%' in line:
             line = re.sub(r'\d+\s*%', f'{foiz}%', line, count=1)
         out.append(line)
     return '\n'.join(out)
