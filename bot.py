@@ -159,6 +159,7 @@ def init_db():
                                  ("aksiya_given", "BOOLEAN DEFAULT FALSE"),
                                  ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE"),
                                  ("test_taklif_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("test_sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -671,6 +672,23 @@ TEXTS = {
                      "qo'shishni maslahat berasiz? 💡\n\n"
                      "Javobingizni yozib qoldiring 👇"),
         'sorov_start_btn': "✍️ Javob berish",
+        'test_sorov_msg': ("📋 Sizning fikringiz biz uchun muhim! 🙏\n\n"
+                           "Yangi g'oyamiz bor, fikringizni bilmoqchimiz:\n\n"
+                           "💡 <b>7 KUNLIK TEST PREMIUM</b> ni atigi <b>7 000 so'mga</b> qo'shmoqchimiz!\n\n"
+                           "Premium imkoniyatlari:\n"
+                           "🔍 <b>2 barobar kuchli tahlil</b>\n"
+                           "♾ <b>Cheksiz tahlil</b> imkoniyati\n"
+                           "🎙 <b>Ovozli maslahatlar</b>\n"
+                           "🔥 <b>Eng kuchli xeshteglar</b>\n"
+                           "📈 <b>Yashirin REK ehtimoli</b>\n\n"
+                           "2 ta savolga javob bering 👇"),
+        'test_sorov_btn': "✍️ Fikr bildirish",
+        'test_sorov_q1': ("1️⃣ <b>7 kunlik test Premium (atigi 7 000 so'm) qo'shmoqchimiz</b> — "
+                          "sizga qiziqmi, sinab ko'rarmidingiz?\n\nFikringizni yozing 👇"),
+        'test_sorov_q2': ("Rahmat! 🙏 Endi 2-savol:\n\n"
+                          "2️⃣ Yaqinda botni yangiladik — <b>tezlik va sifatni oshirdik</b>. "
+                          "O'zgarishlar yoqdimi? 👇"),
+        'test_sorov_done': "✅ Rahmat! Fikringiz biz uchun juda muhim 🙏",
         'sorov_thanks_reward': "Katta rahmat fikringiz uchun! ❤️🎁 Balansingizga +1 ta BEPUL tahlil qo'shdik. Video yuboring! 🎬",
         'sorov_thanks': "Katta rahmat fikringiz uchun! ❤️🙏",
         'menu_balance': "💰 Balansim",
@@ -874,6 +892,23 @@ TEXTS = {
                      "2️⃣ Какие недостатки есть или что бы вы изменили / добавили? 💡\n\n"
                      "Напишите ответ ниже 👇"),
         'sorov_start_btn': "✍️ Ответить",
+        'test_sorov_msg': ("📋 Ваше мнение очень важно для нас! 🙏\n\n"
+                           "У нас есть новая идея, и мы хотим узнать ваше мнение:\n\n"
+                           "💡 <b>7-ДНЕВНЫЙ ТЕСТ PREMIUM</b> хотим добавить всего за <b>7 000 сум</b>!\n\n"
+                           "Возможности Premium:\n"
+                           "🔍 <b>В 2 раза мощнее анализ</b>\n"
+                           "♾ <b>Безлимитный анализ</b>\n"
+                           "🎙 <b>Аудио-советы</b>\n"
+                           "🔥 <b>Самые сильные хештеги</b>\n"
+                           "📈 <b>Скрытая вероятность РЕК</b>\n\n"
+                           "Ответьте на 2 вопроса 👇"),
+        'test_sorov_btn': "✍️ Оставить отзыв",
+        'test_sorov_q1': ("1️⃣ <b>Хотим добавить 7-дневный тест Premium (всего 7 000 сум)</b> — "
+                          "вам интересно, попробовали бы?\n\nНапишите ваше мнение 👇"),
+        'test_sorov_q2': ("Спасибо! 🙏 Теперь 2-й вопрос:\n\n"
+                          "2️⃣ Недавно мы обновили бота — <b>повысили скорость и качество</b>. "
+                          "Понравились изменения? 👇"),
+        'test_sorov_done': "✅ Спасибо! Мы очень ценим ваше мнение 🙏",
         'sorov_thanks_reward': "Большое спасибо за отзыв! ❤️🎁 Мы добавили +1 БЕСПЛАТНЫЙ анализ. Отправьте видео! 🎬",
         'sorov_thanks': "Большое спасибо за отзыв! ❤️🙏",
         'menu_balance': "💰 Мой баланс",
@@ -1157,6 +1192,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
         )
+    elif data == 'test_sorov_start':
+        # Test so'rovi boshlanadi - so'rov xabarini O'CHIRAMIZ (chat toza qolsin)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        context.user_data['mode'] = 'test_sorov_q1'
+        await query.message.chat.send_message(t(context, 'test_sorov_q1'), parse_mode="HTML")
     elif data == 'sorov_start':
         # So'rovga javob berishni boshlaydi - 1-savol javobini kutamiz
         context.user_data['mode'] = 'sorov_q1'
@@ -1918,6 +1961,37 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     # So'rov 1-savol javobini kutyapmizmi?
+    if context.user_data.get('mode') == 'test_sorov_q1':
+        context.user_data['test_sorov_a1'] = (text or "").strip()
+        context.user_data['mode'] = 'test_sorov_q2'
+        await update.message.reply_text(t(context, 'test_sorov_q2'), parse_mode="HTML")
+        return
+    if context.user_data.get('mode') == 'test_sorov_q2':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        a1 = context.user_data.get('test_sorov_a1', '')
+        a2 = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        # Bazaga saqlaymiz (/javoblar da ko'rinadi)
+        try:
+            _db_execute(
+                "INSERT INTO sorov_javoblar (user_id, username, javob1, javob2, created) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (uid, uname, "[7KUN] " + a1, a2, datetime.now().strftime("%Y-%m-%d %H:%M"))
+            )
+        except Exception as e:
+            logger.warning(f"Test so'rov javobini saqlashda xato: {e}")
+        # Fikrlar guruhiga yuboramiz
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                grp_txt = (f"📋 7 KUNLIK SO'ROV\n👤 {who}\n\n"
+                           f"1️⃣ Test paket: {a1}\n2️⃣ Yangilanish: {a2}")
+                await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
+            except Exception as e:
+                logger.warning(f"Test fikrni guruhga yuborishda xato: {e}")
+        await update.message.reply_text(t(context, 'test_sorov_done'))
+        return
     if context.user_data.get('mode') == 'sorov_q1':
         context.user_data['sorov_a1'] = (text or "").strip()
         context.user_data['mode'] = 'sorov_q2'
@@ -2334,6 +2408,44 @@ async def javoblar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text[i:i+4000])
 
 
+async def test_sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 7 kunlik test paketi haqida so'rov - premiumi yo'q HAMMAga.
+    Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id FROM users "
+        "WHERE (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(test_sorov_given, FALSE) = FALSE",
+        (now,), fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 So'rov yuboriladigan foydalanuvchi yo'q (hammasi olgan).")
+        return
+    await update.message.reply_text(f"📋 7 kunlik so'rov boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['test_sorov_btn'], callback_data="test_sorov_start")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['test_sorov_msg'],
+                                           reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET test_sorov_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Test so'rov yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+
+    await update.message.reply_text(
+        f"✅ So'rov tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed} (bloklagan yoki botni o'chirgan)"
+    )
+
+
 async def sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: video tahlil qilgan hamma foydalanuvchiga so'rov yuboradi (Ha/Yo'q + sabab).
     Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
@@ -2733,6 +2845,7 @@ def main():
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
     app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
+    app.add_handler(CommandHandler("test_sorov", test_sorov_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
