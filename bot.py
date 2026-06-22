@@ -3226,31 +3226,60 @@ async def obunaochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def fireworks_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: toj va olmos effektlarini sinab ko'rish (qaysi biri yoqsa - tanlash)."""
+    """Admin: turli kayf usullarini sinab ko'rish (effekt, emoji, stiker)."""
     if not is_admin(update.effective_user.id):
         return
     chat_id = update.effective_chat.id
+
     # 1) Toj effekti
     try:
         await context.bot.send_message(
-            chat_id, "👑 <b>TOJ effekti</b> — qirollik, VIP his", parse_mode="HTML",
+            chat_id, "1️⃣ 👑 <b>TOJ effekti</b>", parse_mode="HTML",
             message_effect_id=PAYME_EFFECT_CROWN)
     except Exception:
-        await context.bot.send_message(chat_id, "👑 Toj effekti (ishlamadi - eski Telegram?)")
+        await context.bot.send_message(chat_id, "1️⃣ 👑 Toj (effekt ishlamadi)")
     await asyncio.sleep(2)
+
     # 2) Olmos effekti
     try:
         await context.bot.send_message(
-            chat_id, "💎 <b>OLMOS effekti</b> — premium, qimmatbaho his", parse_mode="HTML",
+            chat_id, "2️⃣ 💎 <b>OLMOS effekti</b>", parse_mode="HTML",
             message_effect_id=PAYME_EFFECT_DIAMOND)
     except Exception:
-        await context.bot.send_message(chat_id, "💎 Olmos effekti (ishlamadi - eski Telegram?)")
-    await asyncio.sleep(1)
+        await context.bot.send_message(chat_id, "2️⃣ 💎 Olmos (effekt ishlamadi)")
+    await asyncio.sleep(2)
+
+    # 3) Katta animatsiyali emoji (faqat emoji - Telegram katta animatsiya qiladi)
+    try:
+        await context.bot.send_message(chat_id, "🥳")
+        await asyncio.sleep(1)
+        await context.bot.send_message(chat_id, "🎉")
+    except Exception:
+        pass
+    await asyncio.sleep(2)
+
+    # 4) Mashhur bayramona stiker (tabrik/salyut)
+    party_stickers = [
+        "CAACAgIAAxkBAAEByH9m...",  # ehtimoliy (ishlamasligi mumkin)
+    ]
+    sticker_ok = False
+    for sid in party_stickers:
+        try:
+            await context.bot.send_sticker(chat_id, sid)
+            sticker_ok = True
+            break
+        except Exception:
+            continue
+    if not sticker_ok:
+        await context.bot.send_message(
+            chat_id, "4️⃣ 🎊 (Stiker ID ishlamadi — sizdan stiker kerak, pastga qarang)")
+
     await update.message.reply_text(
-        "👆 Ikkala effektni ko'rdingiz.\n\n"
-        "Qaysi biri ko'proq yoqdi — menga ayting:\n"
-        "• 👑 Toj\n• 💎 Olmos\n\n"
-        "O'shani asosiy qilib qo'yaman (premium olganda chiqadigan)."
+        "👆 Sinab ko'rdingiz:\n"
+        "1️⃣ Toj effekti\n2️⃣ Olmos effekti\n3️⃣ Katta emoji (🥳🎉)\n4️⃣ Stiker\n\n"
+        "Qaysi biri ishladi va yoqdi — menga ayting.\n\n"
+        "💡 Agar STIKER yoqsa: menga yoqadigan bayramona stikeringizni yuboring, "
+        "men uning ID'sini olib, doimiy qo'yaman."
     )
 
 
@@ -3671,6 +3700,23 @@ async def run_web_server():
     logger.info(f"Web server ishga tushdi (port {WEB_PORT}) - Payme /payme tayyor")
 
 
+async def sticker_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin stiker yuborsa - uning file_id'sini ko'rsatadi (tabrik stikeri tanlash uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    try:
+        st = update.message.sticker
+        if st:
+            await update.message.reply_text(
+                f"🎨 Stiker ID:\n<code>{st.file_id}</code>\n\n"
+                f"Animatsiyali: {st.is_animated or st.is_video}\n\n"
+                f"Shu stikerni tabrik uchun ishlatishni xohlasangiz — menga shu ID'ni ayting.",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        logger.warning(f"sticker_id xato: {e}")
+
+
 def main():
     init_db()
     global _bot_app
@@ -3716,6 +3762,7 @@ def main():
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, video_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.Sticker.ALL, sticker_id_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     logger.info("Bot ishga tushdi!")
     # Telegram bot + Payme web server BIRGA ishlaydi
