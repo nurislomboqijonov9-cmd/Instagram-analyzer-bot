@@ -1928,10 +1928,10 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'too_big'))
             return
 
-        # Bitta umumiy navbat (hammaga). Flash (sifatli) FAQAT faol obuna/balans/admin uchun.
-        # 1 marta to'lab, obunasi tugaganlar -> bepul (Flash-Lite), qimmat Flash bermaymiz.
+        # Flash (sifatli) + reklamasiz FAQAT admin va FAOL OBUNA uchun.
+        # Balans (credit) = bepul tahlil (referral/sovg'a) -> bepul kabi: Flash-Lite + reklama.
         _access = has_access(user_id)
-        _is_priority = _access in ('admin', 'sub', 'credit')
+        _is_priority = _access in ('admin', 'sub')
         _chosen_sem = _video_semaphore
 
         async with _chosen_sem:
