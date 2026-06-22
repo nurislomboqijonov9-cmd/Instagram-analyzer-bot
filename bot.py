@@ -1847,9 +1847,9 @@ async def precheckout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
 
 
-# Telegram premium/hashamat xabar effekti (premium olganda kayf uchun)
-PAYME_FIREWORKS_EFFECT = "4965608262968804599"  # 💎 olmos (premium, qimmatbaho)
-PAYME_EFFECT_CROWN = "5089422278802801345"      # 👑 toj (qirollik, VIP)
+# Telegram konfetti xabar effekti (premium olganda kayf uchun) - YOQDI
+PAYME_FIREWORKS_EFFECT = "5046509860389126442"  # 🎉 party popper (konfetti - ekranda sochiladi)
+PAYME_EFFECT_CROWN = "5089422278802801345"      # 👑 toj
 PAYME_EFFECT_DIAMOND = "4965608262968804599"    # 💎 olmos
 
 
@@ -3226,60 +3226,14 @@ async def obunaochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def fireworks_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: turli kayf usullarini sinab ko'rish (effekt, emoji, stiker)."""
+    """Admin: tabrik (konfetti) effektini sinab ko'rish."""
     if not is_admin(update.effective_user.id):
         return
-    chat_id = update.effective_chat.id
-
-    # 1) Toj effekti
-    try:
-        await context.bot.send_message(
-            chat_id, "1️⃣ 👑 <b>TOJ effekti</b>", parse_mode="HTML",
-            message_effect_id=PAYME_EFFECT_CROWN)
-    except Exception:
-        await context.bot.send_message(chat_id, "1️⃣ 👑 Toj (effekt ishlamadi)")
-    await asyncio.sleep(2)
-
-    # 2) Olmos effekti
-    try:
-        await context.bot.send_message(
-            chat_id, "2️⃣ 💎 <b>OLMOS effekti</b>", parse_mode="HTML",
-            message_effect_id=PAYME_EFFECT_DIAMOND)
-    except Exception:
-        await context.bot.send_message(chat_id, "2️⃣ 💎 Olmos (effekt ishlamadi)")
-    await asyncio.sleep(2)
-
-    # 3) Katta animatsiyali emoji (faqat emoji - Telegram katta animatsiya qiladi)
-    try:
-        await context.bot.send_message(chat_id, "🥳")
-        await asyncio.sleep(1)
-        await context.bot.send_message(chat_id, "🎉")
-    except Exception:
-        pass
-    await asyncio.sleep(2)
-
-    # 4) Mashhur bayramona stiker (tabrik/salyut)
-    party_stickers = [
-        "CAACAgIAAxkBAAEByH9m...",  # ehtimoliy (ishlamasligi mumkin)
-    ]
-    sticker_ok = False
-    for sid in party_stickers:
-        try:
-            await context.bot.send_sticker(chat_id, sid)
-            sticker_ok = True
-            break
-        except Exception:
-            continue
-    if not sticker_ok:
-        await context.bot.send_message(
-            chat_id, "4️⃣ 🎊 (Stiker ID ishlamadi — sizdan stiker kerak, pastga qarang)")
-
+    await _send_celebration(context, update.effective_chat.id,
+                            TEXTS['uz']['celebrate_sub'].format(until="2026-12-31"))
     await update.message.reply_text(
-        "👆 Sinab ko'rdingiz:\n"
-        "1️⃣ Toj effekti\n2️⃣ Olmos effekti\n3️⃣ Katta emoji (🥳🎉)\n4️⃣ Stiker\n\n"
-        "Qaysi biri ishladi va yoqdi — menga ayting.\n\n"
-        "💡 Agar STIKER yoqsa: menga yoqadigan bayramona stikeringizni yuboring, "
-        "men uning ID'sini olib, doimiy qo'yaman."
+        "👆 Premium olganda shu ko'rinishda chiqadi (konfetti + tabrik). "
+        "Konfetti ekranda sochilsa — ishlayapti! 🎉"
     )
 
 
