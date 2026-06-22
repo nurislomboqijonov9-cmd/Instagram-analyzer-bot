@@ -160,6 +160,7 @@ def init_db():
                                  ("obuna_taklif_given", "BOOLEAN DEFAULT FALSE"),
                                  ("test_taklif_given", "BOOLEAN DEFAULT FALSE"),
                                  ("test_sorov_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("eslatma_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -716,6 +717,21 @@ TEXTS = {
         'menu_help': "ℹ️ Yordam",
         'menu_fikr': "💬 Fikr va takliflar",
         'menu_premium': "💎 Premiumga o'tish",
+        'eslatma_msg': ("🛠 <b>Hurmatli foydalanuvchi!</b>\n\n"
+                        "So'nggi kunlarda InstaDoctor'ni yanada <b>tezroq va kuchliroq</b> qilish uchun yangiladik. ⚡\n\n"
+                        "Yangilanish paytida ba'zi videolar tahlil qilinmagan bo'lishi mumkin — buning uchun <b>uzr so'raymiz</b> 🙏\n\n"
+                        "✅ <b>Hozir bot to'liq ishlayapti!</b>\n\n"
+                        "Agar videongiz javob olmagan bo'lsa — iltimos, <b>qaytadan yuboring</b>. Endi hammasi tez va aniq ishlaydi! 🎯\n\n"
+                        "Tushunganingiz uchun rahmat! ❤️\n\n"
+                        "📩 Savol yoki muammo bo'lsa: @Nurislom_admin\n\n"
+                        "━━━━━━━━━━━━━\n\n"
+                        "🛠 <b>Уважаемый пользователь!</b>\n\n"
+                        "В последние дни мы обновили InstaDoctor, чтобы он стал <b>быстрее и мощнее</b>. ⚡\n\n"
+                        "Во время обновления некоторые видео могли не обработаться — <b>приносим извинения</b> 🙏\n\n"
+                        "✅ <b>Сейчас бот работает полностью!</b>\n\n"
+                        "Если ваше видео осталось без ответа — пожалуйста, <b>отправьте его заново</b>. Теперь всё работает быстро и точно! 🎯\n\n"
+                        "Спасибо за понимание! ❤️\n\n"
+                        "📩 Вопросы или проблемы: @Nurislom_admin"),
         'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
                       "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
                       "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
@@ -2525,6 +2541,36 @@ async def javoblar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text[i:i+4000])
 
 
+async def eslatma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: yangilanish/uzr eslatmasini HAMMAga yuboradi (ikki tilli, 1 marta)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(eslatma_given, FALSE) = FALSE",
+        fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Eslatma yuboriladigan foydalanuvchi yo'q (hammasi olgan).")
+        return
+    await update.message.reply_text(f"🛠 Eslatma boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            await context.bot.send_message(uid, TEXTS['uz']['eslatma_msg'], parse_mode="HTML")
+            _db_execute("UPDATE users SET eslatma_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Eslatma yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+
+    await update.message.reply_text(
+        f"✅ Eslatma tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed} (bloklagan yoki o'chirgan)"
+    )
+
+
 async def test_sorov_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: 7 kunlik test paketi haqida so'rov - premiumi yo'q HAMMAga.
     Har foydalanuvchiga FAQAT 1 marta. Sekin yuboradi."""
@@ -2967,6 +3013,7 @@ def main():
     app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
     app.add_handler(CommandHandler("test_sorov", test_sorov_command))
+    app.add_handler(CommandHandler("eslatma", eslatma_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
