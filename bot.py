@@ -1656,7 +1656,7 @@ def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
         except Exception as e:
             last_error = e
             logger.warning(f"Generate urinish {attempt+1}/{max_retries}: {e}")
-            time.sleep((attempt + 1) * 5)
+            time.sleep((attempt + 1) * 2)
     raise last_error
 
 
@@ -1684,11 +1684,18 @@ def _gemini_process_images(image_paths, prompt):
 def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     """BLOKLAYDIGAN to'liq Gemini ishi. Faqat alohida thread'da chaqiriladi
     (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi.
-    model: bepul -> flash-lite (arzon), pullik -> flash (sifatli)."""
+    model: bepul -> flash-lite (arzon), pullik -> flash (sifatli).
+    FALLBACK: agar tanlangan model band (503) bo'lsa, boshqa modelga o'tadi."""
     uploaded = None
     try:
         uploaded = _upload_and_wait(tmp_path)
-        return _analyze(uploaded, prompt, model=model)
+        try:
+            return _analyze(uploaded, prompt, model=model, max_retries=2)
+        except Exception as e:
+            # 503/overload bo'lsa - boshqa modelga o'tib ko'ramiz (bittasi band bo'lsa ikkinchisi ishlaydi)
+            fallback = "gemini-2.5-flash" if "lite" in model else "gemini-2.5-flash-lite"
+            logger.warning(f"Model {model} ishlamadi ({e}); fallback: {fallback}")
+            return _analyze(uploaded, prompt, model=fallback, max_retries=2)
     finally:
         if uploaded is not None:
             try:
@@ -1957,13 +1964,24 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             _model = "gemini-2.5-flash" if _is_priority else "gemini-2.5-flash-lite"
             # MUHIM: Gemini ishi alohida thread'da bajariladi -> bot muzlamaydi.
             try:
-                tahlil = await asyncio.to_thread(_gemini_process, tmp_path, prompt, _model)
+                # TIMEOUT 5 daqiqa: agar Gemini osilib qolsa - majburan bekor,
+                # semaphore bo'shaydi, boshqa videolar qotmaydi.
+                tahlil = await asyncio.wait_for(
+                    asyncio.to_thread(_gemini_process, tmp_path, prompt, _model),
+                    timeout=300
+                )
                 # BEPUL: tahlil tez tugasa ham, sanoq kamida 30 soniyagacha ketaveradi
                 # (kutish bo'ladi, lekin sanoq to'xtamaydi - progress hali ishlab turibdi).
                 if not _is_priority:
                     elapsed = (datetime.now() - _analiz_start).total_seconds()
                     if elapsed < 30:
                         await asyncio.sleep(30 - elapsed)
+            except asyncio.TimeoutError:
+                _progress_stop.set()
+                progress_task.cancel()
+                logger.warning(f"Gemini timeout (5 daqiqa) - bekor qilindi (uid={user_id})")
+                await wait_msg.edit_text(t(context, 'analysis_timeout'))
+                return
             finally:
                 _progress_stop.set()
                 progress_task.cancel()
