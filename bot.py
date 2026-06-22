@@ -57,6 +57,8 @@ PAYME_MERCHANT_ID = os.getenv("PAYME_MERCHANT_ID", "")   # kassa ID (Payme kabin
 PAYME_KEY = os.getenv("PAYME_KEY", "")                    # maxfiy kalit (Payme kabinetdan)
 PAYME_TEST_KEY = os.getenv("PAYME_TEST_KEY", "")          # test kaliti (sandbox)
 WEB_PORT = int(os.getenv("PORT", "8080"))                 # Railway web port
+_bot_app = None                                           # global bot ilovasi (Payme tabrigi uchun)
+_main_loop = None                                         # asosiy event loop (web thread'dan xabar yuborish uchun)
 # Payme to'lov holatlari
 PAYME_STATE_CREATED = 1       # transaksiya yaratilgan (to'lov kutilmoqda)
 PAYME_STATE_PERFORMED = 2     # to'lov amalga oshdi
@@ -817,6 +819,28 @@ TEXTS = {
         'pay_unavailable': "⚠️ To'lov tizimi hozircha mavjud emas. Birozdan so'ng urinib ko'ring yoki admin bilan bog'laning.",
         'pay_ok_sub': "✅ To'lov qabul qilindi! Obunangiz faollashtirildi — {until} gacha cheksiz tahlil. Rahmat! 🎉",
         'pay_ok_one': "✅ To'lov qabul qilindi! Sizga +1 tahlil qo'shildi. Endi video yuboring! 🎉",
+        'celebrate_sub': ("🎉🎊 <b>TABRIKLAYMIZ!</b> 🎊🎉\n\n"
+                          "💎 Siz endi <b>PREMIUM</b> a'zosiz!\n\n"
+                          "✨ Sizga ochildi:\n"
+                          "♾ Cheksiz tahlil\n"
+                          "🔍 Chuqurroq, professional tahlil\n"
+                          "🗣 Ovozli tahlil\n"
+                          "🔥 Heshteg tavsiyalari\n"
+                          "⚡ Navbatsiz, tez xizmat\n\n"
+                          "📈 Obunangiz: <b>{until}</b> gacha\n\n"
+                          "Endi videolaringizni yuboring — eng yaxshi natijani oling! 🚀"),
+        'celebrate_test': ("🎉🎊 <b>TABRIKLAYMIZ!</b> 🎊🎉\n\n"
+                           "💎 7 kunlik <b>PREMIUM test</b> faollashtirildi!\n\n"
+                           "✨ Sizga ochildi:\n"
+                           "♾ Cheksiz tahlil\n"
+                           "🔍 Chuqurroq tahlil\n"
+                           "🗣 Ovozli tahlil\n"
+                           "⚡ Navbatsiz xizmat\n\n"
+                           "📈 Muddat: <b>{until}</b> gacha\n\n"
+                           "Sinab ko'ring — yoqsa, to'liq obunaga o'ting! 🚀"),
+        'celebrate_one': ("🎉 <b>TO'LOV QABUL QILINDI!</b> 🎉\n\n"
+                          "✅ Sizga <b>+1 tahlil</b> qo'shildi!\n\n"
+                          "Endi videongizni yuboring — professional tahlil oling! 🚀"),
         'analyzed_footer': "\n\n━━━━━━━━━━\n🩺 Analizni AI ekspert InstaDoctor bajardi\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Ovoz tayyorlanmoqda... ⏳",
         'tts_premium': ("🔒 Bu funksiya faqat PREMIUM obunachilar uchun!\n\n"
@@ -1054,6 +1078,28 @@ TEXTS = {
         'pay_unavailable': "⚠️ Оплата пока недоступна. Попробуйте позже или свяжитесь с админом.",
         'pay_ok_sub': "✅ Оплата принята! Подписка активирована — безлимит до {until}. Спасибо! 🎉",
         'pay_ok_one': "✅ Оплата принята! Вам добавлен +1 анализ. Отправляйте видео! 🎉",
+        'celebrate_sub': ("🎉🎊 <b>ПОЗДРАВЛЯЕМ!</b> 🎊🎉\n\n"
+                          "💎 Теперь вы <b>PREMIUM</b> участник!\n\n"
+                          "✨ Вам открыто:\n"
+                          "♾ Безлимитный анализ\n"
+                          "🔍 Глубокий, профессиональный анализ\n"
+                          "🗣 Голосовой анализ\n"
+                          "🔥 Рекомендации хештегов\n"
+                          "⚡ Без очереди, быстро\n\n"
+                          "📈 Подписка: до <b>{until}</b>\n\n"
+                          "Отправляйте видео — получите лучший результат! 🚀"),
+        'celebrate_test': ("🎉🎊 <b>ПОЗДРАВЛЯЕМ!</b> 🎊🎉\n\n"
+                           "💎 Активирован 7-дневный <b>PREMIUM тест</b>!\n\n"
+                           "✨ Вам открыто:\n"
+                           "♾ Безлимитный анализ\n"
+                           "🔍 Глубокий анализ\n"
+                           "🗣 Голосовой анализ\n"
+                           "⚡ Без очереди\n\n"
+                           "📈 Срок: до <b>{until}</b>\n\n"
+                           "Попробуйте — понравится, переходите на полную подписку! 🚀"),
+        'celebrate_one': ("🎉 <b>ОПЛАТА ПРИНЯТА!</b> 🎉\n\n"
+                          "✅ Вам добавлен <b>+1 анализ</b>!\n\n"
+                          "Отправляйте видео — получите профессиональный анализ! 🚀"),
         'analyzed_footer': "\n\n━━━━━━━━━━\n🩺 Анализ выполнен ИИ экспертом InstaDoctor\n👉 @Instadoctorai_bot",
         'tts_loading': "🔊 Готовлю озвучку... ⏳",
         'tts_premium': ("🔒 Эта функция только для PREMIUM подписчиков!\n\n"
@@ -1801,6 +1847,28 @@ async def precheckout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
 
 
+# Telegram "fireworks" xabar effekti (premium olganda kayf uchun)
+PAYME_FIREWORKS_EFFECT = "5104841245755180586"  # 🎉 fireworks effect_id
+
+
+async def _send_celebration(context, chat_id, text):
+    """Tabrik xabarini fireworks effekti bilan yuboradi (ishlamasa - oddiy)."""
+    try:
+        # Telegram message effect (fireworks) - yangi Bot API
+        await context.bot.send_message(
+            chat_id, text, parse_mode="HTML",
+            message_effect_id=PAYME_FIREWORKS_EFFECT
+        )
+        return
+    except Exception:
+        pass
+    # Effekt ishlamasa - 🎉 animatsiyali emoji bilan oddiy xabar
+    try:
+        await context.bot.send_message(chat_id, text, parse_mode="HTML")
+    except Exception:
+        pass
+
+
 async def successful_payment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """To'lov muvaffaqiyatli — obunani/tahlilni AVTOMATIK faollashtiramiz."""
     sp = update.message.successful_payment
@@ -1813,7 +1881,8 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
     try:
         if payload == "sub_1month":
             new_until = activate_subscription(user.id, SUB_DAYS)
-            await update.message.reply_text(t(context, 'pay_ok_sub').format(until=new_until))
+            await _send_celebration(context, update.effective_chat.id,
+                                    t(context, 'celebrate_sub').format(until=new_until))
             try:
                 create_payment(user.id, 'sub_1month', current_sub_price())
             except Exception:
@@ -1822,7 +1891,8 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
                          f"📦 1 oylik obuna\n💵 {paid_uzs:,} so'm\n✅ Obuna {new_until} gacha yoqildi")
         elif payload == "test_7day":
             new_until = activate_subscription(user.id, TEST_DAYS)
-            await update.message.reply_text(t(context, 'pay_ok_sub').format(until=new_until))
+            await _send_celebration(context, update.effective_chat.id,
+                                    t(context, 'celebrate_test').format(until=new_until))
             try:
                 create_payment(user.id, 'test_7day', TEST_PRICE)
             except Exception:
@@ -1831,7 +1901,8 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
                          f"📦 7 kunlik test Premium\n💵 {paid_uzs:,} so'm\n✅ Obuna {new_until} gacha yoqildi")
         elif payload == "one_1":
             add_balance(user.id, 1)
-            await update.message.reply_text(t(context, 'pay_ok_one'))
+            await _send_celebration(context, update.effective_chat.id,
+                                    t(context, 'celebrate_one'))
             try:
                 create_payment(user.id, 'one_1', ONE_PRICE)
             except Exception:
@@ -2474,14 +2545,10 @@ async def berobuna_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ Obuna yoqildi!\n👤 ID: {target_id}\n📅 {days} kun\n⏳ Tugash: {new_until}"
         )
-        # Foydalanuvchiga ham xabar berishga harakat qilamiz
+        # Foydalanuvchiga fireworks bilan tabrik
         try:
-            await context.bot.send_message(
-                target_id,
-                f"🎁 Sizga {days} kunlik BEPUL obuna berildi!\n"
-                f"⏳ {new_until} gacha cheksiz video tahlil qilishingiz mumkin.\n"
-                f"Video yuboring — boshlaymiz! 🚀"
-            )
+            await _send_celebration(context, target_id,
+                                    TEXTS['uz']['celebrate_sub'].format(until=new_until))
         except Exception:
             await update.message.reply_text(
                 "ℹ️ Obuna yoqildi, lekin foydalanuvchiga xabar yuborib bo'lmadi "
@@ -3033,6 +3100,136 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(caption + "\n⚠️ (videoni yuborib bo'lmadi)")
 
 
+async def aktiv_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: hozirgi aktivlik + bugungi/haftalik eng aktiv soatlar."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    # Vaqt zonasi: server (UTC bo'lishi mumkin) -> O'zbekiston (UTC+5)
+    # created formati: 'YYYY-MM-DD HH:MM' (server vaqti). +5 soat qo'shib UZ vaqti.
+    UZ_OFFSET = int(os.getenv("UZ_TZ_OFFSET", "5"))  # Railway server UTC bo'lsa +5
+    now_srv = datetime.now()
+    now_uz = now_srv + timedelta(hours=UZ_OFFSET)
+
+    # Hozirgi aktivlik (server vaqti bilan solishtiramiz, chunki created server vaqtida)
+    def _count_since(minutes):
+        chegara = (now_srv - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M")
+        row = _db_execute(
+            "SELECT COUNT(DISTINCT user_id), COUNT(*) FROM analyses WHERE created >= %s",
+            (chegara,), fetch='one'
+        )
+        return (row[0] or 0, row[1] or 0) if row else (0, 0)
+
+    a5_u, a5_a = _count_since(5)
+    a60_u, a60_a = _count_since(60)
+
+    # Bugun (server sanasi)
+    bugun_srv = now_srv.strftime("%Y-%m-%d")
+    row = _db_execute(
+        "SELECT COUNT(DISTINCT user_id), COUNT(*) FROM analyses WHERE created LIKE %s",
+        (bugun_srv + "%",), fetch='one'
+    )
+    bugun_u, bugun_a = (row[0] or 0, row[1] or 0) if row else (0, 0)
+
+    # Bugungi soatlik taqsimot (created'dan soatni olamiz, +5 UZ vaqtiga)
+    rows = _db_execute(
+        "SELECT created FROM analyses WHERE created LIKE %s",
+        (bugun_srv + "%",), fetch='all'
+    ) or []
+    soatlar = {}
+    for r in rows:
+        try:
+            dt = datetime.strptime(r[0], "%Y-%m-%d %H:%M") + timedelta(hours=UZ_OFFSET)
+            h = dt.hour
+            soatlar[h] = soatlar.get(h, 0) + 1
+        except Exception:
+            pass
+
+    # Haftalik (oxirgi 7 kun) soatlik taqsimot
+    hafta_chegara = (now_srv - timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+    wrows = _db_execute(
+        "SELECT created FROM analyses WHERE created >= %s",
+        (hafta_chegara,), fetch='all'
+    ) or []
+    hafta_soat = {}
+    hafta_jami = 0
+    for r in wrows:
+        try:
+            dt = datetime.strptime(r[0], "%Y-%m-%d %H:%M") + timedelta(hours=UZ_OFFSET)
+            h = dt.hour
+            hafta_soat[h] = hafta_soat.get(h, 0) + 1
+            hafta_jami += 1
+        except Exception:
+            pass
+
+    # Matn tuzamiz
+    txt = "📊 BOT AKTIVLIGI\n\n"
+    txt += "🟢 HOZIR:\n"
+    txt += f"• Oxirgi 5 daqiqa: {a5_u} odam, {a5_a} tahlil\n"
+    txt += f"• Oxirgi 1 soat: {a60_u} odam, {a60_a} tahlil\n"
+    txt += f"• Bugun jami: {bugun_u} odam, {bugun_a} tahlil\n\n"
+
+    # Bugungi eng aktiv soatlar (top 5)
+    txt += "🕐 BUGUNGI ENG AKTIV SOATLAR (O'zbekiston vaqti):\n"
+    if soatlar:
+        top_soat = sorted(soatlar.items(), key=lambda x: x[1], reverse=True)[:5]
+        for h, c in top_soat:
+            txt += f"• {h:02d}:00–{h:02d}:59 — {c} tahlil\n"
+    else:
+        txt += "• Bugun hali tahlil yo'q\n"
+
+    # Haftalik eng aktiv soat
+    txt += f"\n📅 SHU HAFTA ({hafta_jami} tahlil) ENG AKTIV SOATLAR:\n"
+    if hafta_soat:
+        top_w = sorted(hafta_soat.items(), key=lambda x: x[1], reverse=True)[:5]
+        for h, c in top_w:
+            txt += f"• {h:02d}:00–{h:02d}:59 — {c} tahlil\n"
+        eng = top_w[0]
+        txt += f"\n🏆 Eng aktiv payt: soat {eng[0]:02d}:00 atrofida"
+    else:
+        txt += "• Bu hafta tahlil yo'q\n"
+
+    txt += f"\n\n🕒 Hozir (UZ): {now_uz.strftime('%H:%M')}"
+    await update.message.reply_text(txt)
+
+
+async def obunaochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: berilgan ID ning obunasini BEKOR qiladi. Foydalanish: /obunaochir <ID>"""
+    if not is_admin(update.effective_user.id):
+        return
+    args = context.args or []
+    if len(args) < 1:
+        await update.message.reply_text("Foydalanish: /obunaochir <ID>\nMisol: /obunaochir 7589459697")
+        return
+    try:
+        target_id = int(args[0])
+    except Exception:
+        await update.message.reply_text("⚠️ ID raqam bo'lishi kerak. Misol: /obunaochir 7589459697")
+        return
+    try:
+        # sub_until ni NULL qilamiz (obuna bekor)
+        _db_execute("UPDATE users SET sub_until = NULL WHERE user_id = %s", (target_id,))
+        await update.message.reply_text(
+            f"✅ Obuna bekor qilindi!\n👤 ID: {target_id}\n"
+            f"Endi bu foydalanuvchi bepul (Flash-Lite) holatda."
+        )
+    except Exception as e:
+        logger.error(f"obunaochir xato: {e}")
+        await update.message.reply_text("⚠️ Xatolik yuz berdi. Qaytadan urinib ko'ring.")
+
+
+async def fireworks_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: fireworks + tabrik xabarini sinab ko'rish."""
+    if not is_admin(update.effective_user.id):
+        return
+    await _send_celebration(context, update.effective_chat.id,
+                            TEXTS['uz']['celebrate_sub'].format(until="2026-12-31"))
+    await update.message.reply_text(
+        "👆 Yuqorida tabrik ko'rinishi. Agar fireworks (otashbozlik) chiqsa — ishlayapti! "
+        "Chiqmasa — Telegram/PTB versiyasi qo'llamaydi, lekin tabrik xabari baribir boradi."
+    )
+
+
 async def bugun_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Faqat bugungi top videolar (rekka foizi bo'yicha)."""
     if not is_admin(update.effective_user.id):
@@ -3354,20 +3551,59 @@ def _payme_handle(body):
 
 
 def _payme_activate(uid, pkg, amount):
-    """To'lov tasdiqlangach obuna/balans beradi. Bot ilovasiga xabar yuboradi."""
+    """To'lov tasdiqlangach obuna/balans beradi + tabrik (fireworks) yuboradi."""
+    celebrate_key = None
+    until = None
     try:
         if pkg in ("sub_1month", "sub_1month_discount"):
-            activate_subscription(uid, SUB_DAYS)
+            until = activate_subscription(uid, SUB_DAYS)
             create_payment(uid, pkg, amount // 100)
+            celebrate_key = "celebrate_sub"
         elif pkg == "test_7day":
-            activate_subscription(uid, TEST_DAYS)
+            until = activate_subscription(uid, TEST_DAYS)
             create_payment(uid, pkg, amount // 100)
+            celebrate_key = "celebrate_test"
         elif pkg == "one_1":
             add_balance(uid, 1)
             create_payment(uid, pkg, amount // 100)
+            celebrate_key = "celebrate_one"
         logger.info(f"Payme to'lov faollashtirildi: uid={uid}, paket={pkg}")
+        # Tabrik xabarini fireworks bilan yuboramiz (bot loop'iga)
+        if celebrate_key and _bot_app is not None and _main_loop is not None:
+            try:
+                txt = TEXTS['uz'][celebrate_key]
+                if until:
+                    txt = txt.format(until=until)
+                asyncio.run_coroutine_threadsafe(_send_celebration_uid(uid, txt), _main_loop)
+            except Exception as e:
+                logger.warning(f"Payme tabrik yuborishda xato (uid={uid}): {e}")
+        # Adminlarga ham xabar
+        if _bot_app is not None and _main_loop is not None:
+            try:
+                som = amount // 100
+                admin_txt = (f"💰 YANGI TO'LOV (Payme Merchant)\n👤 ID: {uid}\n"
+                             f"📦 {pkg}\n💵 {som:,} so'm\n✅ Faollashtirildi")
+                for _aid in ADMIN_IDS:
+                    asyncio.run_coroutine_threadsafe(
+                        _bot_app.bot.send_message(_aid, admin_txt), _main_loop)
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"Payme activate xato (uid={uid}): {e}")
+
+
+async def _send_celebration_uid(uid, text):
+    """Tabrikni fireworks bilan yuboradi (uid bo'yicha)."""
+    try:
+        await _bot_app.bot.send_message(uid, text, parse_mode="HTML",
+                                        message_effect_id=PAYME_FIREWORKS_EFFECT)
+        return
+    except Exception:
+        pass
+    try:
+        await _bot_app.bot.send_message(uid, text, parse_mode="HTML")
+    except Exception:
+        pass
 
 
 async def payme_web_handler(request):
@@ -3413,12 +3649,14 @@ async def run_web_server():
 
 def main():
     init_db()
+    global _bot_app
     app = (Application.builder()
            .token(TELEGRAM_TOKEN)
            .concurrent_updates(True)   # MUHIM: har bir foydalanuvchi alohida ishlanadi
            .post_init(post_init)
            .post_shutdown(post_shutdown)
            .build())
+    _bot_app = app
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
@@ -3446,6 +3684,9 @@ def main():
     app.add_handler(CommandHandler("chegirma_ochir", chegirma_ochir_command))
     app.add_handler(CommandHandler("top", top_command))
     app.add_handler(CommandHandler("bugun", bugun_command))
+    app.add_handler(CommandHandler("aktiv", aktiv_command))
+    app.add_handler(CommandHandler("fireworks_test", fireworks_test_command))
+    app.add_handler(CommandHandler("obunaochir", obunaochir_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(PreCheckoutQueryHandler(precheckout_handler))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_handler))
@@ -3455,6 +3696,8 @@ def main():
     logger.info("Bot ishga tushdi!")
     # Telegram bot + Payme web server BIRGA ishlaydi
     async def _run_all():
+        global _main_loop
+        _main_loop = asyncio.get_running_loop()
         await run_web_server()  # Payme web server (port 8080)
         async with app:
             await app.start()
