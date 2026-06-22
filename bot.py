@@ -717,21 +717,22 @@ TEXTS = {
         'menu_help': "ℹ️ Yordam",
         'menu_fikr': "💬 Fikr va takliflar",
         'menu_premium': "💎 Premiumga o'tish",
-        'eslatma_msg': ("🛠 <b>Hurmatli foydalanuvchi!</b>\n\n"
-                        "So'nggi kunlarda InstaDoctor'ni yanada <b>tezroq va kuchliroq</b> qilish uchun yangiladik. ⚡\n\n"
-                        "Yangilanish paytida ba'zi videolar tahlil qilinmagan bo'lishi mumkin — buning uchun <b>uzr so'raymiz</b> 🙏\n\n"
-                        "✅ <b>Hozir bot to'liq ishlayapti!</b>\n\n"
-                        "Agar videongiz javob olmagan bo'lsa — iltimos, <b>qaytadan yuboring</b>. Endi hammasi tez va aniq ishlaydi! 🎯\n\n"
-                        "Tushunganingiz uchun rahmat! ❤️\n\n"
-                        "📩 Savol yoki muammo bo'lsa: @Nurislom_admin\n\n"
-                        "━━━━━━━━━━━━━\n\n"
-                        "🛠 <b>Уважаемый пользователь!</b>\n\n"
-                        "В последние дни мы обновили InstaDoctor, чтобы он стал <b>быстрее и мощнее</b>. ⚡\n\n"
-                        "Во время обновления некоторые видео могли не обработаться — <b>приносим извинения</b> 🙏\n\n"
-                        "✅ <b>Сейчас бот работает полностью!</b>\n\n"
-                        "Если ваше видео осталось без ответа — пожалуйста, <b>отправьте его заново</b>. Теперь всё работает быстро и точно! 🎯\n\n"
-                        "Спасибо за понимание! ❤️\n\n"
-                        "📩 Вопросы или проблемы: @Nurislom_admin"),
+        'eslatma_uz': ("🛠 <b>Hurmatli foydalanuvchi!</b>\n\n"
+                       "So'nggi kunlarda InstaDoctor'ni yanada <b>tezroq va kuchliroq</b> qilish uchun yangiladik. ⚡\n\n"
+                       "Yangilanish paytida ba'zi videolar tahlil qilinmagan bo'lishi mumkin — buning uchun <b>uzr so'raymiz</b> 🙏\n\n"
+                       "✅ <b>Hozir bot to'liq ishlayapti!</b>\n\n"
+                       "Agar videongiz javob olmagan bo'lsa — iltimos, <b>qaytadan yuboring</b>. Endi hammasi tez va aniq ishlaydi! 🎯\n\n"
+                       "Tushunganingiz uchun rahmat! ❤️\n\n"
+                       "📩 Savol yoki muammo bo'lsa: @Nurislom_admin"),
+        'eslatma_ru': ("🛠 <b>Уважаемый пользователь!</b>\n\n"
+                       "В последние дни мы обновили InstaDoctor, чтобы он стал <b>быстрее и мощнее</b>. ⚡\n\n"
+                       "Во время обновления некоторые видео могли не обработаться — <b>приносим извинения</b> 🙏\n\n"
+                       "✅ <b>Сейчас бот работает полностью!</b>\n\n"
+                       "Если ваше видео осталось без ответа — пожалуйста, <b>отправьте его заново</b>. Теперь всё работает быстро и точно! 🎯\n\n"
+                       "Спасибо за понимание! ❤️\n\n"
+                       "📩 Вопросы или проблемы: @Nurislom_admin"),
+        'eslatma_ru_btn': "🇷🇺 Русский",
+        'eslatma_uz_btn': "🇺🇿 O'zbekcha",
         'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
                       "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
                       "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
@@ -1274,6 +1275,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # So'rovga javob berishni boshlaydi - 1-savol javobini kutamiz
         context.user_data['mode'] = 'sorov_q1'
         await query.message.reply_text(t(context, 'sorov_q1_ask'))
+    elif data == 'eslatma_ru':
+        # Eslatmani ruschaga o'zgartiramiz (o'sha xabar)
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(TEXTS['uz']['eslatma_uz_btn'], callback_data="eslatma_uz")
+        ]])
+        try:
+            await query.edit_message_text(TEXTS['uz']['eslatma_ru'], reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+    elif data == 'eslatma_uz':
+        # Eslatmani o'zbekchaga qaytaramiz
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(TEXTS['uz']['eslatma_ru_btn'], callback_data="eslatma_ru")
+        ]])
+        try:
+            await query.edit_message_text(TEXTS['uz']['eslatma_uz'], reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
     elif data.startswith('full_'):
         try:
             aid = int(data.split('_', 1)[1])
@@ -2558,7 +2577,11 @@ async def eslatma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for row in rows:
         uid = row[0]
         try:
-            await context.bot.send_message(uid, TEXTS['uz']['eslatma_msg'], parse_mode="HTML")
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['eslatma_ru_btn'], callback_data="eslatma_ru")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['eslatma_uz'],
+                                           reply_markup=kb, parse_mode="HTML")
             _db_execute("UPDATE users SET eslatma_given = TRUE WHERE user_id = %s", (uid,))
             sent += 1
         except Exception as e:
