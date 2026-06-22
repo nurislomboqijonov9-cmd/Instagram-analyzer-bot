@@ -1847,8 +1847,10 @@ async def precheckout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
 
 
-# Telegram "konfetti/salyut" xabar effekti (premium olganda kayf uchun)
-PAYME_FIREWORKS_EFFECT = "5046509860389126442"  # 🎉 party popper (konfetti zarrachalari sochiladi)
+# Telegram premium/hashamat xabar effekti (premium olganda kayf uchun)
+PAYME_FIREWORKS_EFFECT = "4965608262968804599"  # 💎 olmos (premium, qimmatbaho)
+PAYME_EFFECT_CROWN = "5089422278802801345"      # 👑 toj (qirollik, VIP)
+PAYME_EFFECT_DIAMOND = "4965608262968804599"    # 💎 olmos
 
 
 async def _send_celebration(context, chat_id, text):
@@ -3224,14 +3226,31 @@ async def obunaochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def fireworks_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: fireworks + tabrik xabarini sinab ko'rish."""
+    """Admin: toj va olmos effektlarini sinab ko'rish (qaysi biri yoqsa - tanlash)."""
     if not is_admin(update.effective_user.id):
         return
-    await _send_celebration(context, update.effective_chat.id,
-                            TEXTS['uz']['celebrate_sub'].format(until="2026-12-31"))
+    chat_id = update.effective_chat.id
+    # 1) Toj effekti
+    try:
+        await context.bot.send_message(
+            chat_id, "👑 <b>TOJ effekti</b> — qirollik, VIP his", parse_mode="HTML",
+            message_effect_id=PAYME_EFFECT_CROWN)
+    except Exception:
+        await context.bot.send_message(chat_id, "👑 Toj effekti (ishlamadi - eski Telegram?)")
+    await asyncio.sleep(2)
+    # 2) Olmos effekti
+    try:
+        await context.bot.send_message(
+            chat_id, "💎 <b>OLMOS effekti</b> — premium, qimmatbaho his", parse_mode="HTML",
+            message_effect_id=PAYME_EFFECT_DIAMOND)
+    except Exception:
+        await context.bot.send_message(chat_id, "💎 Olmos effekti (ishlamadi - eski Telegram?)")
+    await asyncio.sleep(1)
     await update.message.reply_text(
-        "👆 Yuqorida tabrik ko'rinishi. Agar fireworks (otashbozlik) chiqsa — ishlayapti! "
-        "Chiqmasa — Telegram/PTB versiyasi qo'llamaydi, lekin tabrik xabari baribir boradi."
+        "👆 Ikkala effektni ko'rdingiz.\n\n"
+        "Qaysi biri ko'proq yoqdi — menga ayting:\n"
+        "• 👑 Toj\n• 💎 Olmos\n\n"
+        "O'shani asosiy qilib qo'yaman (premium olganda chiqadigan)."
     )
 
 
