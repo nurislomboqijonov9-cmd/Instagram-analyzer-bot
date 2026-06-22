@@ -1847,8 +1847,8 @@ async def precheckout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
 
 
-# Telegram "fireworks" xabar effekti (premium olganda kayf uchun)
-PAYME_FIREWORKS_EFFECT = "5104841245755180586"  # 🎉 fireworks effect_id
+# Telegram "konfetti/salyut" xabar effekti (premium olganda kayf uchun)
+PAYME_FIREWORKS_EFFECT = "5046509860389126442"  # 🎉 party popper (konfetti zarrachalari sochiladi)
 
 
 async def _send_celebration(context, chat_id, text):
@@ -2157,11 +2157,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq,
                                 tokens=tot, narx=uzs)
 
-            # Adminlarga tannarx hisoboti (token + so'm)
+            # Adminlarga tannarx hisoboti (token + so'm + video hajmi/uzunligi)
             try:
+                # Video hajmi (MB) va uzunligi (soniya)
+                _mb = (video.file_size / (1024 * 1024)) if getattr(video, "file_size", None) else 0
+                _dur = getattr(video, "duration", 0) or 0
+                _dur_txt = f"{_dur // 60}:{_dur % 60:02d}" if _dur >= 60 else f"{_dur} sek"
                 report = (
                     f"📊 Tannarx hisobi (video tahlil)\n"
                     f"👤 @{uname} (ID: {user_id})\n"
+                    f"🎬 Video: {_mb:.1f} MB, {_dur_txt}\n"
                     f"🔢 Kiruvchi: {p_tok:,} token\n"
                     f"🔢 Javob: {o_tok:,} token\n"
                     f"🔢 Jami: {tot:,} token\n"
