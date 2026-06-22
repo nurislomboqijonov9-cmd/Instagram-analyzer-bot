@@ -1457,7 +1457,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mavzu = context.user_data.get('profile_mavzu')
                 if mavzu:
                     prompt = prompt + f"\n\nFoydalanuvchi profil mavzusini aytdi: {mavzu}"
-                tahlil = await asyncio.to_thread(_gemini_process_images, tmp_paths, prompt)
+                tahlil, _pusage = await asyncio.to_thread(_gemini_process_images, tmp_paths, prompt)
 
                 if not tahlil or not tahlil.strip():
                     raise Exception("Profil tahlili bo'sh keldi")
@@ -1472,10 +1472,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await wait_msg.edit_text(t(context, 'ready'))
                 _uname = query.from_user.username or query.from_user.first_name or ""
                 # Token va tannarxni hisoblaymiz (premium_xarajat hisobida ko'rinishi uchun)
-                _p_tok = _last_usage.get("prompt", 0)
-                _o_tok = _last_usage.get("output", 0)
-                _tot = _last_usage.get("total", 0) or (_p_tok + _o_tok)
-                _usd, _uzs = _cost_uzs(_p_tok, _o_tok, _last_usage.get("model", "gemini-2.5-flash"))
+                _p_tok = _pusage.get("prompt", 0)
+                _o_tok = _pusage.get("output", 0)
+                _tot = _pusage.get("total", 0) or (_p_tok + _o_tok)
+                _usd, _uzs = _cost_uzs(_p_tok, _o_tok, _pusage.get("model", "gemini-2.5-flash"))
                 save_analysis(user_id, username=_uname, kind="profile", toliq=tahlil,
                               tokens=_tot, narx=_uzs)
                 # Adminlarga profil tannarx hisoboti
@@ -1709,12 +1709,20 @@ def _analyze(uploaded_file, prompt, max_retries=4, model="gemini-2.5-flash"):
 
 def _gemini_process_images(image_paths, prompt):
     """BLOKLAYDIGAN: bir nechta rasm (skrinshot)ni Gemini bilan tahlil qiladi.
-    Faqat alohida thread'da chaqiriladi (asyncio.to_thread)."""
+    Faqat alohida thread'da chaqiriladi (asyncio.to_thread).
+    QAYTARADI: (matn, usage_dict) - global aralashmasin."""
     uploaded = []
     try:
         for p in image_paths:
             uploaded.append(_upload_and_wait(p))
-        return _generate(uploaded + [prompt])
+        txt = _generate(uploaded + [prompt])
+        usage = {
+            "prompt": _last_usage.get("prompt", 0),
+            "output": _last_usage.get("output", 0),
+            "total": _last_usage.get("total", 0),
+            "model": _last_usage.get("model", "gemini-2.5-flash"),
+        }
+        return txt, usage
     finally:
         for u in uploaded:
             try:
@@ -1728,21 +1736,30 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi.
     model: bepul -> flash-lite (arzon), pullik -> flash (sifatli).
     FALLBACK: faqat Flash band bo'lsa Flash-Lite'ga tushadi (arzonlashadi, ruxsat).
-    Flash-Lite (bepul) band bo'lsa - Flash'ga KO'TARILMAYDI (qimmat bermaymiz)."""
+    Flash-Lite (bepul) band bo'lsa - Flash'ga KO'TARILMAYDI (qimmat bermaymiz).
+    QAYTARADI: (matn, usage_dict) - usage shu tahlilniki (global aralashmasin)."""
     uploaded = None
+    used_model = model
     try:
         uploaded = _upload_and_wait(tmp_path)
         try:
-            return _analyze(uploaded, prompt, model=model, max_retries=3)
+            txt = _analyze(uploaded, prompt, model=model, max_retries=3)
         except Exception as e:
-            # Faqat Flash (pullik) band bo'lsa -> Flash-Lite'ga tushamiz (arzonroq, ishlaydi).
-            # Flash-Lite (bepul) band bo'lsa -> Flash'ga KO'TARMAYMIZ (xarajat oshmasin), xato qaytaramiz.
             if "lite" not in model:
                 logger.warning(f"Flash band ({e}); Flash-Lite'ga tushamiz")
-                return _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
-            # Bepul (lite) band - fallback yo'q, xatoni qaytaramiz
-            logger.warning(f"Flash-Lite band ({e}); fallback yo'q (bepul)")
-            raise
+                used_model = "gemini-2.5-flash-lite"
+                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
+            else:
+                logger.warning(f"Flash-Lite band ({e}); fallback yo'q (bepul)")
+                raise
+        # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
+        usage = {
+            "prompt": _last_usage.get("prompt", 0),
+            "output": _last_usage.get("output", 0),
+            "total": _last_usage.get("total", 0),
+            "model": used_model,  # haqiqatda ishlatilgan model
+        }
+        return txt, usage
     finally:
         if uploaded is not None:
             try:
@@ -1981,6 +1998,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 shown_ad = False
                 try:
                     while not _progress_stop.is_set():
+                        # BEPUL: reklamani BIRINCHI siklda darrov ko'rsatamiz (tahlil tez tugasa ham ulgursin).
+                        if (not _is_priority) and (not shown_ad):
+                            shown_ad = True
+                            try:
+                                await message.reply_text(
+                                    t(context, 'queued_promo') + _narx_q,
+                                    reply_markup=_promo_kb, parse_mode="HTML"
+                                )
+                            except Exception:
+                                pass
                         await asyncio.sleep(4)
                         if _progress_stop.is_set():
                             break
@@ -1992,17 +2019,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await wait_msg.edit_text(f"{msg_step}\n⌛ {secs} soniya...")
                         except Exception:
                             pass
-                        # BEPUL: o'rtada (15s) reklama ALOHIDA xabar bo'lib keladi (SMS kabi),
-                        # bir marta. Sanoqqa xalal bermaydi (alohida xabar).
-                        if (not _is_priority) and (not shown_ad) and secs >= 15:
-                            shown_ad = True
-                            try:
-                                await message.reply_text(
-                                    t(context, 'queued_promo') + _narx_q,
-                                    reply_markup=_promo_kb, parse_mode="HTML"
-                                )
-                            except Exception:
-                                pass
                 except asyncio.CancelledError:
                     pass
 
@@ -2014,7 +2030,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 # TIMEOUT 5 daqiqa: agar Gemini osilib qolsa - majburan bekor,
                 # semaphore bo'shaydi, boshqa videolar qotmaydi.
-                tahlil = await asyncio.wait_for(
+                tahlil, _usage = await asyncio.wait_for(
                     asyncio.to_thread(_gemini_process, tmp_path, prompt, _model),
                     timeout=300
                 )
@@ -2060,10 +2076,11 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uname = message.from_user.username or message.from_user.first_name or ""
 
             # Token va tannarxni hisoblaymiz (bazaga saqlash + admin hisoboti uchun)
-            p_tok = _last_usage.get("prompt", 0)
-            o_tok = _last_usage.get("output", 0)
-            tot = _last_usage.get("total", 0) or (p_tok + o_tok)
-            usd, uzs = _cost_uzs(p_tok, o_tok, _last_usage.get("model", "gemini-2.5-flash"))
+            # _usage - SHU tahlilniki (global aralashmaydi)
+            p_tok = _usage.get("prompt", 0)
+            o_tok = _usage.get("output", 0)
+            tot = _usage.get("total", 0) or (p_tok + o_tok)
+            usd, uzs = _cost_uzs(p_tok, o_tok, _usage.get("model", "gemini-2.5-flash"))
 
             aid = save_analysis(user_id, username=uname, kind="video",
                                 file_id=video.file_id, foiz=foiz, qisqa=qisqa, toliq=toliq,
