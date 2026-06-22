@@ -1727,17 +1727,22 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     """BLOKLAYDIGAN to'liq Gemini ishi. Faqat alohida thread'da chaqiriladi
     (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi.
     model: bepul -> flash-lite (arzon), pullik -> flash (sifatli).
-    FALLBACK: agar tanlangan model band (503) bo'lsa, boshqa modelga o'tadi."""
+    FALLBACK: faqat Flash band bo'lsa Flash-Lite'ga tushadi (arzonlashadi, ruxsat).
+    Flash-Lite (bepul) band bo'lsa - Flash'ga KO'TARILMAYDI (qimmat bermaymiz)."""
     uploaded = None
     try:
         uploaded = _upload_and_wait(tmp_path)
         try:
-            return _analyze(uploaded, prompt, model=model, max_retries=2)
+            return _analyze(uploaded, prompt, model=model, max_retries=3)
         except Exception as e:
-            # 503/overload bo'lsa - boshqa modelga o'tib ko'ramiz (bittasi band bo'lsa ikkinchisi ishlaydi)
-            fallback = "gemini-2.5-flash" if "lite" in model else "gemini-2.5-flash-lite"
-            logger.warning(f"Model {model} ishlamadi ({e}); fallback: {fallback}")
-            return _analyze(uploaded, prompt, model=fallback, max_retries=2)
+            # Faqat Flash (pullik) band bo'lsa -> Flash-Lite'ga tushamiz (arzonroq, ishlaydi).
+            # Flash-Lite (bepul) band bo'lsa -> Flash'ga KO'TARMAYMIZ (xarajat oshmasin), xato qaytaramiz.
+            if "lite" not in model:
+                logger.warning(f"Flash band ({e}); Flash-Lite'ga tushamiz")
+                return _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
+            # Bepul (lite) band - fallback yo'q, xatoni qaytaramiz
+            logger.warning(f"Flash-Lite band ({e}); fallback yo'q (bepul)")
+            raise
     finally:
         if uploaded is not None:
             try:
@@ -1906,9 +1911,10 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await wait_msg.edit_text(t(context, 'too_big'))
             return
 
-        # Bitta umumiy navbat (hammaga). Farq: pullik (admin/obuna/to'lagan) ->
-        # darrov tahlil; bepul -> 30 soniya "cho'ziladi" + reklama (pastda).
-        _is_priority = is_admin(user_id) or has_access(user_id) == 'sub' or has_paid_ever(user_id)
+        # Bitta umumiy navbat (hammaga). Flash (sifatli) FAQAT faol obuna/balans/admin uchun.
+        # 1 marta to'lab, obunasi tugaganlar -> bepul (Flash-Lite), qimmat Flash bermaymiz.
+        _access = has_access(user_id)
+        _is_priority = _access in ('admin', 'sub', 'credit')
         _chosen_sem = _video_semaphore
 
         async with _chosen_sem:
