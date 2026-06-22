@@ -10,3 +10,6 @@ kurigram>=2.1
 
 # PostgreSQL bazasi (balans DOIMIY saqlanadi + ko'p odam bir vaqtda).
 psycopg[binary,pool]>=3.1
+
+# Payme Merchant API web server uchun
+aiohttp>=3.9
