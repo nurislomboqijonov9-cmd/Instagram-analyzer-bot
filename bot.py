@@ -3,6 +3,7 @@ import re
 import io
 import wave
 import uuid
+import base64
 import asyncio
 import logging
 import tempfile
@@ -10,6 +11,7 @@ import time
 import psycopg
 from psycopg_pool import ConnectionPool
 from datetime import datetime, timedelta
+from aiohttp import web
 from google import genai
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, KeyboardButton, BotCommand, LabeledPrice)
@@ -50,6 +52,16 @@ ONE_PRICE = 5090
 # Haftalik test paketi: 7 kun / 7000 so'm
 TEST_PRICE = 7000
 TEST_DAYS = 7
+# ===== Payme Merchant API =====
+PAYME_MERCHANT_ID = os.getenv("PAYME_MERCHANT_ID", "")   # kassa ID (Payme kabinetdan)
+PAYME_KEY = os.getenv("PAYME_KEY", "")                    # maxfiy kalit (Payme kabinetdan)
+PAYME_TEST_KEY = os.getenv("PAYME_TEST_KEY", "")          # test kaliti (sandbox)
+WEB_PORT = int(os.getenv("PORT", "8080"))                 # Railway web port
+# Payme to'lov holatlari
+PAYME_STATE_CREATED = 1       # transaksiya yaratilgan (to'lov kutilmoqda)
+PAYME_STATE_PERFORMED = 2     # to'lov amalga oshdi
+PAYME_STATE_CANCELED = -1     # bekor qilingan (to'lovsiz)
+PAYME_STATE_CANCELED_AFTER = -2  # to'lovdan keyin bekor (qaytarilgan)
 
 # Yangi foydalanuvchiga beriladigan BEPUL tahlil soni
 FREE_TRIAL = 1
@@ -151,6 +163,19 @@ def init_db():
                 cur.execute("""CREATE TABLE IF NOT EXISTS sorov_javoblar (
                     id SERIAL PRIMARY KEY, user_id BIGINT, username TEXT,
                     javob1 TEXT, javob2 TEXT, created TEXT)""")
+                # Payme Merchant API transaksiyalari
+                cur.execute("""CREATE TABLE IF NOT EXISTS payme_transactions (
+                    id SERIAL PRIMARY KEY,
+                    payme_id TEXT UNIQUE,
+                    user_id BIGINT,
+                    package TEXT,
+                    amount BIGINT,
+                    state INTEGER DEFAULT 1,
+                    reason INTEGER,
+                    create_time BIGINT DEFAULT 0,
+                    perform_time BIGINT DEFAULT 0,
+                    cancel_time BIGINT DEFAULT 0,
+                    created TEXT)""")
                 # users jadvaliga yangi ustunlar (obuna + referral)
                 for col, typ in [("sub_until", "TEXT"),
                                  ("referred_by", "BIGINT"),
@@ -1446,7 +1471,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await wait_msg.edit_text(t(context, 'ready'))
                 _uname = query.from_user.username or query.from_user.first_name or ""
-                save_analysis(user_id, username=_uname, kind="profile", toliq=tahlil)
+                # Token va tannarxni hisoblaymiz (premium_xarajat hisobida ko'rinishi uchun)
+                _p_tok = _last_usage.get("prompt", 0)
+                _o_tok = _last_usage.get("output", 0)
+                _tot = _last_usage.get("total", 0) or (_p_tok + _o_tok)
+                _usd, _uzs = _cost_uzs(_p_tok, _o_tok, _last_usage.get("model", "gemini-2.5-flash"))
+                save_analysis(user_id, username=_uname, kind="profile", toliq=tahlil,
+                              tokens=_tot, narx=_uzs)
+                # Adminlarga profil tannarx hisoboti
+                try:
+                    _rep = (f"📊 Tannarx (PROFIL tahlil)\n👤 @{_uname} (ID: {user_id})\n"
+                            f"🔢 Jami: {_tot:,} token\n💰 ≈ {_uzs:,.0f} so'm")
+                    for _a in ADMIN_IDS:
+                        try:
+                            await context.bot.send_message(_a, _rep)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 context.user_data['mode'] = None
                 context.user_data['profile_imgs'] = []
                 context.user_data['profile_mavzu'] = None
@@ -3033,6 +3075,310 @@ async def post_shutdown(application):
             pass
 
 
+# ============================================================
+# ===== PAYME MERCHANT API (web server, JSON-RPC 2.0) =====
+# ============================================================
+# Payme bizning serverga so'rov yuboradi (/payme endpoint).
+# 6 metod: CheckPerformTransaction, CreateTransaction, PerformTransaction,
+# CancelTransaction, CheckTransaction, GetStatement.
+# Avtorizatsiya: Authorization: Basic base64("Paycom:KEY")
+
+# Payme xato kodlari
+PAYME_ERR_AUTH = -32504           # avtorizatsiya xatosi
+PAYME_ERR_METHOD = -32601         # metod topilmadi
+PAYME_ERR_AMOUNT = -31001         # noto'g'ri summa
+PAYME_ERR_ACCOUNT = -31050        # account (user_id) topilmadi
+PAYME_ERR_TX_NOT_FOUND = -31003   # transaksiya topilmadi
+PAYME_ERR_CANT_PERFORM = -31008   # operatsiyani bajarib bo'lmaydi
+PAYME_ERR_CANT_CANCEL = -31007    # bekor qilib bo'lmaydi
+
+
+def _payme_now_ms():
+    """Joriy vaqt millisekundda."""
+    return int(datetime.now().timestamp() * 1000)
+
+
+def _payme_check_auth(auth_header):
+    """Authorization: Basic base64('Paycom:KEY') ni tekshiradi."""
+    if not auth_header or not auth_header.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+        # format: "Paycom:KEY"
+        login, _, key = decoded.partition(":")
+        # Jonli kalit yoki test kalit to'g'ri kelsa - ruxsat
+        if key and (key == PAYME_KEY or (PAYME_TEST_KEY and key == PAYME_TEST_KEY)):
+            return True
+    except Exception as e:
+        logger.warning(f"Payme auth dekod xatosi: {e}")
+    return False
+
+
+def _payme_error(req_id, code, message_ru, data=None):
+    """Payme uchun xato javobi (JSON-RPC)."""
+    err = {"code": code, "message": {"ru": message_ru, "uz": message_ru, "en": message_ru}}
+    if data is not None:
+        err["data"] = data
+    return {"jsonrpc": "2.0", "id": req_id, "error": err}
+
+
+def _payme_result(req_id, result):
+    """Payme uchun muvaffaqiyatli javob (JSON-RPC)."""
+    return {"jsonrpc": "2.0", "id": req_id, "result": result}
+
+
+# Paket narxlari (tiyinda) -> qaysi paket ekanini aniqlash uchun
+def _payme_package_by_amount(amount_tiyin):
+    """Summa (tiyinda) bo'yicha paketni aniqlaydi."""
+    som = amount_tiyin // 100
+    if som == SUB_PRICE:
+        return ("sub_1month", SUB_DAYS)
+    if som == SUB_PRICE_DISCOUNT:
+        return ("sub_1month_discount", SUB_DAYS)
+    if som == TEST_PRICE:
+        return ("test_7day", TEST_DAYS)
+    if som == ONE_PRICE:
+        return ("one_1", 0)
+    return (None, None)
+
+
+def _payme_handle(body):
+    """Payme JSON-RPC so'rovini qayta ishlaydi. body - dict. Javob - dict."""
+    req_id = body.get("id")
+    method = body.get("method")
+    params = body.get("params", {}) or {}
+
+    # ---- CheckPerformTransaction: to'lov mumkinmi? ----
+    if method == "CheckPerformTransaction":
+        amount = params.get("amount", 0)
+        account = params.get("account", {}) or {}
+        uid = account.get("user_id")
+        pkg, days = _payme_package_by_amount(amount)
+        if pkg is None:
+            return _payme_error(req_id, PAYME_ERR_AMOUNT, "Noto'g'ri summa")
+        if not uid:
+            return _payme_error(req_id, PAYME_ERR_ACCOUNT, "Foydalanuvchi topilmadi",
+                                data="user_id")
+        # user_id raqam ekanini tekshiramiz
+        try:
+            int(uid)
+        except Exception:
+            return _payme_error(req_id, PAYME_ERR_ACCOUNT, "Foydalanuvchi topilmadi",
+                                data="user_id")
+        return _payme_result(req_id, {"allow": True})
+
+    # ---- CreateTransaction: transaksiya yaratish ----
+    if method == "CreateTransaction":
+        payme_id = params.get("id")
+        amount = params.get("amount", 0)
+        time_ms = params.get("time", _payme_now_ms())
+        account = params.get("account", {}) or {}
+        uid = account.get("user_id")
+        pkg, days = _payme_package_by_amount(amount)
+        if pkg is None:
+            return _payme_error(req_id, PAYME_ERR_AMOUNT, "Noto'g'ri summa")
+        if not uid:
+            return _payme_error(req_id, PAYME_ERR_ACCOUNT, "Foydalanuvchi topilmadi",
+                                data="user_id")
+        # Bu payme_id allaqachon bormi?
+        row = _db_execute(
+            "SELECT payme_id, state, create_time FROM payme_transactions WHERE payme_id = %s",
+            (payme_id,), fetch='one'
+        )
+        if row:
+            # Mavjud - o'sha holatni qaytaramiz
+            return _payme_result(req_id, {
+                "create_time": row[2],
+                "transaction": payme_id,
+                "state": row[1],
+            })
+        # Yangi transaksiya yaratamiz
+        _db_execute(
+            "INSERT INTO payme_transactions (payme_id, user_id, package, amount, state, create_time, created) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (payme_id, int(uid), pkg, amount, PAYME_STATE_CREATED, time_ms,
+             datetime.now().strftime("%Y-%m-%d %H:%M"))
+        )
+        return _payme_result(req_id, {
+            "create_time": time_ms,
+            "transaction": payme_id,
+            "state": PAYME_STATE_CREATED,
+        })
+
+    # ---- PerformTransaction: to'lovni amalga oshirish (PUL TUSHDI) ----
+    if method == "PerformTransaction":
+        payme_id = params.get("id")
+        row = _db_execute(
+            "SELECT user_id, package, amount, state, perform_time FROM payme_transactions WHERE payme_id = %s",
+            (payme_id,), fetch='one'
+        )
+        if not row:
+            return _payme_error(req_id, PAYME_ERR_TX_NOT_FOUND, "Transaksiya topilmadi")
+        uid, pkg, amount, state, perform_time = row
+        if state == PAYME_STATE_PERFORMED:
+            # Allaqachon bajarilgan
+            return _payme_result(req_id, {
+                "transaction": payme_id,
+                "perform_time": perform_time,
+                "state": PAYME_STATE_PERFORMED,
+            })
+        if state != PAYME_STATE_CREATED:
+            return _payme_error(req_id, PAYME_ERR_CANT_PERFORM, "Operatsiyani bajarib bo'lmaydi")
+        # TO'LOV TASDIQLANDI - obunani yoqamiz!
+        now_ms = _payme_now_ms()
+        _db_execute(
+            "UPDATE payme_transactions SET state = %s, perform_time = %s WHERE payme_id = %s",
+            (PAYME_STATE_PERFORMED, now_ms, payme_id)
+        )
+        # Paketga qarab obuna/balans beramiz
+        _payme_activate(uid, pkg, amount)
+        return _payme_result(req_id, {
+            "transaction": payme_id,
+            "perform_time": now_ms,
+            "state": PAYME_STATE_PERFORMED,
+        })
+
+    # ---- CancelTransaction: bekor qilish ----
+    if method == "CancelTransaction":
+        payme_id = params.get("id")
+        reason = params.get("reason")
+        row = _db_execute(
+            "SELECT state, cancel_time FROM payme_transactions WHERE payme_id = %s",
+            (payme_id,), fetch='one'
+        )
+        if not row:
+            return _payme_error(req_id, PAYME_ERR_TX_NOT_FOUND, "Transaksiya topilmadi")
+        state, cancel_time = row
+        now_ms = _payme_now_ms()
+        if state == PAYME_STATE_CREATED:
+            new_state = PAYME_STATE_CANCELED
+        elif state == PAYME_STATE_PERFORMED:
+            new_state = PAYME_STATE_CANCELED_AFTER
+        else:
+            # Allaqachon bekor qilingan
+            return _payme_result(req_id, {
+                "transaction": payme_id,
+                "cancel_time": cancel_time or now_ms,
+                "state": state,
+            })
+        if not cancel_time:
+            cancel_time = now_ms
+        _db_execute(
+            "UPDATE payme_transactions SET state = %s, reason = %s, cancel_time = %s WHERE payme_id = %s",
+            (new_state, reason, cancel_time, payme_id)
+        )
+        return _payme_result(req_id, {
+            "transaction": payme_id,
+            "cancel_time": cancel_time,
+            "state": new_state,
+        })
+
+    # ---- CheckTransaction: holatni tekshirish ----
+    if method == "CheckTransaction":
+        payme_id = params.get("id")
+        row = _db_execute(
+            "SELECT state, reason, create_time, perform_time, cancel_time FROM payme_transactions WHERE payme_id = %s",
+            (payme_id,), fetch='one'
+        )
+        if not row:
+            return _payme_error(req_id, PAYME_ERR_TX_NOT_FOUND, "Transaksiya topilmadi")
+        state, reason, create_time, perform_time, cancel_time = row
+        return _payme_result(req_id, {
+            "create_time": create_time or 0,
+            "perform_time": perform_time or 0,
+            "cancel_time": cancel_time or 0,
+            "transaction": payme_id,
+            "state": state,
+            "reason": reason,
+        })
+
+    # ---- GetStatement: davr bo'yicha transaksiyalar ro'yxati ----
+    if method == "GetStatement":
+        frm = params.get("from", 0)
+        to = params.get("to", _payme_now_ms())
+        rows = _db_execute(
+            "SELECT payme_id, user_id, amount, state, reason, create_time, perform_time, cancel_time "
+            "FROM payme_transactions WHERE create_time >= %s AND create_time <= %s ORDER BY create_time ASC",
+            (frm, to), fetch='all'
+        ) or []
+        txs = []
+        for r in rows:
+            txs.append({
+                "id": r[0],
+                "time": r[5] or 0,
+                "amount": r[2],
+                "account": {"user_id": str(r[1])},
+                "create_time": r[5] or 0,
+                "perform_time": r[6] or 0,
+                "cancel_time": r[7] or 0,
+                "transaction": r[0],
+                "state": r[3],
+                "reason": r[4],
+            })
+        return _payme_result(req_id, {"transactions": txs})
+
+    # Noma'lum metod
+    return _payme_error(req_id, PAYME_ERR_METHOD, "Metod topilmadi")
+
+
+def _payme_activate(uid, pkg, amount):
+    """To'lov tasdiqlangach obuna/balans beradi. Bot ilovasiga xabar yuboradi."""
+    try:
+        if pkg in ("sub_1month", "sub_1month_discount"):
+            activate_subscription(uid, SUB_DAYS)
+            create_payment(uid, pkg, amount // 100)
+        elif pkg == "test_7day":
+            activate_subscription(uid, TEST_DAYS)
+            create_payment(uid, pkg, amount // 100)
+        elif pkg == "one_1":
+            add_balance(uid, 1)
+            create_payment(uid, pkg, amount // 100)
+        logger.info(f"Payme to'lov faollashtirildi: uid={uid}, paket={pkg}")
+    except Exception as e:
+        logger.error(f"Payme activate xato (uid={uid}): {e}")
+
+
+async def payme_web_handler(request):
+    """aiohttp: /payme endpoint - Payme so'rovlarini qabul qiladi."""
+    # Avtorizatsiya
+    auth = request.headers.get("Authorization", "")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    req_id = body.get("id") if isinstance(body, dict) else None
+    if not _payme_check_auth(auth):
+        return web.json_response(
+            _payme_error(req_id, PAYME_ERR_AUTH, "Avtorizatsiya xatosi"),
+            status=200
+        )
+    # So'rovni qayta ishlaymiz (DB - sinxron, alohida thread'da)
+    try:
+        result = await asyncio.to_thread(_payme_handle, body)
+    except Exception as e:
+        logger.error(f"Payme handler xato: {e}")
+        result = _payme_error(req_id, -32400, "Sistema xatosi")
+    return web.json_response(result, status=200)
+
+
+async def health_handler(request):
+    """Oddiy health-check (Railway uchun)."""
+    return web.Response(text="OK")
+
+
+async def run_web_server():
+    """aiohttp web serverni ishga tushiradi (Payme uchun)."""
+    web_app = web.Application()
+    web_app.router.add_post("/payme", payme_web_handler)
+    web_app.router.add_get("/", health_handler)
+    web_app.router.add_get("/health", health_handler)
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)
+    await site.start()
+    logger.info(f"Web server ishga tushdi (port {WEB_PORT}) - Payme /payme tayyor")
+
+
 def main():
     init_db()
     app = (Application.builder()
@@ -3075,7 +3421,15 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     logger.info("Bot ishga tushdi!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Telegram bot + Payme web server BIRGA ishlaydi
+    async def _run_all():
+        await run_web_server()  # Payme web server (port 8080)
+        async with app:
+            await app.start()
+            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+            # Cheksiz kutamiz (bot to'xtamasin)
+            await asyncio.Event().wait()
+    asyncio.run(_run_all())
 
 
 if __name__ == '__main__':
