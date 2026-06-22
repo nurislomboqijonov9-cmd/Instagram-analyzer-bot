@@ -3153,18 +3153,20 @@ def _payme_handle(body):
         amount = params.get("amount", 0)
         account = params.get("account", {}) or {}
         uid = account.get("user_id")
+        # 1) Avval account (user_id) ni tekshiramiz
+        if not uid:
+            return _payme_error(req_id, -31050, "Foydalanuvchi ID kiritilmagan", data="user_id")
+        try:
+            uid_int = int(uid)
+        except Exception:
+            return _payme_error(req_id, -31050, "Noto'g'ri foydalanuvchi ID", data="user_id")
+        # Foydalanuvchi bazada bormi?
+        if not user_exists(uid_int):
+            return _payme_error(req_id, -31050, "Bunday foydalanuvchi topilmadi", data="user_id")
+        # 2) Keyin summani tekshiramiz
         pkg, days = _payme_package_by_amount(amount)
         if pkg is None:
             return _payme_error(req_id, PAYME_ERR_AMOUNT, "Noto'g'ri summa")
-        if not uid:
-            return _payme_error(req_id, PAYME_ERR_ACCOUNT, "Foydalanuvchi topilmadi",
-                                data="user_id")
-        # user_id raqam ekanini tekshiramiz
-        try:
-            int(uid)
-        except Exception:
-            return _payme_error(req_id, PAYME_ERR_ACCOUNT, "Foydalanuvchi topilmadi",
-                                data="user_id")
         return _payme_result(req_id, {"allow": True})
 
     # ---- CreateTransaction: transaksiya yaratish ----
@@ -3174,12 +3176,19 @@ def _payme_handle(body):
         time_ms = params.get("time", _payme_now_ms())
         account = params.get("account", {}) or {}
         uid = account.get("user_id")
+        # 1) Account (user_id) tekshiruvi
+        if not uid:
+            return _payme_error(req_id, -31050, "Foydalanuvchi ID kiritilmagan", data="user_id")
+        try:
+            uid_int = int(uid)
+        except Exception:
+            return _payme_error(req_id, -31050, "Noto'g'ri foydalanuvchi ID", data="user_id")
+        if not user_exists(uid_int):
+            return _payme_error(req_id, -31050, "Bunday foydalanuvchi topilmadi", data="user_id")
+        # 2) Summa tekshiruvi
         pkg, days = _payme_package_by_amount(amount)
         if pkg is None:
             return _payme_error(req_id, PAYME_ERR_AMOUNT, "Noto'g'ri summa")
-        if not uid:
-            return _payme_error(req_id, PAYME_ERR_ACCOUNT, "Foydalanuvchi topilmadi",
-                                data="user_id")
         # Bu payme_id allaqachon bormi?
         row = _db_execute(
             "SELECT payme_id, state, create_time FROM payme_transactions WHERE payme_id = %s",
