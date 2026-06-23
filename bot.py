@@ -37,6 +37,11 @@ ADMIN_ID = 7589459697
 ADMIN_IDS = [7589459697, 5808245573, 356530813]
 # So'rov javoblari (fikrlar) yuboriladigan guruh ID (Railway'dan ham o'zgartirish mumkin)
 FIKR_GROUP_ID = os.getenv("FIKR_GROUP_ID", "-1003784847158")
+# Cheklar va barcha to'lovlar boradigan guruh (3 admin nazorat qiladi)
+CHEK_GROUP_ID = os.getenv("CHEK_GROUP_ID", "-1004458514532")
+# Karta orqali to'lov uchun karta ma'lumotlari
+CARD_NUMBER = os.getenv("CARD_NUMBER", "6262 7300 6521 3151")
+CARD_HOLDER = os.getenv("CARD_HOLDER", "Boqijonov Nurislom")
 
 
 def is_admin(user_id):
@@ -188,6 +193,7 @@ def init_db():
                                  ("test_taklif_given", "BOOLEAN DEFAULT FALSE"),
                                  ("test_sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("eslatma_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("yangilik_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -760,6 +766,16 @@ TEXTS = {
                        "📩 Вопросы или проблемы: @Nurislom_admin"),
         'eslatma_ru_btn': "🇷🇺 Русский",
         'eslatma_uz_btn': "🇺🇿 O'zbekcha",
+        'yangilik_msg': ("🎉 <b>InstaDoctor YANGILANDI!</b>\n\n"
+                         "✨ Bot yangi imkoniyatlar bilan to'ldi:\n"
+                         "📊 Profil tahlili (ball + tavsiyalar)\n"
+                         "🎯 Yanada aniq va chuqur video tahlil\n"
+                         "⚡ Tezroq va barqaror ishlash\n"
+                         "💳 Qulay to'lov tizimi\n\n"
+                         "👇 Yangilangan menyuni ochish uchun tugmani bosing:\n\n"
+                         "💬 To'lovda qiyinchilikka duch kelsangiz yoki savolingiz bo'lsa — "
+                         "bemalol murojaat qiling: @Nurislom_admin"),
+        'yangilik_btn': "🚀 Boshlash / Menyuni ochish",
         'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
                       "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
                       "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
@@ -911,6 +927,16 @@ TEXTS = {
                       "✅ To'lagach, CHEK SKRINSHOTINI shu yerga yuboring.\n"
                       "Admin tekshirib, obunangizni faollashtiradi. ⏳"),
         'receipt_sent': "✅ Chekingiz adminga yuborildi. Tez orada tasdiqlanadi! ⏳",
+        'card_pay_instr': ("💳 <b>KARTA ORQALI TO'LOV</b>\n\n"
+                           "📦 Tanlangan paket: <b>{paket}</b>\n"
+                           "💰 To'lov summasi: <b>{summa} so'm</b>\n\n"
+                           "1️⃣ Quyidagi kartaga <b>{summa} so'm</b> o'tkazing:\n\n"
+                           "💳 <code>{karta}</code>\n"
+                           "👤 <b>{egasi}</b>\n\n"
+                           "2️⃣ To'lagach, <b>chek (skrinshot)ni shu yerga rasm qilib yuboring</b>\n\n"
+                           "3️⃣ Tez orada tasdiqlanadi va Premium faollashadi! ✅"),
+        'card_choose': "💳 Karta orqali to'lash",
+        'payme_choose': "⚡️ Payme (avtomatik)",
         'approved': "🎉 To'lovingiz tasdiqlandi!\n✅ Obunangiz faol — {until} gacha.\nEndi cheksiz video tahlil qilishingiz mumkin! 🎬",
         'sub_btn': "💳 Obuna sotib olish",
         'sub_btn_price': "💳 Obuna sotib olish (30 kun / {narx} so'm)",
@@ -1169,6 +1195,16 @@ TEXTS = {
                       "✅ После оплаты отправьте СКРИНШОТ ЧЕКА сюда.\n"
                       "Админ проверит и активирует подписку. ⏳"),
         'receipt_sent': "✅ Ваш чек отправлен админу. Скоро подтвердим! ⏳",
+        'card_pay_instr': ("💳 <b>ОПЛАТА ПО КАРТЕ</b>\n\n"
+                           "📦 Выбранный пакет: <b>{paket}</b>\n"
+                           "💰 Сумма: <b>{summa} сум</b>\n\n"
+                           "1️⃣ Переведите <b>{summa} сум</b> на карту:\n\n"
+                           "💳 <code>{karta}</code>\n"
+                           "👤 <b>{egasi}</b>\n\n"
+                           "2️⃣ После оплаты <b>отправьте чек (скриншот) сюда картинкой</b>\n\n"
+                           "3️⃣ Скоро подтвердим и Premium активируется! ✅"),
+        'card_choose': "💳 Оплата по карте",
+        'payme_choose': "⚡️ Payme (автоматически)",
         'approved': "🎉 Оплата подтверждена!\n✅ Подписка активна — до {until}.\nТеперь безлимитный анализ видео! 🎬",
         'sub_btn': "💳 Оформить подписку",
         'sub_btn_price': "💳 Оформить подписку (30 дней / {narx} сум)",
@@ -1268,6 +1304,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
+    if data == 'boshlash':
+        # "Boshlash" tugmasi (yangilik xabaridan) - til tanlashni ko'rsatadi (menyu yangilanadi)
+        await query.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
+        return
     if data == 'lang_uz':
         context.user_data['lang'] = 'uz'
         await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
@@ -1277,6 +1317,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(t(context, 'lang_changed'), reply_markup=main_keyboard(context))
         await show_menu(query.message, context)
     elif data == 'buy_sub':
+        # To'lov turini tanlash: Payme yoki Karta
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_sub')],
+            [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_sub')],
+        ])
+        await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
+    elif data == 'buy_test':
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_test')],
+            [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_test')],
+        ])
+        await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
+    elif data == 'buy_one':
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_one')],
+            [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_one')],
+        ])
+        await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
+    # ===== PAYME tanlandi (avtomatik invoice) =====
+    elif data == 'pm_sub':
         if not PROVIDER_TOKEN:
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
@@ -1294,7 +1354,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Invoice (sub) yuborishda xato: {e}")
             await query.message.reply_text(t(context, 'pay_unavailable'))
-    elif data == 'buy_test':
+    elif data == 'pm_test':
         if not PROVIDER_TOKEN:
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
@@ -1312,7 +1372,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Invoice (test) yuborishda xato: {e}")
             await query.message.reply_text(t(context, 'pay_unavailable'))
-    elif data == 'buy_one':
+    elif data == 'pm_one':
         if not PROVIDER_TOKEN:
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
@@ -1330,6 +1390,86 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Invoice (one) yuborishda xato: {e}")
             await query.message.reply_text(t(context, 'pay_unavailable'))
+    # ===== KARTA tanlandi (chek yuborish) =====
+    elif data in ('card_sub', 'card_test', 'card_one'):
+        if data == 'card_sub':
+            paket_nom, summa, pkg = "1 oylik obuna", current_sub_price(), "sub_1month"
+        elif data == 'card_test':
+            paket_nom, summa, pkg = "7 kunlik Premium", TEST_PRICE, "test_7day"
+        else:
+            paket_nom, summa, pkg = "1 ta tahlil", ONE_PRICE, "one_1"
+        # Paketni eslab qolamiz (chek kelganda kerak)
+        context.user_data['card_paket'] = pkg
+        context.user_data['card_paket_nom'] = paket_nom
+        context.user_data['card_summa'] = summa
+        context.user_data['mode'] = 'card_receipt'
+        await query.message.reply_text(
+            t(context, 'card_pay_instr').format(
+                paket=paket_nom, summa=f"{summa:,}", karta=CARD_NUMBER, egasi=CARD_HOLDER),
+            parse_mode="HTML"
+        )
+    elif data.startswith('chok_'):
+        # Chek tasdiqlash: chok_{user_id}_{package}
+        if not is_admin(query.from_user.id):
+            await query.answer("Faqat adminlar tasdiqlay oladi", show_alert=True)
+            return
+        parts = data.split('_')
+        target_user = int(parts[1])
+        package = '_'.join(parts[2:]) if len(parts) > 2 else 'sub_1month'
+        admin_name = query.from_user.username or query.from_user.first_name or "admin"
+        if package == 'one_1':
+            add_balance(target_user, 1)
+            create_payment(target_user, 'one_1', ONE_PRICE)
+            try:
+                await _send_celebration_uid(target_user, TEXTS['uz']['celebrate_one'])
+            except Exception:
+                pass
+            natija = "1 ta tahlil qo'shildi"
+        elif package == 'test_7day':
+            until = activate_subscription(target_user, TEST_DAYS)
+            create_payment(target_user, 'test_7day', TEST_PRICE)
+            try:
+                await _send_celebration_uid(target_user, TEXTS['uz']['celebrate_test'].format(until=until))
+            except Exception:
+                pass
+            natija = f"7 kunlik Premium ({until} gacha)"
+        else:
+            until = activate_subscription(target_user, SUB_DAYS)
+            create_payment(target_user, 'sub_1month', current_sub_price())
+            try:
+                await _send_celebration_uid(target_user, TEXTS['uz']['celebrate_sub'].format(until=until))
+            except Exception:
+                pass
+            natija = f"1 oylik obuna ({until} gacha)"
+        # Guruhdagi xabarni yangilaymiz (tugmalarni olib tashlaymiz)
+        try:
+            await query.edit_message_caption(
+                caption=f"✅ TASDIQLANDI\n👤 ID: {target_user}\n📦 {natija}\n"
+                        f"👮 Tasdiqladi: @{admin_name}"
+            )
+        except Exception:
+            pass
+    elif data.startswith('chrad_'):
+        # Chek rad etish: chrad_{user_id}
+        if not is_admin(query.from_user.id):
+            await query.answer("Faqat adminlar", show_alert=True)
+            return
+        target_user = int(data.split('_')[1])
+        admin_name = query.from_user.username or query.from_user.first_name or "admin"
+        try:
+            await context.bot.send_message(
+                target_user,
+                "❌ Kechirasiz, chekingiz tasdiqlanmadi. "
+                "To'lov to'g'ri amalga oshganini tekshiring yoki @Nurislom_admin ga murojaat qiling."
+            )
+        except Exception:
+            pass
+        try:
+            await query.edit_message_caption(
+                caption=f"❌ RAD ETILDI\n👤 ID: {target_user}\n👮 @{admin_name}"
+            )
+        except Exception:
+            pass
     elif data == 'aksiya_video':
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
@@ -1815,7 +1955,7 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Profil rejimida — profil skrinshoti. To'lovlar endi Payme orqali (chek kerak emas)."""
+    """Profil skrinshoti YOKI to'lov cheki (karta orqali)."""
     # PROFIL REJIMI: rasm = profil skrinshoti
     if context.user_data.get('mode') == 'profile':
         imgs = context.user_data.setdefault('profile_imgs', [])
@@ -1827,7 +1967,38 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             t(context, 'profile_got').format(n=len(imgs)), reply_markup=kb
         )
         return
-    # Aks holda: rasmni e'tiborsiz qoldiramiz (to'lov Payme orqali avtomatik)
+    # KARTA CHEKI REJIMI: rasm = to'lov cheki -> guruhga uzatamiz
+    if context.user_data.get('mode') == 'card_receipt':
+        user = update.effective_user
+        pkg = context.user_data.get('card_paket', 'sub_1month')
+        paket_nom = context.user_data.get('card_paket_nom', '1 oylik obuna')
+        summa = context.user_data.get('card_summa', SUB_PRICE)
+        uname = user.username or user.first_name or "—"
+        photo_id = update.message.photo[-1].file_id
+        # Foydalanuvchiga tasdiq
+        await update.message.reply_text(t(context, 'receipt_sent'))
+        # Guruhga chek + tasdiqlash tugmalari (admin tanlaydi/o'zgartiradi)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"✅ Tasdiqlash ({paket_nom})",
+                                  callback_data=f"chok_{user.id}_{pkg}")],
+            [InlineKeyboardButton("1 oylik", callback_data=f"chok_{user.id}_sub_1month"),
+             InlineKeyboardButton("7 kun", callback_data=f"chok_{user.id}_test_7day"),
+             InlineKeyboardButton("1 ta", callback_data=f"chok_{user.id}_one_1")],
+            [InlineKeyboardButton("❌ Rad etish", callback_data=f"chrad_{user.id}")],
+        ])
+        caption = (f"💳 YANGI CHEK (karta to'lov)\n"
+                   f"👤 @{uname} (ID: {user.id})\n"
+                   f"📦 Tanlangan: {paket_nom}\n"
+                   f"💰 Summa: {summa:,} so'm\n\n"
+                   f"Tekshiring va tasdiqlang (yoki paketni o'zgartiring):")
+        try:
+            await context.bot.send_photo(CHEK_GROUP_ID, photo_id, caption=caption,
+                                         reply_markup=kb)
+        except Exception as e:
+            logger.error(f"Chek guruhga yuborilmadi: {e}")
+        context.user_data['mode'] = None
+        return
+    # Aks holda: rasmni e'tiborsiz qoldiramiz
     return
 
 
@@ -2715,6 +2886,40 @@ async def javoblar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Telegram limiti ~4000 belgi - bo'lib yuboramiz
     for i in range(0, len(text), 4000):
         await update.message.reply_text(text[i:i+4000])
+
+
+async def yangilik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: yangilanish xabari HAMMAga (1 marta) + 'Boshlash' tugmasi (menyu yangilanadi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(yangilik_given, FALSE) = FALSE",
+        fetch='all'
+    ) or []
+    if not rows:
+        await update.message.reply_text("📭 Yangilik yuboriladigan foydalanuvchi yo'q (hammasi olgan).")
+        return
+    await update.message.reply_text(f"🎉 Yangilik boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+
+    sent, failed = 0, 0
+    for row in rows:
+        uid = row[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['yangilik_btn'], callback_data="boshlash")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['yangilik_msg'],
+                                           reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET yangilik_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Yangilik yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+
+    await update.message.reply_text(
+        f"✅ Yangilik tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed}"
+    )
 
 
 async def eslatma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3695,6 +3900,7 @@ def main():
     app.add_handler(CommandHandler("sorov", sorov_command))
     app.add_handler(CommandHandler("test_sorov", test_sorov_command))
     app.add_handler(CommandHandler("eslatma", eslatma_command))
+    app.add_handler(CommandHandler("yangilik", yangilik_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
