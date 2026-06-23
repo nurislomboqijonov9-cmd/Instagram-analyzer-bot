@@ -69,6 +69,27 @@ PAYME_TEST_KEY = os.getenv("PAYME_TEST_KEY", "")          # test kaliti (sandbox
 WEB_PORT = int(os.getenv("PORT", "8080"))                 # Railway web port
 _bot_app = None                                           # global bot ilovasi (Payme tabrigi uchun)
 _main_loop = None                                         # asosiy event loop (web thread'dan xabar yuborish uchun)
+
+# Juma aksiyasi uchun eskirmaydigan maslahatlar (har juma bittasi aylanadi)
+JUMA_MASLAHATLAR = [
+    "🎬 <b>Birinchi 3 soniya — eng muhim!</b> Video boshida tomoshabinni darrov \"ushlang\": "
+    "savol bering, qiziq kadr ko'rsating yoki natijani oldindan ayting. Aks holda ular scroll qiladi.",
+
+    "⏰ <b>Joylashtirish vaqti muhim.</b> Auditoriyangiz eng faol bo'lgan paytda post qiling — "
+    "odatda ertalab 7-9 yoki kechqurun 19-22. Bir necha vaqtni sinab, qaysi biri ko'proq ko'rishini ko'ring.",
+
+    "🎵 <b>Trend ovoz/musiqa ishlating.</b> Instagram algoritmi trenddagi ovozlarni ko'proq ko'rsatadi. "
+    "Reels yaratishdan oldin, qaysi ovoz hozir ko'p ishlatilayotganini kuzating.",
+
+    "📝 <b>Birinchi qatorda ilmoq bo'lsin.</b> Tavsif (caption) boshida qiziqarli savol yoki "
+    "va'da yozing — \"...ni bilasizmi?\" yoki \"3 ta sirni aytaman\". Bu tomoshabinni to'xtatadi.",
+
+    "🔁 <b>Takror ko'riladigan video yarating.</b> Qisqa, dinamik, oxiri boshiga ulanadigan videolar "
+    "ko'p marta ko'riladi — bu algoritm uchun kuchli signal. Reelni 7-15 soniya qiling.",
+
+    "💬 <b>Izohlarni rag'batlantiring.</b> Video oxirida savol bering yoki fikr so'rang. "
+    "Ko'p izoh = algoritm videongizni ko'proq odamga ko'rsatadi. Faollik — kalit!",
+]
 # Payme to'lov holatlari
 PAYME_STATE_CREATED = 1       # transaksiya yaratilgan (to'lov kutilmoqda)
 PAYME_STATE_PERFORMED = 2     # to'lov amalga oshdi
@@ -199,6 +220,8 @@ def init_db():
                                  ("test_sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("eslatma_given", "BOOLEAN DEFAULT FALSE"),
                                  ("yangilik_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("juma_balance", "INTEGER DEFAULT 0"),
+                                 ("juma_sana", "TEXT"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -271,14 +294,26 @@ def sub_until_str(user_id):
     return row[0] if row and row[0] else None
 
 
+def get_juma_balance(user_id):
+    """Bugungi juma-bepul balansi (faqat juma kuni amal qiladi)."""
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    row = _db_execute(
+        "SELECT juma_balance, juma_sana FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    if row and row[0] and row[0] > 0 and row[1] == bugun:
+        return row[0]
+    return 0
+
+
 def has_access(user_id):
-    """'admin' | 'sub' (obuna faol) | 'credit' (bepul tahlil bor) | 'none'"""
+    """'admin' | 'sub' (obuna faol) | 'credit' (bepul tahlil bor) | 'juma' | 'none'"""
     if is_admin(user_id):
         return 'admin'
     if sub_active(user_id):
         return 'sub'
     if get_balance(user_id) > 0:
         return 'credit'
+    if get_juma_balance(user_id) > 0:
+        return 'juma'
     return 'none'
 
 
@@ -419,7 +454,11 @@ def consume_access(user_id):
     if is_admin(user_id):
         return None
     if not sub_active(user_id):
-        _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
+        # Avval JUMA balansidan yechamiz (u kuyadi, shuning uchun birinchi ishlatilsin)
+        if get_juma_balance(user_id) > 0:
+            _db_execute("UPDATE users SET juma_balance = juma_balance - 1 WHERE user_id = %s AND juma_balance > 0", (user_id,))
+        else:
+            _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
     # Referral mukofoti: do'st BIRINCHI tahlil qilganda, TAKLIF QILGAN odamga +1.
     # Lekin har taklif qiluvchi umrida FAQAT 1 MARTA bonus oladi (1 do'st uchun).
     row = _db_execute("SELECT referred_by, ref_credited FROM users WHERE user_id = %s", (user_id,), fetch='one')
@@ -793,6 +832,21 @@ TEXTS = {
                          "👇 <b>Yangilangan botni ochish uchun tugmani bosing:</b>\n\n"
                          "💬 Yordam kerakmi? @Nurislom_admin"),
         'yangilik_btn': "🚀 Botni ishga tushirish",
+        'juma_boshlandi': ("🤍 <b>Hafta davomida mehnat qildingiz...</b>\n\n"
+                           "Bilamiz — kontent yaratish oson emas. Har bir video ortida "
+                           "sizning kuchingiz, vaqtingiz va orzularingiz turibdi. Biz buni "
+                           "ko'ramiz va qadrlaymiz. 🙏\n\n"
+                           "🎁 <b>Shuning uchun bugun — JUMA SOVG'ASI:</b>\n"
+                           "Sizga <b>1 ta BEPUL tahlil</b>! Sizni qo'llab-quvvatlaymiz. 💪\n\n"
+                           "⏰ <i>Faqat bugun (juma) amal qiladi — ertaga yo'qoladi.</i>\n\n"
+                           "━━━━━━━━━━━━━\n"
+                           "💡 <b>Bugungi maslahat:</b>\n{maslahat}\n"
+                           "━━━━━━━━━━━━━\n\n"
+                           "👇 Hoziroq videongizni yuboring — biz yordam beramiz! 🎬"),
+        'juma_eslatma': ("⏰ <b>JUMA BEPUL TAHLILINGIZ YO'QOLMOQDA!</b>\n\n"
+                         "Bugungi bepul tahlilingizni hali ishlatmadingiz. "
+                         "Yarim tundan keyin u <b>yo'qoladi</b>! 😱\n\n"
+                         "👇 Hoziroq video yuboring — bepul tahlil qiling!"),
         'tarif7_msg': ("🎯 <b>MAXSUS TAKLIF — 7 KUNLIK PREMIUM!</b>\n\n"
                        "Atigi <b>7 000 so'm</b>ga 7 kun davomida to'liq Premium'dan foydalaning! 🔥\n\n"
                        "✨ <b>Sizga ochiladi:</b>\n"
@@ -1939,13 +1993,19 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
         try:
             txt = _analyze(uploaded, prompt, model=model, max_retries=3)
         except Exception as e:
+            # FALLBACK (ikki tomonlama): model band bo'lsa, BOSHQA modelga o'tamiz,
+            # shunda foydalanuvchi DOIM javob oladi (rad bo'lmaydi).
             if "lite" not in model:
+                # Flash band -> Flash-Lite (arzonlashadi)
                 logger.warning(f"Flash band ({e}); Flash-Lite'ga tushamiz")
                 used_model = "gemini-2.5-flash-lite"
                 txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
             else:
-                logger.warning(f"Flash-Lite band ({e}); fallback yo'q (bepul)")
-                raise
+                # Flash-Lite band -> Flash'ga ko'tarilamiz (biroz qimmat, lekin
+                # foydalanuvchi javobsiz qolmaydi - "5-10 daqiqa" muammosi yo'qoladi)
+                logger.warning(f"Flash-Lite band ({e}); Flash'ga ko'tarilamiz (rad qilmaymiz)")
+                used_model = "gemini-2.5-flash"
+                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash", max_retries=2)
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
@@ -2159,6 +2219,20 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user_id = message.from_user.id
 
+    # ADMIN: /videoid rejimi - video kodini (file_id) ko'rsatadi (tahlil qilmaydi)
+    if is_admin(user_id) and context.user_data.get('mode') == 'get_videoid':
+        context.user_data['mode'] = None
+        vid = message.video
+        if vid:
+            await message.reply_text(
+                f"🎬 Video kodi (file_id):\n\n<code>{vid.file_id}</code>\n\n"
+                f"Shu kodni menga (Claude) ayting — tahlildan keyin chiqadigan video qilaman.",
+                parse_mode="HTML"
+            )
+        else:
+            await message.reply_text("⚠️ Bu video emas. Qaytadan /videoid bosib, video yuboring.")
+        return
+
     # Kirish tekshiruvi: admin / obuna faol / bepul tahlil bor bo'lsa - o'tadi
     if has_access(user_id) == 'none':
         await message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
@@ -2205,38 +2279,12 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with _chosen_sem:
             tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
             is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
-
-            # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
-            downloaded = None
-            if pyro is not None:
-                try:
-                    downloaded = await pyro.download_media(video.file_id, file_name=tmp_path)
-                except Exception as e:
-                    logger.warning(f"Pyrogram yuklab olishda xato: {e}")
-
-            if downloaded:
-                tmp_path = downloaded
-            else:
-                # Zaxira yo'l: Pyrogram yo'q/ishlamadi.
-                # Katta video bo'lsa Bot API ham eplay olmaydi -> ogohlantiramiz.
-                if is_big:
-                    await wait_msg.edit_text(t(context, 'too_big'))
-                    return
-                file = await context.bot.get_file(video.file_id)
-                await file.download_to_drive(tmp_path)
-
-            await wait_msg.edit_text(t(context, 'uploading'))
             prompt = PROMPT_RU if get_lang(context) == 'ru' else PROMPT_UZ
 
-            await wait_msg.edit_text(t(context, 'analyzing'))
-
-            # Tahlil boshlanish vaqti (tugagach "X daqiqa oldi" deyish uchun)
+            # Tahlil boshlanish vaqti
             _analiz_start = datetime.now()
-
-            # "Tahlil boshlanmoqda" faqat 3 soniya turadi, keyin sanoq boshlanadi
-            await asyncio.sleep(3)
-
-            # Jonli progress mexanizmi
+            # Jonli progress mexanizmi - DARROV boshlanadi (yuklash paytida ham
+            # sanoq ketadi, "qotgan" kabi ko'rinmaydi).
             _progress_stop = asyncio.Event()
 
             # Bepul uchun reklama matni (progress o'rtasida ko'rsatiladi)
@@ -2262,11 +2310,11 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "✍️ Tavsiyalar tayyorlanmoqda...",
                 ]
                 i = 0
-                secs = 3  # 3 soniyadan boshlaymiz (analyzing tugagandan keyin)
+                secs = 1  # darrov boshlanadi
                 shown_ad = False
                 try:
                     while not _progress_stop.is_set():
-                        # BEPUL: reklamani BIRINCHI siklda darrov ko'rsatamiz (tahlil tez tugasa ham ulgursin).
+                        # BEPUL: reklamani BIRINCHI siklda darrov ko'rsatamiz.
                         if (not _is_priority) and (not shown_ad):
                             shown_ad = True
                             try:
@@ -2280,7 +2328,6 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if _progress_stop.is_set():
                             break
                         secs += 4
-                        # Sanoq HECH TO'XTAMAYDI - wait_msg'da doim yangilanadi
                         msg_step = steps[i % len(steps)]
                         i += 1
                         try:
@@ -2290,7 +2337,28 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except asyncio.CancelledError:
                     pass
 
+            # Progressni DARROV ishga tushiramiz (yuklashdan oldin)
             progress_task = asyncio.create_task(_show_progress())
+
+            # Asosiy yo'l: Pyrogram orqali yuklab olish (20MB cheklovi yo'q, 2GB gacha)
+            downloaded = None
+            if pyro is not None:
+                try:
+                    downloaded = await pyro.download_media(video.file_id, file_name=tmp_path)
+                except Exception as e:
+                    logger.warning(f"Pyrogram yuklab olishda xato: {e}")
+
+            if downloaded:
+                tmp_path = downloaded
+            else:
+                if is_big:
+                    _progress_stop.set()
+                    progress_task.cancel()
+                    await wait_msg.edit_text(t(context, 'too_big'))
+                    return
+                file = await context.bot.get_file(video.file_id)
+                await file.download_to_drive(tmp_path)
+
             # Model tanlash: pullik (admin/obuna/to'lagan) -> 2.5 Flash (sifatli);
             # bepul -> 2.5 Flash-Lite (4-5 barobar arzon, sifat biroz pastroq).
             _model = "gemini-2.5-flash" if _is_priority else "gemini-2.5-flash-lite"
@@ -2929,6 +2997,44 @@ async def yangilik_test_command(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
+async def juma_ochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: juma aksiyasini YOQADI."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("juma_aksiya", "on")
+    await update.message.reply_text(
+        "✅ Juma aksiyasi YOQILDI!\n\n"
+        "Endi har juma:\n"
+        "• 10:00 — premium olmaganlarga 1 bepul + xabar\n"
+        "• 20:00 — eslatma\n"
+        "• Shanba — ishlatilmagan kuyadi\n\n"
+        "O'chirish: /juma_yoq"
+    )
+
+
+async def juma_yoq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: juma aksiyasini O'CHIRADI."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("juma_aksiya", "off")
+    await update.message.reply_text(
+        "🔴 Juma aksiyasi O'CHIRILDI.\n\n"
+        "Endi juma kuni avtomatik bepul berilmaydi.\n"
+        "Yoqish: /juma_ochir"
+    )
+
+
+async def videoid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: keyingi yuborilgan videoning kodini (file_id) ko'rsatadi."""
+    if not is_admin(update.effective_user.id):
+        return
+    context.user_data['mode'] = 'get_videoid'
+    await update.message.reply_text(
+        "🎬 Endi videongizni yuboring — men uning kodini (file_id) ko'rsataman.\n"
+        "(Bu video tahlil qilinmaydi, faqat kod olinadi)"
+    )
+
+
 async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: barcha admin buyruqlari ro'yxati."""
     if not is_admin(update.effective_user.id):
@@ -2962,6 +3068,11 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💳 <b>TO'LOV / EFFEKT TEST</b>\n"
         "/paymetest — Payme havolani sinash\n"
         "/fireworks_test — konfetti sinash\n\n"
+        "🎁 <b>JUMA AKSIYASI</b>\n"
+        "/juma_ochir — juma aksiyasini yoqish\n"
+        "/juma_yoq — juma aksiyasini o'chirish\n\n"
+        "🎬 <b>VIDEO</b>\n"
+        "/videoid — video kodini (file_id) olish\n\n"
         "🤖 <b>AVTO</b>\n"
         "/avto_aksiya_ochir — avto-aksiya yoqish\n"
         "/avto_aksiya_yoq — avto-aksiya o'chirish\n\n"
@@ -4091,6 +4202,66 @@ async def sticker_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.warning(f"sticker_id xato: {e}")
 
 
+async def juma_aksiya_boshla(context: ContextTypes.DEFAULT_TYPE):
+    """Juma ertalab: premium olmaganlarga 1 juma-bepul beradi + xabar."""
+    # Juma aksiyasi YOQILGANmi? (default: o'chirilgan)
+    if get_setting("juma_aksiya", "off") != "on":
+        logger.info("Juma aksiyasi o'chirilgan - o'tkazib yuborildi")
+        return
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    # Maslahatni hafta raqamiga qarab aylantiramiz (har juma boshqasi)
+    hafta_raqam = datetime.now().isocalendar()[1]
+    maslahat = JUMA_MASLAHATLAR[hafta_raqam % len(JUMA_MASLAHATLAR)]
+    xabar = TEXTS['uz']['juma_boshlandi'].format(maslahat=maslahat)
+    rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
+    targets = [r[0] for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
+    logger.info(f"Juma aksiyasi: {len(targets)} ta foydalanuvchiga beriladi")
+    sent = 0
+    for uid in targets:
+        try:
+            _db_execute("UPDATE users SET juma_balance = 1, juma_sana = %s WHERE user_id = %s",
+                        (bugun, uid))
+            await context.bot.send_message(uid, xabar, parse_mode="HTML")
+            sent += 1
+        except Exception as e:
+            logger.warning(f"Juma aksiya xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+    logger.info(f"Juma aksiyasi tugadi: {sent} ta yuborildi")
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"🎁 Juma aksiyasi: {sent} ta foydalanuvchiga berildi.")
+        except Exception:
+            pass
+
+
+async def juma_eslatma_yubor(context: ContextTypes.DEFAULT_TYPE):
+    """Juma kechqurun: ishlatmaganlarga 'yo'qoladi' eslatmasi."""
+    if get_setting("juma_aksiya", "off") != "on":
+        return
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE juma_balance > 0 AND juma_sana = %s",
+        (bugun,), fetch='all') or []
+    sent = 0
+    for r in rows:
+        uid = r[0]
+        if is_admin(uid) or sub_active(uid):
+            continue
+        try:
+            await context.bot.send_message(uid, TEXTS['uz']['juma_eslatma'], parse_mode="HTML")
+            sent += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.4)
+    logger.info(f"Juma eslatma: {sent} ta yuborildi")
+
+
+async def juma_kuydir(context: ContextTypes.DEFAULT_TYPE):
+    """Shanba: ishlatilmagan juma-balansni kuydiradi (0 qiladi)."""
+    _db_execute("UPDATE users SET juma_balance = 0 WHERE juma_balance > 0")
+    logger.info("Juma balanslar kuydirildi (shanba)")
+
+
 def main():
     init_db()
     global _bot_app
@@ -4101,6 +4272,26 @@ def main():
            .post_shutdown(post_shutdown)
            .build())
     _bot_app = app
+    # ===== JUMA AKSIYASI (avtomatik scheduler) =====
+    # Vaqt: O'zbekiston (UTC+5). Server UTC bo'lsa, UZ vaqtidan 5 soat ayiramiz.
+    # Juma 10:00 UZ = 05:00 UTC | Juma 20:00 UZ = 15:00 UTC | Shanba 00:30 UZ = Juma 19:30 UTC
+    try:
+        from datetime import time as _dtime
+        jq = app.job_queue
+        if jq is not None:
+            UZ_OFF = int(os.getenv("UZ_TZ_OFFSET", "5"))
+            def uz_to_utc(h):
+                return (h - UZ_OFF) % 24
+            # Juma = day 4 (PTB: Monday=0 ... Friday=4)
+            jq.run_daily(juma_aksiya_boshla, time=_dtime(hour=uz_to_utc(10), minute=0), days=(4,))
+            jq.run_daily(juma_eslatma_yubor, time=_dtime(hour=uz_to_utc(20), minute=0), days=(4,))
+            # Kuydirish: shanba 00:30 UZ = juma 19:30 UTC (agar UZ_OFF=5)
+            jq.run_daily(juma_kuydir, time=_dtime(hour=uz_to_utc(0), minute=30), days=(5,))
+            logger.info("Juma aksiyasi scheduler o'rnatildi (juma 10:00 va 20:00, shanba kuydirish)")
+        else:
+            logger.warning("job_queue yo'q - juma aksiyasi ishlamaydi (requirements: job-queue kerak)")
+    except Exception as e:
+        logger.error(f"Juma scheduler o'rnatishda xato: {e}")
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
@@ -4121,6 +4312,9 @@ def main():
     app.add_handler(CommandHandler("paymetest", paymetest_command))
     app.add_handler(CommandHandler("tarif7", tarif7_command))
     app.add_handler(CommandHandler("buyruqlar", buyruqlar_command))
+    app.add_handler(CommandHandler("videoid", videoid_command))
+    app.add_handler(CommandHandler("juma_ochir", juma_ochir_command))
+    app.add_handler(CommandHandler("juma_yoq", juma_yoq_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
