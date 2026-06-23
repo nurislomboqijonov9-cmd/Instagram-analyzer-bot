@@ -1,5 +1,6 @@
 # Telegram bot (sizning kodingiz shu kutubxonada yozilgan)
-python-telegram-bot>=20.7,<23.0
+# [job-queue] = juma aksiyasi avtomatik scheduler uchun (APScheduler)
+python-telegram-bot[job-queue]>=20.7,<23.0
 
 # Gemini AI (video va profil tahlil qilish uchun)
 google-genai>=1.10,<3.0
