@@ -766,16 +766,28 @@ TEXTS = {
                        "📩 Вопросы или проблемы: @Nurislom_admin"),
         'eslatma_ru_btn': "🇷🇺 Русский",
         'eslatma_uz_btn': "🇺🇿 O'zbekcha",
-        'yangilik_msg': ("🎉 <b>InstaDoctor YANGILANDI!</b>\n\n"
-                         "✨ Bot yangi imkoniyatlar bilan to'ldi:\n"
-                         "📊 Profil tahlili (ball + tavsiyalar)\n"
-                         "🎯 Yanada aniq va chuqur video tahlil\n"
-                         "⚡ Tezroq va barqaror ishlash\n"
-                         "💳 Qulay to'lov tizimi\n\n"
-                         "👇 Yangilangan menyuni ochish uchun tugmani bosing:\n\n"
-                         "💬 To'lovda qiyinchilikka duch kelsangiz yoki savolingiz bo'lsa — "
-                         "bemalol murojaat qiling: @Nurislom_admin"),
-        'yangilik_btn': "🚀 Boshlash / Menyuni ochish",
+        'yangilik_msg': ("🎉 <b>InstaDoctor KATTA YANGILANDI!</b>\n\n"
+                         "Bot endi ancha <b>kuchli va barqaror</b> — videolaringiz "
+                         "<b>uzilishlarsiz, ishonchli</b> tahlil qilinadi! ✨\n\n"
+                         "━━━━━━━━━━━━━\n\n"
+                         "💳 <b>To'lov endi yanada oson!</b>\n\n"
+                         "Payme ishlamasa ham xavotir olmang — endi <b>karta orqali</b> "
+                         "ham to'lashingiz mumkin:\n\n"
+                         "1️⃣ Quyidagi <b>kartaga to'lang</b>\n"
+                         "2️⃣ <b>Chek (skrinshot)ni shu botga yuboring</b>\n"
+                         "3️⃣ Premium <b>tez orada faollashtiriladi!</b> ✅\n\n"
+                         "💳 Karta: <code>6262 7300 6521 3151</code>\n"
+                         "👤 <b>Boqijonov Nurislom</b>\n\n"
+                         "━━━━━━━━━━━━━\n\n"
+                         "✨ <b>Yangiliklar:</b>\n\n"
+                         "📊 <b>Profil tahlili</b> — ballar va shaxsiy tavsiyalar\n"
+                         "🎯 <b>Aniqroq tahlil</b> — natijalar yanada ishonchli\n"
+                         "🔍 <b>Chuqurroq tahlil</b> — Premium'da batafsil, professional\n"
+                         "🎤 <b>Ovozli tahlil</b> — tahlilni eshiting\n\n"
+                         "━━━━━━━━━━━━━\n\n"
+                         "👇 <b>Yangilangan botni ochish uchun tugmani bosing:</b>\n\n"
+                         "💬 Yordam kerakmi? @Nurislom_admin"),
+        'yangilik_btn': "🚀 Botni ishga tushirish",
         'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
                       "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
                       "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
@@ -2888,6 +2900,37 @@ async def javoblar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text[i:i+4000])
 
 
+async def yangilik_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: yangilik xabarini FAQAT o'ziga yuboradi (ko'rib olish uchun, hammaga ketmaydi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(TEXTS['uz']['yangilik_btn'], callback_data="boshlash")
+    ]])
+    await context.bot.send_message(
+        update.effective_chat.id, TEXTS['uz']['yangilik_msg'],
+        reply_markup=kb, parse_mode="HTML"
+    )
+    await update.message.reply_text(
+        "👆 Yangilik xabari shunday ko'rinadi (faqat sizga yuborildi).\n\n"
+        "Hammaga yuborish uchun: /yangilik"
+    )
+
+
+async def yangilik_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: yangilik xabarini FAQAT o'ziga yuboradi (ko'rish/test uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(TEXTS['uz']['yangilik_btn'], callback_data="boshlash")
+    ]])
+    await context.bot.send_message(update.effective_chat.id, TEXTS['uz']['yangilik_msg'],
+                                   reply_markup=kb, parse_mode="HTML")
+    await update.message.reply_text(
+        "👆 Yangilik xabari shunday ko'rinadi. Yoqsa — /yangilik bilan hammaga yuboring."
+    )
+
+
 async def yangilik_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: yangilanish xabari HAMMAga (1 marta) + 'Boshlash' tugmasi (menyu yangilanadi)."""
     if not is_admin(update.effective_user.id):
@@ -3901,6 +3944,8 @@ def main():
     app.add_handler(CommandHandler("test_sorov", test_sorov_command))
     app.add_handler(CommandHandler("eslatma", eslatma_command))
     app.add_handler(CommandHandler("yangilik", yangilik_command))
+    app.add_handler(CommandHandler("yangilik_test", yangilik_test_command))
+    app.add_handler(CommandHandler("yangilik_test", yangilik_test_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
