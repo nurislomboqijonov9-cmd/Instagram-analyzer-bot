@@ -28,7 +28,7 @@ API_HASH = os.getenv("API_HASH", "")
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 # Video o'lcham chegaralari (xarajat nazorati uchun)
 FREE_VIDEO_MB = int(os.getenv("FREE_VIDEO_MB", "100"))    # bepul: 100 MB
-PAID_VIDEO_MB = int(os.getenv("PAID_VIDEO_MB", "300"))    # pullik: 300 MB
+PAID_VIDEO_MB = int(os.getenv("PAID_VIDEO_MB", "1000"))   # pullik: 1000 MB (1 GB)
 FREE_VIDEO_BYTES = FREE_VIDEO_MB * 1024 * 1024
 PAID_VIDEO_BYTES = PAID_VIDEO_MB * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
@@ -708,10 +708,10 @@ TEXTS = {
                             "Avval <b>kichik qadamdan</b> boshlang:\n\n"
                             "⚡️ <b>7 KUNLIK PREMIUM — atigi 7 000 so'm</b>\n"
                             "━━━━━━━━━━━━━\n"
-                            "🚀 <b>VIP TEZLIK</b> — navbatsiz tahlil\n"
-                            "🔍 <b>CHUQURROQ TAHLIL</b> — eng aniq baho\n"
+                            "🔍 <b>CHUQURROQ TAHLIL</b> — eng aniq, professional baho\n"
                             "♾ <b>CHEKSIZ video</b> — 7 kun limitsiz\n"
                             "🎙 <b>OVOZLI MASLAHAT</b> + kuchli xeshteglar\n"
+                            "📊 <b>PROFIL TAHLILI</b> — shaxsiy tavsiyalar\n"
                             "📈 <b>REK EHTIMOLI</b> — TOPga chiqish % larda\n"
                             "━━━━━━━━━━━━━\n"
                             "Bir hafta sinab ko'ring — yoqsa, to'liq obunaga o'tasiz! 🔥"),
@@ -793,6 +793,19 @@ TEXTS = {
                          "👇 <b>Yangilangan botni ochish uchun tugmani bosing:</b>\n\n"
                          "💬 Yordam kerakmi? @Nurislom_admin"),
         'yangilik_btn': "🚀 Botni ishga tushirish",
+        'tarif7_msg': ("🎯 <b>MAXSUS TAKLIF — 7 KUNLIK PREMIUM!</b>\n\n"
+                       "Atigi <b>7 000 so'm</b>ga 7 kun davomida to'liq Premium'dan foydalaning! 🔥\n\n"
+                       "✨ <b>Sizga ochiladi:</b>\n"
+                       "♾ Cheksiz video tahlil\n"
+                       "🔍 Chuqur, professional tahlil\n"
+                       "🎤 Ovozli tahlil\n"
+                       "📊 Profil tahlili\n"
+                       "🔥 Heshteg tavsiyalari\n"
+                       "⚡️ Navbatsiz, tezkor xizmat\n\n"
+                       "💡 <b>Bir hafta sinab ko'ring</b> — natijani his qiling, keyin qaror qiling!\n\n"
+                       "👇 Hoziroq boshlang:"),
+        'tarif7_btn_payme': "⚡️ Payme orqali to'lash (7 000)",
+        'tarif7_btn_card': "💳 Karta orqali to'lash (7 000)",
         'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
                       "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
                       "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
@@ -2916,6 +2929,88 @@ async def yangilik_test_command(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
+async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: barcha admin buyruqlari ro'yxati."""
+    if not is_admin(update.effective_user.id):
+        return
+    txt = (
+        "🛠 <b>ADMIN BUYRUQLARI</b>\n\n"
+        "📊 <b>STATISTIKA</b>\n"
+        "/admin — umumiy statistika\n"
+        "/voronka — konversiya voronkasi\n"
+        "/aktiv — aktivlik + eng faol soatlar\n"
+        "/top — eng faol foydalanuvchilar\n"
+        "/bugun — bugungi statistika\n"
+        "/obunachilar — obunachilar ro'yxati\n"
+        "/premium_xarajat — xarajat vs to'lov\n"
+        "/aksiya_tugadi — aksiya statistikasi\n\n"
+        "🎁 <b>SOVG'A / OBUNA</b>\n"
+        "/berbalans &lt;ID&gt; &lt;son&gt; — bepul tahlil berish\n"
+        "/berobuna &lt;ID&gt; &lt;kun&gt; — obuna berish\n"
+        "/obunaochir &lt;ID&gt; — obunani bekor qilish\n"
+        "/yoz &lt;ID&gt; &lt;xabar&gt; — xabar yuborish\n\n"
+        "📢 <b>BROADCAST</b>\n"
+        "/yangilik — yangilanish xabari (1 marta)\n"
+        "/yangilik_test — yangilanishni o'zingga ko'r\n"
+        "/tarif7 — 7 kunlik taklif (qayta-qayta)\n"
+        "/eslatma — eslatma (uz/ru, 1 marta)\n"
+        "/aksiya — aksiya (+1 tahlil)\n"
+        "/obuna_taklif — obuna taklifi\n"
+        "/test_sorov — 7 kunlik so'rov\n"
+        "/test_taklif — 7 kunlik taklif\n"
+        "/sorov — so'rov (+1 bonus)\n\n"
+        "💳 <b>TO'LOV / EFFEKT TEST</b>\n"
+        "/paymetest — Payme havolani sinash\n"
+        "/fireworks_test — konfetti sinash\n\n"
+        "🤖 <b>AVTO</b>\n"
+        "/avto_aksiya_ochir — avto-aksiya yoqish\n"
+        "/avto_aksiya_yoq — avto-aksiya o'chirish\n\n"
+        "💬 <b>JAVOBLAR</b>\n"
+        "/javoblar — so'rov javoblari\n"
+        "/javoblar_bugun — bugungi javoblar\n\n"
+        "💰 <b>CHEGIRMA / SOTUV</b>\n"
+        "/chegirma — chegirma yoqish (17:00 gacha)\n"
+        "/chegirma_ochir — chegirmani o'chirish\n"
+        "/sotuv_matn &lt;matn&gt; — sotuv matnini o'zgartirish\n"
+        "/sotuv_korish — sotuv matnini ko'rish\n"
+        "/sotuv_matn_tikla — sotuv matnini tiklash"
+    )
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
+async def tarif7_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 7 kunlik Premium taklifini premium OLMAGAN hammaga yuboradi.
+    Qayta-qayta yuborish mumkin (belgilanmaydi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
+    targets = [r[0] for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
+    if not targets:
+        await update.message.reply_text("📭 Yuboriladigan foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"🎯 7 kunlik taklif boshlandi: {len(targets)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+    sent, failed = 0, 0
+    for uid in targets:
+        try:
+            payme_link = _payme_checkout_link(uid, TEST_PRICE)
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS['uz']['tarif7_btn_payme'], url=payme_link)],
+                [InlineKeyboardButton(TEXTS['uz']['tarif7_btn_card'], callback_data='card_test')],
+            ])
+            await context.bot.send_message(uid, TEXTS['uz']['test_taklif_msg'],
+                                           reply_markup=kb, parse_mode="HTML")
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"tarif7 yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+    await update.message.reply_text(
+        f"✅ 7 kunlik taklif tugadi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed}\n\n"
+        f"(Istalgan vaqt /tarif7 bilan qayta yuborishingiz mumkin)"
+    )
+
+
 async def paymetest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: Payme GET havolani sinab ko'rish (5090 so'm = 1 martalik)."""
     if not is_admin(update.effective_user.id):
@@ -4024,6 +4119,8 @@ def main():
     app.add_handler(CommandHandler("yangilik_test", yangilik_test_command))
     app.add_handler(CommandHandler("voronka", voronka_command))
     app.add_handler(CommandHandler("paymetest", paymetest_command))
+    app.add_handler(CommandHandler("tarif7", tarif7_command))
+    app.add_handler(CommandHandler("buyruqlar", buyruqlar_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
