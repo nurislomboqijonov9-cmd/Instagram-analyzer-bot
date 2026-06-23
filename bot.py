@@ -26,6 +26,11 @@ API_ID = int(os.getenv("API_ID", "0") or "0")
 API_HASH = os.getenv("API_HASH", "")
 # Maksimal qabul qilinadigan video hajmi (2GB). Kerak bo'lsa pasaytiring.
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
+# Video o'lcham chegaralari (xarajat nazorati uchun)
+FREE_VIDEO_MB = int(os.getenv("FREE_VIDEO_MB", "100"))    # bepul: 100 MB
+PAID_VIDEO_MB = int(os.getenv("PAID_VIDEO_MB", "300"))    # pullik: 300 MB
+FREE_VIDEO_BYTES = FREE_VIDEO_MB * 1024 * 1024
+PAID_VIDEO_BYTES = PAID_VIDEO_MB * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
 # Pullik Gemini (Tier 2) + kuchli server. Bitta umumiy navbat (hammaga).
 # Railway Variables'dan MAX_CONCURRENT ni xohlagancha oshirish mumkin.
@@ -939,6 +944,12 @@ TEXTS = {
                       "✅ To'lagach, CHEK SKRINSHOTINI shu yerga yuboring.\n"
                       "Admin tekshirib, obunangizni faollashtiradi. ⏳"),
         'receipt_sent': "✅ Chekingiz adminga yuborildi. Tez orada tasdiqlanadi! ⏳",
+        'too_big_free': ("🎬 Bu video biroz uzun/katta ekan.\n\n"
+                         "💎 <b>Premium</b> oling — <b>uzunroq va kattaroq videolarni</b> "
+                         "bemalol tahlil qiling!\n\n"
+                         "Yoki hozircha biroz qisqaroq video yuboring. 😊"),
+        'too_big_paid': ("🎬 Bu video juda katta ekan.\n\n"
+                         "Iltimos, biroz qisqaroq video yuboring. 😊"),
         'card_pay_instr': ("💳 <b>KARTA ORQALI TO'LOV</b>\n\n"
                            "📦 Tanlangan paket: <b>{paket}</b>\n"
                            "💰 To'lov summasi: <b>{summa} so'm</b>\n\n"
@@ -1207,6 +1218,12 @@ TEXTS = {
                       "✅ После оплаты отправьте СКРИНШОТ ЧЕКА сюда.\n"
                       "Админ проверит и активирует подписку. ⏳"),
         'receipt_sent': "✅ Ваш чек отправлен админу. Скоро подтвердим! ⏳",
+        'too_big_free': ("🎬 Это видео немного длинное/большое.\n\n"
+                         "💎 Оформите <b>Premium</b> — анализируйте <b>длинные и большие видео</b> "
+                         "без ограничений!\n\n"
+                         "Или пока отправьте видео покороче. 😊"),
+        'too_big_paid': ("🎬 Это видео слишком большое.\n\n"
+                         "Пожалуйста, отправьте видео покороче. 😊"),
         'card_pay_instr': ("💳 <b>ОПЛАТА ПО КАРТЕ</b>\n\n"
                            "📦 Выбранный пакет: <b>{paket}</b>\n"
                            "💰 Сумма: <b>{summa} сум</b>\n\n"
@@ -1347,61 +1364,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_one')],
         ])
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
-    # ===== PAYME tanlandi (avtomatik invoice) =====
-    elif data == 'pm_sub':
-        if not PROVIDER_TOKEN:
+    # ===== PAYME tanlandi (GET havola -> Payme sahifasi, Merchant API avtomatik) =====
+    elif data in ('pm_sub', 'pm_test', 'pm_one'):
+        if not PAYME_MERCHANT_ID:
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
-        try:
-            await query.message.reply_text(t(context, 'pay_safety'))
-            await context.bot.send_invoice(
-                chat_id=query.from_user.id,
-                title=t(context, 'inv_sub_title'),
-                description=t(context, 'inv_sub_desc'),
-                payload="sub_1month",
-                provider_token=PROVIDER_TOKEN,
-                currency="UZS",
-                prices=[LabeledPrice(t(context, 'inv_sub_title'), current_sub_price() * 100)],
-            )
-        except Exception as e:
-            logger.error(f"Invoice (sub) yuborishda xato: {e}")
-            await query.message.reply_text(t(context, 'pay_unavailable'))
-    elif data == 'pm_test':
-        if not PROVIDER_TOKEN:
-            await query.message.reply_text(t(context, 'pay_unavailable'))
-            return
-        try:
-            await query.message.reply_text(t(context, 'pay_safety'))
-            await context.bot.send_invoice(
-                chat_id=query.from_user.id,
-                title="7 kunlik Premium",
-                description="7 kun davomida to'liq Premium: cheksiz tahlil, VIP tezlik, ovozli maslahatlar.",
-                payload="test_7day",
-                provider_token=PROVIDER_TOKEN,
-                currency="UZS",
-                prices=[LabeledPrice("7 kunlik Premium", TEST_PRICE * 100)],
-            )
-        except Exception as e:
-            logger.error(f"Invoice (test) yuborishda xato: {e}")
-            await query.message.reply_text(t(context, 'pay_unavailable'))
-    elif data == 'pm_one':
-        if not PROVIDER_TOKEN:
-            await query.message.reply_text(t(context, 'pay_unavailable'))
-            return
-        try:
-            await query.message.reply_text(t(context, 'pay_safety'))
-            await context.bot.send_invoice(
-                chat_id=query.from_user.id,
-                title=t(context, 'inv_one_title'),
-                description=t(context, 'inv_one_desc'),
-                payload="one_1",
-                provider_token=PROVIDER_TOKEN,
-                currency="UZS",
-                prices=[LabeledPrice(t(context, 'inv_one_title'), ONE_PRICE * 100)],
-            )
-        except Exception as e:
-            logger.error(f"Invoice (one) yuborishda xato: {e}")
-            await query.message.reply_text(t(context, 'pay_unavailable'))
+        if data == 'pm_sub':
+            summa, nom = current_sub_price(), "1 oylik obuna"
+        elif data == 'pm_test':
+            summa, nom = TEST_PRICE, "7 kunlik Premium"
+        else:
+            summa, nom = ONE_PRICE, "1 ta tahlil"
+        link = _payme_checkout_link(query.from_user.id, summa)
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"💳 {summa:,} so'm to'lash", url=link)
+        ]])
+        await query.message.reply_text(
+            f"💳 <b>{nom}</b> — <b>{summa:,} so'm</b>\n\n"
+            f"Quyidagi tugmani bosing — <b>Payme</b> orqali xavfsiz to'lang.\n"
+            f"To'lovdan so'ng Premium <b>avtomatik</b> faollashadi! ✅",
+            reply_markup=kb, parse_mode="HTML"
+        )
     # ===== KARTA tanlandi (chek yuborish) =====
     elif data in ('card_sub', 'card_test', 'card_one'):
         if data == 'card_sub':
@@ -2188,6 +2171,22 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Balans (credit) = bepul tahlil (referral/sovg'a) -> bepul kabi: Flash-Lite + reklama.
         _access = has_access(user_id)
         _is_priority = _access in ('admin', 'sub')
+
+        # Video o'lcham chegarasi: admin cheksiz, pullik 300MB, bepul 100MB
+        if not is_admin(user_id) and video.file_size:
+            if _is_priority:
+                if video.file_size > PAID_VIDEO_BYTES:
+                    await wait_msg.edit_text(t(context, 'too_big_paid'), parse_mode="HTML")
+                    return
+            else:
+                if video.file_size > FREE_VIDEO_BYTES:
+                    kb = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(t(context, 'menu_premium'), callback_data="buy_sub")
+                    ]])
+                    await wait_msg.edit_text(t(context, 'too_big_free'),
+                                             reply_markup=kb, parse_mode="HTML")
+                    return
+
         _chosen_sem = _video_semaphore
 
         async with _chosen_sem:
@@ -2917,6 +2916,75 @@ async def yangilik_test_command(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
+async def paymetest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: Payme GET havolani sinab ko'rish (5090 so'm = 1 martalik)."""
+    if not is_admin(update.effective_user.id):
+        return
+    if not PAYME_MERCHANT_ID:
+        await update.message.reply_text("⚠️ PAYME_MERCHANT_ID o'rnatilmagan (Railway Variables).")
+        return
+    summa = ONE_PRICE  # 5090 so'm = 1 martalik paket
+    link = _payme_checkout_link(update.effective_user.id, summa)
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(f"💳 {summa:,} so'm to'lash (TEST)", url=link)
+    ]])
+    await update.message.reply_text(
+        f"🧪 <b>PAYME TEST</b>\n\n"
+        f"Summa: <b>{summa:,} so'm</b> (1 martalik paket)\n\n"
+        f"Tugmani bosing → Payme sahifasi ochiladi → to'lang.\n"
+        f"To'lov o'tsa: <b>+1 tahlil</b> qo'shiladi va <b>konfetti</b> chiqadi.\n\n"
+        f"🔗 Havola:\n<code>{link}</code>",
+        reply_markup=kb, parse_mode="HTML"
+    )
+
+
+async def voronka_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: konversiya voronkasi - kim qaysi bosqichda yo'qolyapti."""
+    if not is_admin(update.effective_user.id):
+        return
+    jami = (_db_execute("SELECT COUNT(*) FROM users", fetch='one') or [0])[0]
+    tahlil_qilgan = (_db_execute(
+        "SELECT COUNT(DISTINCT user_id) FROM analyses", fetch='one') or [0])[0]
+    qaytgan = (_db_execute(
+        "SELECT COUNT(*) FROM (SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 2) t",
+        fetch='one') or [0])[0]
+    faol = (_db_execute(
+        "SELECT COUNT(*) FROM (SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 5) t",
+        fetch='one') or [0])[0]
+    tolagan = (_db_execute(
+        "SELECT COUNT(DISTINCT user_id) FROM payments WHERE status = 'approved'", fetch='one') or [0])[0]
+    aktiv_sub = (_db_execute(
+        "SELECT COUNT(*) FROM users WHERE sub_until IS NOT NULL AND sub_until > %s",
+        (datetime.now().strftime("%Y-%m-%d %H:%M"),), fetch='one') or [0])[0]
+
+    def pct(a, b):
+        return f"{(a/b*100):.1f}%" if b else "0%"
+
+    txt = "📊 <b>KONVERSIYA VORONKASI</b>\n\n"
+    txt += f"👥 <b>Ro'yxatdan o'tgan:</b> {jami:,}\n   ↓\n"
+    txt += f"🎬 <b>Tahlil qilgan:</b> {tahlil_qilgan:,} ({pct(tahlil_qilgan, jami)})\n   ↓\n"
+    txt += f"🔁 <b>Qaytgan (2+):</b> {qaytgan:,} ({pct(qaytgan, jami)})\n   ↓\n"
+    txt += f"🔥 <b>Faol (5+):</b> {faol:,} ({pct(faol, jami)})\n   ↓\n"
+    txt += f"💰 <b>To'lagan:</b> {tolagan:,} ({pct(tolagan, jami)})\n   ↓\n"
+    txt += f"💎 <b>Hozir faol obuna:</b> {aktiv_sub:,}\n\n"
+    txt += "━━━━━━━━━━━━━\n📈 <b>Tahlil:</b>\n"
+    if jami:
+        r_tahlil = tahlil_qilgan / jami
+        r_qaytish = qaytgan / tahlil_qilgan if tahlil_qilgan else 0
+        r_tolov = tolagan / qaytgan if qaytgan else 0
+        if r_tahlil < 0.5:
+            txt += "⚠️ Ko'p odam tahlil HAM qilmagan — boshlanish (onboarding) zaif.\n"
+        if r_qaytish < 0.3:
+            txt += "⚠️ Tahlil qilganlar QAYTMAYAPTI — qaytarish (retention) zaif.\n"
+        else:
+            txt += "✅ Qaytish yaxshi — odamlar qiziqyapti.\n"
+        if r_tolov < 0.05:
+            txt += "⚠️ Qaytganlar TO'LAMAYAPTI — premium qiymati/narx/ishonch zaif.\n"
+        else:
+            txt += "✅ To'lov darajasi yomon emas.\n"
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
 async def yangilik_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: yangilik xabarini FAQAT o'ziga yuboradi (ko'rish/test uchun)."""
     if not is_admin(update.effective_user.id):
@@ -3617,6 +3685,15 @@ def _payme_package_by_amount(amount_tiyin):
     return (None, None)
 
 
+def _payme_checkout_link(user_id, amount_som):
+    """Payme GET to'lov havolasini yasaydi (checkout.paycom.uz).
+    user_id - mijoz Telegram ID, amount_som - summa (so'mda)."""
+    amount_tiyin = amount_som * 100  # so'm -> tiyin
+    params = f"m={PAYME_MERCHANT_ID};ac.user_id={user_id};a={amount_tiyin}"
+    encoded = base64.b64encode(params.encode("utf-8")).decode("utf-8")
+    return f"https://checkout.paycom.uz/{encoded}"
+
+
 def _payme_handle(body):
     """Payme JSON-RPC so'rovini qayta ishlaydi. body - dict. Javob - dict."""
     req_id = body.get("id")
@@ -3945,7 +4022,8 @@ def main():
     app.add_handler(CommandHandler("eslatma", eslatma_command))
     app.add_handler(CommandHandler("yangilik", yangilik_command))
     app.add_handler(CommandHandler("yangilik_test", yangilik_test_command))
-    app.add_handler(CommandHandler("yangilik_test", yangilik_test_command))
+    app.add_handler(CommandHandler("voronka", voronka_command))
+    app.add_handler(CommandHandler("paymetest", paymetest_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
     app.add_handler(CommandHandler("javoblar_bugun", javoblar_bugun_command))
     app.add_handler(CommandHandler("avto_aksiya_yoq", avto_aksiya_yoq_command))
@@ -3976,6 +4054,9 @@ def main():
         _main_loop = asyncio.get_running_loop()
         await run_web_server()  # Payme web server (port 8080)
         async with app:
+            # post_init'ni QO'LDA chaqiramiz (run_polling ishlatmaymiz, shuning uchun
+            # avtomatik chaqirilmaydi). Bu - Pyrogram'ni ishga tushiradi (katta video uchun).
+            await post_init(app)
             await app.start()
             await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
             # Cheksiz kutamiz (bot to'xtamasin)
