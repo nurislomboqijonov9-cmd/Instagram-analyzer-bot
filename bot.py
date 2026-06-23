@@ -1993,19 +1993,16 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
         try:
             txt = _analyze(uploaded, prompt, model=model, max_retries=3)
         except Exception as e:
-            # FALLBACK (ikki tomonlama): model band bo'lsa, BOSHQA modelga o'tamiz,
-            # shunda foydalanuvchi DOIM javob oladi (rad bo'lmaydi).
             if "lite" not in model:
-                # Flash band -> Flash-Lite (arzonlashadi)
+                # Flash (pullik) band -> Flash-Lite (arzonlashadi, ruxsat)
                 logger.warning(f"Flash band ({e}); Flash-Lite'ga tushamiz")
                 used_model = "gemini-2.5-flash-lite"
                 txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
             else:
-                # Flash-Lite band -> Flash'ga ko'tarilamiz (biroz qimmat, lekin
-                # foydalanuvchi javobsiz qolmaydi - "5-10 daqiqa" muammosi yo'qoladi)
-                logger.warning(f"Flash-Lite band ({e}); Flash'ga ko'tarilamiz (rad qilmaymiz)")
-                used_model = "gemini-2.5-flash"
-                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash", max_retries=2)
+                # Flash-Lite (bepul) band -> Flash'ga KO'TARILMAYDI (qimmat bermaymiz).
+                # Buning o'rniga yana bir bor qayta urinamiz (Flash-Lite'da qoladi).
+                logger.warning(f"Flash-Lite band ({e}); Flash-Lite'da qayta urinamiz (qimmat bermaymiz)")
+                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=3)
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
