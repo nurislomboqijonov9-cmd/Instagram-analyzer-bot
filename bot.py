@@ -839,12 +839,14 @@ TEXTS = {
                          "👇 <b>Yangilangan botni ochish uchun tugmani bosing:</b>\n\n"
                          "💬 Yordam kerakmi? @Nurislom_admin"),
         'yangilik_btn': "🚀 Botni ishga tushirish",
-        'video_caption': ("🎁 <b>Чин дилдан кичик бир совға:</b>\n\n"
-                          "Видеоларингиз доим ТОПда юришини хоҳлаганимиз учун, ҳеч қандай "
-                          "шартларсиз сизга яна <b>1 ТА БЕПУЛ ЧУҚУР ТАҲЛИЛ</b> ҳадя қиламиз. 🤍\n\n"
+        'video_intro': ("🔥 Bu loyiha ortida aslida kimlar turganini bilmoqchimisiz? 😊\n\n"
+                        "Quyidagi videoni albatta ko'ring 👇"),
+        'video_caption': ("🎁 <b>Chin dildan kichik bir sovg'a:</b>\n\n"
+                          "Videolaringiz doim TOPda yurishini xohlaganimiz uchun, hech qanday "
+                          "shartlarsiz sizga yana <b>1 TA BEPUL CHUQUR TAHLIL</b> hadya qilamiz. 🤍\n\n"
                           "👇"),
-        'video_2btn_sovga': "🎁 СОВҒАНИ ОЛИШ",
-        'video_2btn_fikr': "💬 Фикр билдириш",
+        'video_2btn_sovga': "🎁 SOVG'ANI OLISH",
+        'video_2btn_fikr': "💬 Fikr bildirish",
         'video_fikr_btn': "💬 Fikringizni bildirish",
         'video_fikr_ask': ("💬 Video haqida yoki bot haqida fikringizni yozing.\n\n"
                            "Fikringiz biz uchun juda muhim! Evaziga sizga <b>1 ta BEPUL tahlil</b> "
@@ -3098,6 +3100,9 @@ async def video_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton(TEXTS['uz']['video_2btn_fikr'], callback_data="video_fikr")],
     ])
     try:
+        # Avval intro xabar (video'dan oldin)
+        await context.bot.send_message(update.effective_chat.id, TEXTS['uz']['video_intro'])
+        await asyncio.sleep(0.5)
         await context.bot.send_video(
             update.effective_chat.id, VIDEO_FILE_ID,
             caption=TEXTS['uz']['video_caption'], reply_markup=kb, parse_mode="HTML"
@@ -3131,6 +3136,9 @@ async def video_xabar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton(TEXTS['uz']['video_2btn_sovga'], callback_data="video_sovga_ol")],
                 [InlineKeyboardButton(TEXTS['uz']['video_2btn_fikr'], callback_data="video_fikr")],
             ])
+            # Avval intro xabar (video'dan oldin)
+            await context.bot.send_message(uid, TEXTS['uz']['video_intro'])
+            await asyncio.sleep(0.3)
             await context.bot.send_video(uid, VIDEO_FILE_ID,
                                          caption=TEXTS['uz']['video_caption'], reply_markup=kb,
                                          parse_mode="HTML")
