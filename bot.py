@@ -47,6 +47,8 @@ CHEK_GROUP_ID = os.getenv("CHEK_GROUP_ID", "-1004458514532")
 # Karta orqali to'lov uchun karta ma'lumotlari
 CARD_NUMBER = os.getenv("CARD_NUMBER", "6262 7300 6521 3151")
 CARD_HOLDER = os.getenv("CARD_HOLDER", "Boqijonov Nurislom")
+# Ishonch videosi (jamoa haqida) + fikr bildirib 1 bepul olish
+VIDEO_FILE_ID = os.getenv("VIDEO_FILE_ID", "BAACAgIAAxkBAAEDdblqO1vKqmm-sO5EpO4ithiAdFI0ogACdaEAAh442EmljRTrS2sTqjwE")
 
 
 def is_admin(user_id):
@@ -222,6 +224,8 @@ def init_db():
                                  ("yangilik_given", "BOOLEAN DEFAULT FALSE"),
                                  ("juma_balance", "INTEGER DEFAULT 0"),
                                  ("juma_sana", "TEXT"),
+                                 ("video_fikr_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("video_xabar_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -753,7 +757,9 @@ TEXTS = {
                             "📊 <b>PROFIL TAHLILI</b> — shaxsiy tavsiyalar\n"
                             "📈 <b>REK EHTIMOLI</b> — TOPga chiqish % larda\n"
                             "━━━━━━━━━━━━━\n"
-                            "Bir hafta sinab ko'ring — yoqsa, to'liq obunaga o'tasiz! 🔥"),
+                            "⏰ <b>DIQQAT: bu taklif faqat 24 SOAT amal qiladi!</b>\n"
+                            "Keyin bu narx yo'qoladi — shoshiling! 🔥\n\n"
+                            "Bir hafta sinab ko'ring — yoqsa, to'liq obunaga o'tasiz! 🚀"),
         'test_taklif_btn': "⚡ 7 kunlik Premium — faollashtirish",
         'sorov_msg': ("🆘 Yordamingiz kerak! Evaziga BONUS sovg'a qilamiz 🎁\n\n"
                       "🎉 Do'stlar, qisqa vaqt ichida botimizdan foydalanuvchilar soni {n} tadan oshdi!\n\n"
@@ -832,6 +838,16 @@ TEXTS = {
                          "👇 <b>Yangilangan botni ochish uchun tugmani bosing:</b>\n\n"
                          "💬 Yordam kerakmi? @Nurislom_admin"),
         'yangilik_btn': "🚀 Botni ishga tushirish",
+        'video_caption': "🔥 Бот ортида аслида кимлар турганини билмоқчимисиз? Видеони албатта кўринг! 😊",
+        'video_fikr_btn': "💬 Fikringizni bildirish",
+        'video_fikr_ask': ("💬 Video haqida yoki bot haqida fikringizni yozing.\n\n"
+                           "Fikringiz biz uchun juda muhim! Evaziga sizga <b>1 ta BEPUL tahlil</b> "
+                           "sovg'a qilamiz. 🎁"),
+        'video_fikr_thanks': ("🎉 <b>Rahmat fikringiz uchun!</b>\n\n"
+                              "Sizga <b>1 ta BEPUL tahlil</b> qo'shildi! 🎁\n"
+                              "Endi video yuboring — tahlil qiling! 🚀"),
+        'video_fikr_already': ("😊 Siz allaqachon fikr bildirib, bepul tahlilingizni olgansiz. "
+                               "Rahmat! Yana foydalanmoqchi bo'lsangiz — Premium oling. 💎"),
         'juma_boshlandi': ("🤍 <b>Hafta davomida mehnat qildingiz...</b>\n\n"
                            "Bilamiz — kontent yaratish oson emas. Har bir video ortida "
                            "sizning kuchingiz, vaqtingiz va orzularingiz turibdi. Biz buni "
@@ -1366,6 +1382,7 @@ def lang_keyboard():
 def package_keyboard(context):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')],
+        [InlineKeyboardButton(f"🎯 7 kunlik Premium — {TEST_PRICE:,} so'm", callback_data='buy_test')],
         [InlineKeyboardButton(t(context, 'one_btn'), callback_data='buy_one')],
     ])
 
@@ -1532,6 +1549,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
+    elif data == 'video_fikr':
+        uid = query.from_user.id
+        # 1 marta tekshiruvi
+        row = _db_execute("SELECT COALESCE(video_fikr_given, FALSE) FROM users WHERE user_id = %s",
+                          (uid,), fetch='one')
+        if row and row[0]:
+            await query.message.reply_text(t(context, 'video_fikr_already'), parse_mode="HTML")
+            return
+        context.user_data['mode'] = 'video_fikr'
+        await query.message.reply_text(t(context, 'video_fikr_ask'), parse_mode="HTML")
     elif data == 'aksiya_video':
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
@@ -2513,6 +2540,18 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    # Agar foydalanuvchi MENU tugmasini bossa, har qanday "kutish" rejimini bekor qilamiz.
+    # (Aks holda fikr/so'rov rejimida menu tugmasi "fikr" deb qabul qilinardi - bu bug edi.)
+    _menu_tugmalar = set()
+    for _lng in ('uz', 'ru'):
+        for _k in ('menu_video', 'menu_profile', 'menu_balance', 'menu_premium',
+                   'menu_ref', 'menu_lang', 'menu_help', 'menu_fikr'):
+            _v = TEXTS.get(_lng, {}).get(_k)
+            if _v:
+                _menu_tugmalar.add(_v)
+    if text in _menu_tugmalar and context.user_data.get('mode'):
+        context.user_data['mode'] = None  # rejimni bekor qilamiz, menu ishlaydi
+
     # So'rov 1-savol javobini kutyapmizmi?
     if context.user_data.get('mode') == 'profile_mavzu':
         context.user_data['profile_mavzu'] = (text or "").strip()
@@ -2598,6 +2637,30 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(context, 'sorov_thanks'))
         return
     # Menyu "Fikr va takliflar" rejimi - foydalanuvchi erkin fikr yozadi (bonussiz)
+    if context.user_data.get('mode') == 'video_fikr':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        fikr = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        # 1 marta tekshiruvi (qayta yozsa ham qayta bermaymiz)
+        row = _db_execute("SELECT COALESCE(video_fikr_given, FALSE) FROM users WHERE user_id = %s",
+                          (uid,), fetch='one')
+        if row and row[0]:
+            await update.message.reply_text(t(context, 'video_fikr_already'), parse_mode="HTML")
+            return
+        # Bepul beramiz + belgilaymiz
+        add_balance(uid, 1)
+        _db_execute("UPDATE users SET video_fikr_given = TRUE WHERE user_id = %s", (uid,))
+        # Guruhga yuboramiz
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                grp_txt = f"🎬 VIDEO FIKRI (+1 bepul berildi)\n👤 {who}\n\n{fikr}"
+                await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
+            except Exception as e:
+                logger.warning(f"Video fikrini guruhga yuborishda xato: {e}")
+        await update.message.reply_text(t(context, 'video_fikr_thanks'), parse_mode="HTML")
+        return
     if context.user_data.get('mode') == 'fikr':
         context.user_data['mode'] = None
         uid = update.effective_user.id
@@ -3019,6 +3082,58 @@ async def juma_yoq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Endi juma kuni avtomatik bepul berilmaydi.\n"
         "Yoqish: /juma_ochir"
     )
+
+
+async def video_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ishonch videosini FAQAT o'ziga yuboradi (ko'rish/test uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton(TEXTS['uz']['video_fikr_btn'], callback_data="video_fikr")
+    ]])
+    try:
+        await context.bot.send_video(
+            update.effective_chat.id, VIDEO_FILE_ID,
+            caption=TEXTS['uz']['video_caption'], reply_markup=kb
+        )
+        await update.message.reply_text(
+            "👆 Video shunday ko'rinadi. Yoqsa — /video_xabar bilan hammaga yuboring."
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Video yuborilmadi: {e}\nVIDEO_FILE_ID to'g'rimi tekshiring.")
+
+
+async def video_xabar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ishonch videosini HAMMAga yuboradi (1 marta, video_xabar_given)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(video_xabar_given, FALSE) = FALSE",
+        fetch='all') or []
+    # Premium (admin/obuna) larga yubormaymiz - ular allaqachon ishongan
+    rows = [r for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
+    if not rows:
+        await update.message.reply_text("📭 Video yuboriladigan foydalanuvchi yo'q (hammasi olgan).")
+        return
+    await update.message.reply_text(
+        f"🎬 Video yuborish boshlandi: {len(rows)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
+    sent, failed = 0, 0
+    for r in rows:
+        uid = r[0]
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['video_fikr_btn'], callback_data="video_fikr")
+            ]])
+            await context.bot.send_video(uid, VIDEO_FILE_ID,
+                                         caption=TEXTS['uz']['video_caption'], reply_markup=kb)
+            _db_execute("UPDATE users SET video_xabar_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Video yuborishda xato (uid={uid}): {e}")
+        await asyncio.sleep(0.4)
+    await update.message.reply_text(
+        f"✅ Video yuborildi!\n📨 Yuborildi: {sent}\n⚠️ Yuborilmadi: {failed}")
 
 
 async def videoid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4310,6 +4425,8 @@ def main():
     app.add_handler(CommandHandler("tarif7", tarif7_command))
     app.add_handler(CommandHandler("buyruqlar", buyruqlar_command))
     app.add_handler(CommandHandler("videoid", videoid_command))
+    app.add_handler(CommandHandler("video_test", video_test_command))
+    app.add_handler(CommandHandler("video_xabar", video_xabar_command))
     app.add_handler(CommandHandler("juma_ochir", juma_ochir_command))
     app.add_handler(CommandHandler("juma_yoq", juma_yoq_command))
     app.add_handler(CommandHandler("javoblar", javoblar_command))
