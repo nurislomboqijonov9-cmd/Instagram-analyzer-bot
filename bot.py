@@ -226,6 +226,7 @@ def init_db():
                                  ("juma_sana", "TEXT"),
                                  ("video_fikr_given", "BOOLEAN DEFAULT FALSE"),
                                  ("video_xabar_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("video_sovga_olindi", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -838,14 +839,24 @@ TEXTS = {
                          "👇 <b>Yangilangan botni ochish uchun tugmani bosing:</b>\n\n"
                          "💬 Yordam kerakmi? @Nurislom_admin"),
         'yangilik_btn': "🚀 Botni ishga tushirish",
-        'video_caption': "🔥 Бот ортида аслида кимлар турганини билмоқчимисиз? Видеони албатта кўринг! 😊",
+        'video_caption': ("🎁 <b>Чин дилдан кичик бир совға:</b>\n\n"
+                          "Видеоларингиз доим ТОПда юришини хоҳлаганимиз учун, ҳеч қандай "
+                          "шартларсиз сизга яна <b>1 ТА БЕПУЛ ЧУҚУР ТАҲЛИЛ</b> ҳадя қиламиз. 🤍\n\n"
+                          "👇"),
+        'video_2btn_sovga': "🎁 СОВҒАНИ ОЛИШ",
+        'video_2btn_fikr': "💬 Фикр билдириш",
         'video_fikr_btn': "💬 Fikringizni bildirish",
         'video_fikr_ask': ("💬 Video haqida yoki bot haqida fikringizni yozing.\n\n"
                            "Fikringiz biz uchun juda muhim! Evaziga sizga <b>1 ta BEPUL tahlil</b> "
                            "sovg'a qilamiz. 🎁"),
-        'video_fikr_thanks': ("🎉 <b>Rahmat fikringiz uchun!</b>\n\n"
-                              "Sizga <b>1 ta BEPUL tahlil</b> qo'shildi! 🎁\n"
-                              "Endi video yuboring — tahlil qiling! 🚀"),
+        'video_fikr_thanks': ("🎁 <b>Чин дилдан кичик бир совға:</b>\n\n"
+                              "Видеоларингиз доим ТОПда юришини хоҳлаганимиз учун, ҳеч қандай "
+                              "шартларсиз сизга яна <b>1 ТА БЕПУЛ ЧУҚУР ТАҲЛИЛ</b> ҳадя қиламиз.\n\n"
+                              "👇 Тугмани босинг:"),
+        'video_sovga_btn': "🎁 СОВҒАНИ ОЛИШ ВА ТАҲЛИЛ ҚИЛИШ",
+        'video_sovga_olindi': ("🎉 <b>Совға қўлингизда!</b>\n\n"
+                               "Сизга <b>1 та БЕПУЛ таҳлил</b> қўшилди! 🎁\n"
+                               "Энди видеонгизни юборинг — таҳлил қиламиз! 🚀"),
         'video_fikr_already': ("😊 Siz allaqachon fikr bildirib, bepul tahlilingizni olgansiz. "
                                "Rahmat! Yana foydalanmoqchi bo'lsangiz — Premium oling. 💎"),
         'juma_boshlandi': ("🤍 <b>Hafta davomida mehnat qildingiz...</b>\n\n"
@@ -1549,14 +1560,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
-    elif data == 'video_fikr':
+    elif data == 'video_sovga_ol':
         uid = query.from_user.id
-        # 1 marta tekshiruvi
-        row = _db_execute("SELECT COALESCE(video_fikr_given, FALSE) FROM users WHERE user_id = %s",
+        # Sovg'a allaqachon olinganmi? (sovga_olindi belgisi)
+        row = _db_execute("SELECT COALESCE(video_sovga_olindi, FALSE) FROM users WHERE user_id = %s",
                           (uid,), fetch='one')
         if row and row[0]:
             await query.message.reply_text(t(context, 'video_fikr_already'), parse_mode="HTML")
             return
+        add_balance(uid, 1)
+        _db_execute("UPDATE users SET video_sovga_olindi = TRUE WHERE user_id = %s", (uid,))
+        await query.message.reply_text(t(context, 'video_sovga_olindi'), parse_mode="HTML")
+    elif data == 'video_fikr':
         context.user_data['mode'] = 'video_fikr'
         await query.message.reply_text(t(context, 'video_fikr_ask'), parse_mode="HTML")
     elif data == 'aksiya_video':
@@ -2636,30 +2651,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(t(context, 'sorov_thanks'))
         return
-    # Menyu "Fikr va takliflar" rejimi - foydalanuvchi erkin fikr yozadi (bonussiz)
+    # Video "Fikr bildirish" rejimi - fikr guruhga boradi (bepul YO'Q, sovg'a alohida tugmada)
     if context.user_data.get('mode') == 'video_fikr':
         context.user_data['mode'] = None
         uid = update.effective_user.id
         fikr = (text or "").strip()
         uname = update.effective_user.username or update.effective_user.first_name or ""
-        # 1 marta tekshiruvi (qayta yozsa ham qayta bermaymiz)
-        row = _db_execute("SELECT COALESCE(video_fikr_given, FALSE) FROM users WHERE user_id = %s",
-                          (uid,), fetch='one')
-        if row and row[0]:
-            await update.message.reply_text(t(context, 'video_fikr_already'), parse_mode="HTML")
-            return
-        # Bepul beramiz + belgilaymiz
-        add_balance(uid, 1)
-        _db_execute("UPDATE users SET video_fikr_given = TRUE WHERE user_id = %s", (uid,))
-        # Guruhga yuboramiz
         if FIKR_GROUP_ID:
             try:
                 who = f"@{uname}" if uname else f"ID {uid}"
-                grp_txt = f"🎬 VIDEO FIKRI (+1 bepul berildi)\n👤 {who}\n\n{fikr}"
+                grp_txt = f"🎬 VIDEO FIKRI\n👤 {who}\n\n{fikr}"
                 await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
             except Exception as e:
                 logger.warning(f"Video fikrini guruhga yuborishda xato: {e}")
-        await update.message.reply_text(t(context, 'video_fikr_thanks'), parse_mode="HTML")
+        await update.message.reply_text("🙏 Раҳмат фикрингиз учун! Биз уни албатта ҳисобга оламиз. 🤍")
         return
     if context.user_data.get('mode') == 'fikr':
         context.user_data['mode'] = None
@@ -3088,13 +3093,14 @@ async def video_test_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Admin: ishonch videosini FAQAT o'ziga yuboradi (ko'rish/test uchun)."""
     if not is_admin(update.effective_user.id):
         return
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton(TEXTS['uz']['video_fikr_btn'], callback_data="video_fikr")
-    ]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(TEXTS['uz']['video_2btn_sovga'], callback_data="video_sovga_ol")],
+        [InlineKeyboardButton(TEXTS['uz']['video_2btn_fikr'], callback_data="video_fikr")],
+    ])
     try:
         await context.bot.send_video(
             update.effective_chat.id, VIDEO_FILE_ID,
-            caption=TEXTS['uz']['video_caption'], reply_markup=kb
+            caption=TEXTS['uz']['video_caption'], reply_markup=kb, parse_mode="HTML"
         )
         await update.message.reply_text(
             "👆 Video shunday ko'rinadi. Yoqsa — /video_xabar bilan hammaga yuboring."
@@ -3121,11 +3127,13 @@ async def video_xabar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     for r in rows:
         uid = r[0]
         try:
-            kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton(TEXTS['uz']['video_fikr_btn'], callback_data="video_fikr")
-            ]])
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS['uz']['video_2btn_sovga'], callback_data="video_sovga_ol")],
+                [InlineKeyboardButton(TEXTS['uz']['video_2btn_fikr'], callback_data="video_fikr")],
+            ])
             await context.bot.send_video(uid, VIDEO_FILE_ID,
-                                         caption=TEXTS['uz']['video_caption'], reply_markup=kb)
+                                         caption=TEXTS['uz']['video_caption'], reply_markup=kb,
+                                         parse_mode="HTML")
             _db_execute("UPDATE users SET video_xabar_given = TRUE WHERE user_id = %s", (uid,))
             sent += 1
         except Exception as e:
