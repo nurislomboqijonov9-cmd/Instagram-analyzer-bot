@@ -32,9 +32,9 @@ PAID_VIDEO_MB = int(os.getenv("PAID_VIDEO_MB", "1000"))   # pullik: 1000 MB (1 G
 FREE_VIDEO_BYTES = FREE_VIDEO_MB * 1024 * 1024
 PAID_VIDEO_BYTES = PAID_VIDEO_MB * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
-# Pullik Gemini (Tier 2) + kuchli server. Bitta umumiy navbat (hammaga).
+# Pullik Gemini (Tier 2) + kuchli server. Tier 2 quvvatli - navbat deyarli bo'lmaydi.
 # Railway Variables'dan MAX_CONCURRENT ni xohlagancha oshirish mumkin.
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "100") or "100")
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "300") or "300")
 # Navbat mexanizmi: bir vaqtda MAX_CONCURRENT ta tahlil ishlaydi (hammaga bitta pool).
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 ADMIN_ID = 7589459697
@@ -1948,7 +1948,7 @@ def _cost_uzs(prompt_tokens, output_tokens, model="gemini-2.5-flash"):
     return usd_with_vat, usd_with_vat * USD_TO_UZS
 
 
-def _generate(contents, max_retries=6, model="gemini-2.5-flash"):
+def _generate(contents, max_retries=3, model="gemini-2.5-flash"):
     """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan).
     model: 'gemini-2.5-flash' (sifatli, pullik) yoki 'gemini-2.5-flash-lite' (arzon, bepul)."""
     last_error = None
@@ -1966,7 +1966,6 @@ def _generate(contents, max_retries=6, model="gemini-2.5-flash"):
                 except Exception:
                     pass
             response = client.models.generate_content(**kwargs)
-            # Token sarfini ushlaymiz (admin tannarx hisoboti uchun)
             try:
                 um = getattr(response, "usage_metadata", None)
                 if um is not None:
@@ -1986,8 +1985,9 @@ def _generate(contents, max_retries=6, model="gemini-2.5-flash"):
         except Exception as e:
             last_error = e
             logger.warning(f"Generate urinish {attempt+1}/{max_retries} (model={model}): {e}")
-            # Uzunroq kutish: 3, 6, 9, 12, 15 soniya (vaqtinchalik band/503 o'tib ketsin)
-            time.sleep((attempt + 1) * 3)
+            # Qisqa kutish: 2, 4 soniya (uzoq kutish videoni sekinlashtirardi)
+            if attempt < max_retries - 1:
+                time.sleep((attempt + 1) * 2)
     raise last_error
 
 
@@ -2035,15 +2035,14 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
             txt = _analyze(uploaded, prompt, model=model, max_retries=3)
         except Exception as e:
             if "lite" not in model:
-                # Flash (pullik) band -> Flash-Lite (arzonlashadi, ruxsat)
-                logger.warning(f"Flash band ({e}); Flash-Lite'ga tushamiz")
+                # Flash (pullik) band/xato -> Flash-Lite (rad qilmasdan, tez)
+                logger.warning(f"Flash xato ({e}); Flash-Lite'ga tushamiz")
                 used_model = "gemini-2.5-flash-lite"
                 txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
             else:
-                # Flash-Lite (bepul) band -> Flash'ga KO'TARILMAYDI (qimmat bermaymiz).
-                # Buning o'rniga yana bir bor qayta urinamiz (Flash-Lite'da qoladi).
-                logger.warning(f"Flash-Lite band ({e}); Flash-Lite'da qayta urinamiz (qimmat bermaymiz)")
-                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=3)
+                # Flash-Lite (bepul) band -> yana 1 marta urinamiz (Flash'ga o'tmaymiz)
+                logger.warning(f"Flash-Lite xato ({e}); yana urinamiz")
+                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
@@ -2408,12 +2407,12 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     asyncio.to_thread(_gemini_process, tmp_path, prompt, _model),
                     timeout=300
                 )
-                # BEPUL: tahlil tez tugasa ham, sanoq kamida 30 soniyagacha ketaveradi
-                # (kutish bo'ladi, lekin sanoq to'xtamaydi - progress hali ishlab turibdi).
+                # BEPUL: tahlil juda tez tugasa, sanoq biroz (12 sek) ko'rinsin
+                # (reklama ulgursin). Lekin uzoq kutmaymiz - tez javob yaxshi.
                 if not _is_priority:
                     elapsed = (datetime.now() - _analiz_start).total_seconds()
-                    if elapsed < 30:
-                        await asyncio.sleep(30 - elapsed)
+                    if elapsed < 12:
+                        await asyncio.sleep(12 - elapsed)
             except asyncio.TimeoutError:
                 _progress_stop.set()
                 progress_task.cancel()
