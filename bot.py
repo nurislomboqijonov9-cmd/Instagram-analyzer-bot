@@ -849,6 +849,12 @@ TEXTS = {
                           "👇"),
         'video_2btn_sovga': "🎁 SOVG'ANI OLISH",
         'video_2btn_fikr': "💬 Fikr bildirish",
+        'tarif7_2soat': ("⏰ <b>DIQQAT! Atigi 2 SOAT qoldi!</b>\n\n"
+                         "🎯 <b>7 KUNLIK PREMIUM — atigi 7 000 so'm</b> aksiyasi "
+                         "bugun soat 22:00 da tugaydi!\n\n"
+                         "Bu narx boshqa bo'lmaydi — ulgurib qoling! 🔥\n\n"
+                         "👇 Hoziroq oling:"),
+        'tarif7_2soat_btn': "⚡️ 7 kunlik Premium olish (7 000)",
         'video_fikr_btn': "💬 Fikringizni bildirish",
         'video_fikr_ask': ("💬 Video yoki bot haqida fikringizni yozing.\n\n"
                            "Fikringiz biz uchun juda muhim — botni yaxshilashga yordam beradi! 🤍"),
@@ -1451,6 +1457,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
     elif data == 'buy_test':
+        # Aksiya tugagan bo'lsa - 7 minglik o'chirilgan, to'liq obunaga yo'naltiramiz
+        if get_setting("tarif7_aksiya", "on") == "off":
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')],
+            ])
+            await query.message.reply_text(
+                "⏰ <b>Aksiya tugadi!</b>\n\n"
+                "7 kunlik maxsus narx muddati o'tdi. Lekin siz to'liq obunadan "
+                "foydalanishingiz mumkin — barcha imkoniyatlar ochiq! 💎",
+                reply_markup=kb, parse_mode="HTML")
+            return
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_test')],
             [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_test')],
@@ -1939,6 +1956,45 @@ USD_TO_UZS = float(os.getenv("USD_TO_UZS", "12000"))
 # Oxirgi so'rovning token sarfi va modeli (admin hisobotida ishlatiladi)
 _last_usage = {"prompt": 0, "output": 0, "total": 0, "model": "gemini-2.5-flash"}
 
+# ===== XATO HISOBLAGICH (avtomatik kuzatuv) =====
+_xato_hisob = {"503": 0, "timeout": 0, "fayl": 0, "boshqa": 0, "sana": ""}
+_xato_oxirgi_ogoh = {"vaqt": None}  # oxirgi ogohlantirish vaqti (spam bo'lmasin)
+
+
+def _xato_qayd(tur):
+    """Xatoni sanab boradi. tur: '503' | 'timeout' | 'fayl' | 'boshqa'."""
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    if _xato_hisob.get("sana") != bugun:
+        # Yangi kun - hisobni nolga tushiramiz
+        _xato_hisob["503"] = 0
+        _xato_hisob["timeout"] = 0
+        _xato_hisob["fayl"] = 0
+        _xato_hisob["boshqa"] = 0
+        _xato_hisob["sana"] = bugun
+    _xato_hisob[tur] = _xato_hisob.get(tur, 0) + 1
+
+
+async def _xato_ogohlantir(context):
+    """503 ko'paysa adminga avtomatik ogohlantirish (10 daqiqada 1 marta, spam emas)."""
+    try:
+        now = datetime.now()
+        oxirgi = _xato_oxirgi_ogoh.get("vaqt")
+        if oxirgi and (now - oxirgi).total_seconds() < 600:
+            return  # 10 daqiqa ichida ogohlantirgan - takrorlamaymiz
+        # 503 bugun 30 dan oshsa - ogohlantiramiz
+        if _xato_hisob.get("503", 0) > 0 and _xato_hisob["503"] % 30 == 0:
+            _xato_oxirgi_ogoh["vaqt"] = now
+            for aid in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        aid, f"⚠️ DIQQAT: Gemini 503 (band) xatosi ko'paydi!\n"
+                             f"Bugun: {_xato_hisob['503']} marta 503.\n"
+                             f"Bu Google tomonidagi yuklama. Bot Flash'ga o'tib ishlamoqda.")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
 
 def _cost_uzs(prompt_tokens, output_tokens, model="gemini-2.5-flash"):
     """Token sonidan taxminiy tannarxni (so'm) hisoblaydi. VAT (~11%) ham qo'shiladi.
@@ -1951,10 +2007,10 @@ def _cost_uzs(prompt_tokens, output_tokens, model="gemini-2.5-flash"):
     return usd_with_vat, usd_with_vat * USD_TO_UZS
 
 
-def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
+def _generate(contents, max_retries=3, model="gemini-2.5-flash"):
     """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan).
-    503 (UNAVAILABLE/band) bo'lsa - uzunroq kutib qayta urinadi (vaqtinchalik, o'tib ketadi).
-    model: 'gemini-2.5-flash' (sifatli, pullik) yoki 'gemini-2.5-flash-lite' (arzon, bepul)."""
+    503 (band) bo'lsa - qisqa kutib qayta urinadi. Uzoq kutmaymiz (tez javob muhim).
+    model: 'gemini-2.5-flash' (sifatli) yoki 'gemini-2.5-flash-lite' (arzon)."""
     last_error = None
     for attempt in range(max_retries):
         try:
@@ -1987,16 +2043,9 @@ def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
             raise Exception("Bo'sh javob keldi")
         except Exception as e:
             last_error = e
-            emsg = str(e)
-            is_503 = ("503" in emsg or "UNAVAILABLE" in emsg or "overloaded" in emsg.lower()
-                      or "high demand" in emsg.lower())
-            logger.warning(f"Generate urinish {attempt+1}/{max_retries} (model={model}, 503={is_503}): {e}")
+            logger.warning(f"Generate urinish {attempt+1}/{max_retries} (model={model}): {e}")
             if attempt < max_retries - 1:
-                # 503 (band) -> uzunroq kut (server tiklanguncha). Boshqa xato -> tez.
-                if is_503:
-                    time.sleep((attempt + 1) * 4)  # 4, 8, 12 sek
-                else:
-                    time.sleep((attempt + 1) * 2)  # 2, 4, 6 sek
+                time.sleep((attempt + 1) * 2)  # 2, 4 sek (qisqa - tez javob)
     raise last_error
 
 
@@ -2041,17 +2090,22 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     try:
         uploaded = _upload_and_wait(tmp_path)
         try:
-            txt = _analyze(uploaded, prompt, model=model, max_retries=3)
+            txt = _analyze(uploaded, prompt, model=model, max_retries=2)
         except Exception as e:
+            emsg = str(e)
+            is_503 = ("503" in emsg or "UNAVAILABLE" in emsg or "overloaded" in emsg.lower())
             if "lite" not in model:
-                # Flash (pullik) band/xato -> Flash-Lite (rad qilmasdan, tez)
+                # Flash (pullik) band/xato -> Flash-Lite (rad qilmasdan)
                 logger.warning(f"Flash xato ({e}); Flash-Lite'ga tushamiz")
                 used_model = "gemini-2.5-flash-lite"
                 txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
             else:
-                # Flash-Lite (bepul) band -> yana 1 marta urinamiz (Flash'ga o'tmaymiz)
-                logger.warning(f"Flash-Lite xato ({e}); yana urinamiz")
-                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
+                # Flash-Lite (bepul) 503/band -> Flash'ga o'tamiz (Flash serveri boshqa,
+                # ishlaydi). 503 paytida bepul ham ishlasin (vaqtincha qimmat, lekin rad
+                # qilmaymiz). Google 503 o'tgach, normal Flash-Lite'ga qaytadi.
+                logger.warning(f"Flash-Lite xato (503={is_503}): {e}; Flash'ga o'tamiz (ishlasin)")
+                used_model = "gemini-2.5-flash"
+                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash", max_retries=2)
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
@@ -2405,6 +2459,17 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 file = await context.bot.get_file(video.file_id)
                 await file.download_to_drive(tmp_path)
 
+            # MUHIM: video fayl YAXSHI yuklanganini tekshiramiz (Gemini'ga buzuq/bo'sh
+            # fayl ketib, uzoq qotib qolmasligi uchun).
+            if not tmp_path or not os.path.exists(tmp_path) or os.path.getsize(tmp_path) < 1024:
+                _progress_stop.set()
+                progress_task.cancel()
+                _xato_qayd("fayl")
+                logger.warning(f"Video yuklanmadi yoki bo'sh (uid={user_id}, path={tmp_path})")
+                await wait_msg.edit_text(
+                    "⚠️ Video yuklab olishda muammo bo'ldi. Iltimos, videoni qaytadan yuboring. 🙏")
+                return
+
             # Model tanlash: pullik (admin/obuna/to'lagan) -> 2.5 Flash (sifatli);
             # bepul -> 2.5 Flash-Lite (4-5 barobar arzon, sifat biroz pastroq).
             _model = "gemini-2.5-flash" if _is_priority else "gemini-2.5-flash-lite"
@@ -2425,6 +2490,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except asyncio.TimeoutError:
                 _progress_stop.set()
                 progress_task.cancel()
+                _xato_qayd("timeout")
                 logger.warning(f"Gemini timeout (5 daqiqa) - bekor qilindi (uid={user_id})")
                 await wait_msg.edit_text(t(context, 'analysis_timeout'))
                 return
@@ -2544,13 +2610,16 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Yakuniy xato: {e}")
-        # 429 (kunlik limit) yoki 503 (server band) bo'lsa - boshqacha, aniqroq xabar
         emsg = str(e)
         if "RESOURCE_EXHAUSTED" in emsg or "429" in emsg or "quota" in emsg.lower():
+            _xato_qayd("boshqa")
             await wait_msg.edit_text(t(context, 'busy_quota'))
         elif "UNAVAILABLE" in emsg or "503" in emsg or "high demand" in emsg.lower():
+            _xato_qayd("503")
+            await _xato_ogohlantir(context)
             await wait_msg.edit_text(t(context, 'busy_quota'))
         else:
+            _xato_qayd("boshqa")
             await wait_msg.edit_text(t(context, 'error'))
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -3168,6 +3237,37 @@ async def videoid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def xatolar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: bugungi xatolar hisoboti."""
+    if not is_admin(update.effective_user.id):
+        return
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    if _xato_hisob.get("sana") != bugun:
+        await update.message.reply_text("✅ Bugun hali xato qayd etilmagan (yoki bot endi ishga tushgan).")
+        return
+    s503 = _xato_hisob.get("503", 0)
+    stime = _xato_hisob.get("timeout", 0)
+    sfayl = _xato_hisob.get("fayl", 0)
+    sbosh = _xato_hisob.get("boshqa", 0)
+    jami = s503 + stime + sfayl + sbosh
+    txt = (
+        f"📊 <b>BUGUNGI XATOLAR</b> ({bugun})\n\n"
+        f"🔴 503 (Gemini band): <b>{s503}</b>\n"
+        f"⏳ Timeout (juda sekin): <b>{stime}</b>\n"
+        f"📁 Fayl (video yuklanmadi): <b>{sfayl}</b>\n"
+        f"❓ Boshqa: <b>{sbosh}</b>\n"
+        f"━━━━━━━━━━━━━\n"
+        f"Jami: <b>{jami}</b> ta xato\n\n"
+    )
+    if s503 > 50:
+        txt += "⚠️ 503 ko'p — Google tomonida yuklama. Bot Flash'ga o'tib ishlamoqda."
+    elif sfayl > 20:
+        txt += "⚠️ Fayl xato ko'p — internet yoki Pyrogram muammosi bo'lishi mumkin."
+    elif jami < 10:
+        txt += "✅ Hammasi yaxshi — xato kam."
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
 async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: barcha admin buyruqlari ro'yxati."""
     if not is_admin(update.effective_user.id):
@@ -3227,6 +3327,29 @@ async def tarif7_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Qayta-qayta yuborish mumkin (belgilanmaydi)."""
     if not is_admin(update.effective_user.id):
         return
+    # Aksiyani YOQAMIZ (buy_test ishlasin) + ertaga 20:00 eslatma, 22:00 o'chirish jadvali
+    set_setting("tarif7_aksiya", "on")
+    try:
+        jq = context.application.job_queue
+        if jq is not None:
+            UZ_OFF = int(os.getenv("UZ_TZ_OFFSET", "5"))
+            now_utc = datetime.utcnow()
+            # Ertaga (UZ) 20:00 va 22:00 ni UTC ga o'giramiz
+            # UZ 20:00 = UTC (20 - UZ_OFF), UZ 22:00 = UTC (22 - UZ_OFF)
+            def _ertaga_utc(uz_soat):
+                utc_soat = (uz_soat - UZ_OFF) % 24
+                target = (now_utc + timedelta(days=1)).replace(
+                    hour=utc_soat, minute=0, second=0, microsecond=0)
+                # Agar allaqachon o'tib ketgan bo'lsa (UTC), keyingi kunga suramiz emas - ertaga aniq
+                delay = (target - now_utc).total_seconds()
+                if delay < 0:
+                    delay += 24 * 3600
+                return delay
+            jq.run_once(tarif7_2soat_eslatma, when=_ertaga_utc(20))
+            jq.run_once(tarif7_ochirish, when=_ertaga_utc(22))
+            logger.info("tarif7: ertaga 20:00 eslatma, 22:00 o'chirish rejalashtirildi")
+    except Exception as e:
+        logger.error(f"tarif7 jadval xato: {e}")
     rows = _db_execute("SELECT user_id, tarif7_sana FROM users", fetch='all') or []
     # 3 kun ichida olganlarga QAYTA yubormaymiz (bezovta qilmaslik uchun)
     bugun = datetime.now()
@@ -4352,6 +4475,45 @@ async def sticker_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.warning(f"sticker_id xato: {e}")
 
 
+async def tarif7_2soat_eslatma(context: ContextTypes.DEFAULT_TYPE):
+    """Aksiya tugashiga 2 soat qolganda premium olmagan hammaga eslatma."""
+    if get_setting("tarif7_aksiya", "on") != "on":
+        return  # aksiya o'chirilgan - eslatma yubormaymiz
+    rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
+    targets = [r[0] for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
+    sent = 0
+    for uid in targets:
+        try:
+            payme_link = _payme_checkout_link(uid, TEST_PRICE)
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(TEXTS['uz']['tarif7_2soat_btn'], url=payme_link)],
+                [InlineKeyboardButton(TEXTS['uz']['tarif7_btn_card'], callback_data='card_test')],
+            ])
+            await context.bot.send_message(uid, TEXTS['uz']['tarif7_2soat'],
+                                           reply_markup=kb, parse_mode="HTML")
+            sent += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.4)
+    logger.info(f"tarif7 2-soat eslatma: {sent} ta yuborildi")
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"⏰ Aksiya '2 soat qoldi' eslatmasi: {sent} ta yuborildi.")
+        except Exception:
+            pass
+
+
+async def tarif7_ochirish(context: ContextTypes.DEFAULT_TYPE):
+    """Aksiya vaqti tugadi - 7 minglikni o'chiramiz."""
+    set_setting("tarif7_aksiya", "off")
+    logger.info("tarif7 aksiyasi avtomatik o'chirildi (vaqt tugadi)")
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, "🔴 7 kunlik aksiya tugadi (avtomatik o'chirildi).")
+        except Exception:
+            pass
+
+
 async def juma_aksiya_boshla(context: ContextTypes.DEFAULT_TYPE):
     """Juma ertalab: premium olmaganlarga 1 juma-bepul beradi + xabar."""
     # Juma aksiyasi YOQILGANmi? (default: o'chirilgan)
@@ -4462,6 +4624,7 @@ def main():
     app.add_handler(CommandHandler("paymetest", paymetest_command))
     app.add_handler(CommandHandler("tarif7", tarif7_command))
     app.add_handler(CommandHandler("buyruqlar", buyruqlar_command))
+    app.add_handler(CommandHandler("xatolar", xatolar_command))
     app.add_handler(CommandHandler("videoid", videoid_command))
     app.add_handler(CommandHandler("video_test", video_test_command))
     app.add_handler(CommandHandler("video_xabar", video_xabar_command))
