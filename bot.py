@@ -848,17 +848,16 @@ TEXTS = {
         'video_2btn_sovga': "🎁 SOVG'ANI OLISH",
         'video_2btn_fikr': "💬 Fikr bildirish",
         'video_fikr_btn': "💬 Fikringizni bildirish",
-        'video_fikr_ask': ("💬 Video haqida yoki bot haqida fikringizni yozing.\n\n"
-                           "Fikringiz biz uchun juda muhim! Evaziga sizga <b>1 ta BEPUL tahlil</b> "
-                           "sovg'a qilamiz. 🎁"),
+        'video_fikr_ask': ("💬 Video yoki bot haqida fikringizni yozing.\n\n"
+                           "Fikringiz biz uchun juda muhim — botni yaxshilashga yordam beradi! 🤍"),
         'video_fikr_thanks': ("🎁 <b>Чин дилдан кичик бир совға:</b>\n\n"
                               "Видеоларингиз доим ТОПда юришини хоҳлаганимиз учун, ҳеч қандай "
                               "шартларсиз сизга яна <b>1 ТА БЕПУЛ ЧУҚУР ТАҲЛИЛ</b> ҳадя қиламиз.\n\n"
                               "👇 Тугмани босинг:"),
         'video_sovga_btn': "🎁 СОВҒАНИ ОЛИШ ВА ТАҲЛИЛ ҚИЛИШ",
-        'video_sovga_olindi': ("🎉 <b>Совға қўлингизда!</b>\n\n"
-                               "Сизга <b>1 та БЕПУЛ таҳлил</b> қўшилди! 🎁\n"
-                               "Энди видеонгизни юборинг — таҳлил қиламиз! 🚀"),
+        'video_sovga_olindi': ("🎉 <b>Sovg'a qo'lingizda!</b>\n\n"
+                               "Sizga <b>1 ta BEPUL tahlil</b> qo'shildi! 🎁\n"
+                               "Endi videongizni yuboring — tahlil qilamiz! 🚀"),
         'video_fikr_already': ("😊 Siz allaqachon fikr bildirib, bepul tahlilingizni olgansiz. "
                                "Rahmat! Yana foydalanmoqchi bo'lsangiz — Premium oling. 💎"),
         'juma_boshlandi': ("🤍 <b>Hafta davomida mehnat qildingiz...</b>\n\n"
@@ -1395,7 +1394,6 @@ def lang_keyboard():
 def package_keyboard(context):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')],
-        [InlineKeyboardButton(f"🎯 7 kunlik Premium — {TEST_PRICE:,} so'm", callback_data='buy_test')],
         [InlineKeyboardButton(t(context, 'one_btn'), callback_data='buy_one')],
     ])
 
@@ -1950,7 +1948,7 @@ def _cost_uzs(prompt_tokens, output_tokens, model="gemini-2.5-flash"):
     return usd_with_vat, usd_with_vat * USD_TO_UZS
 
 
-def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
+def _generate(contents, max_retries=6, model="gemini-2.5-flash"):
     """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan).
     model: 'gemini-2.5-flash' (sifatli, pullik) yoki 'gemini-2.5-flash-lite' (arzon, bepul)."""
     last_error = None
@@ -1974,11 +1972,9 @@ def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
                 if um is not None:
                     p_tok = getattr(um, "prompt_token_count", 0) or 0
                     c_tok = getattr(um, "candidates_token_count", 0) or 0
-                    # MUHIM: Gemini 2.5 "thinking" (fikrlash) tokeni ham PUL oladi
-                    # (output narxida), lekin candidates_token_count ga kirmaydi.
                     think_tok = getattr(um, "thoughts_token_count", 0) or 0
                     _last_usage["prompt"] = p_tok
-                    _last_usage["output"] = c_tok + think_tok  # thinking ham output narxida
+                    _last_usage["output"] = c_tok + think_tok
                     _last_usage["total"] = getattr(um, "total_token_count", 0) or (p_tok + c_tok + think_tok)
                     _last_usage["model"] = model
             except Exception:
@@ -1989,8 +1985,9 @@ def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
             raise Exception("Bo'sh javob keldi")
         except Exception as e:
             last_error = e
-            logger.warning(f"Generate urinish {attempt+1}/{max_retries}: {e}")
-            time.sleep((attempt + 1) * 2)
+            logger.warning(f"Generate urinish {attempt+1}/{max_retries} (model={model}): {e}")
+            # Uzunroq kutish: 3, 6, 9, 12, 15 soniya (vaqtinchalik band/503 o'tib ketsin)
+            time.sleep((attempt + 1) * 3)
     raise last_error
 
 
