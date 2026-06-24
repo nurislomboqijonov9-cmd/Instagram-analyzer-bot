@@ -34,7 +34,7 @@ PAID_VIDEO_BYTES = PAID_VIDEO_MB * 1024 * 1024
 # Bir vaqtda nechta video tahlil qilinishi mumkin (qolganlar navbatda kutadi).
 # Pullik Gemini (Tier 2) + kuchli server. Tier 2 quvvatli - navbat deyarli bo'lmaydi.
 # Railway Variables'dan MAX_CONCURRENT ni xohlagancha oshirish mumkin.
-MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "300") or "300")
+MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "80") or "80")
 # Navbat mexanizmi: bir vaqtda MAX_CONCURRENT ta tahlil ishlaydi (hammaga bitta pool).
 _video_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 ADMIN_ID = 7589459697
@@ -227,6 +227,7 @@ def init_db():
                                  ("video_fikr_given", "BOOLEAN DEFAULT FALSE"),
                                  ("video_xabar_given", "BOOLEAN DEFAULT FALSE"),
                                  ("video_sovga_olindi", "BOOLEAN DEFAULT FALSE"),
+                                 ("tarif7_sana", "TEXT"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -748,7 +749,8 @@ TEXTS = {
                              "Bu atigi oyiga 29 900 so'm — kuniga 1 000 so'mdan ham kam, "
                              "shaxsiy AI-prodyuseringiz uchun! 💎"),
         'obuna_taklif_btn': "💎 Obunani faollashtirish",
-        'test_taklif_msg': ("Hali to'liq obunaga shoshilmayapsizmi? Tushunamiz! 😊\n"
+        'test_taklif_msg': ("🎉 <b>10 000+ blogger InstaDoctor'dan foydalanmoqda — navbat sizda!</b>\n\n"
+                            "Hali to'liq obunaga shoshilmayapsizmi? Tushunamiz! 😊\n"
                             "Avval <b>kichik qadamdan</b> boshlang:\n\n"
                             "⚡️ <b>7 KUNLIK PREMIUM — atigi 7 000 so'm</b>\n"
                             "━━━━━━━━━━━━━\n"
@@ -1113,7 +1115,8 @@ TEXTS = {
                              "Это всего 29 900 сумов в месяц — меньше 1 000 сумов в день "
                              "за личного AI-продюсера! 💎"),
         'obuna_taklif_btn': "💎 Активировать подписку",
-        'test_taklif_msg': ("Ещё не готовы к полной подписке? Понимаем! 😊\n"
+        'test_taklif_msg': ("🎉 <b>10 000+ блогеров используют InstaDoctor — теперь ваша очередь!</b>\n\n"
+                            "Ещё не готовы к полной подписке? Понимаем! 😊\n"
                             "Начните с <b>малого шага</b>:\n\n"
                             "⚡️ <b>7 ДНЕЙ PREMIUM — всего 7 000 сум</b>\n"
                             "━━━━━━━━━━━━━\n"
@@ -1948,8 +1951,9 @@ def _cost_uzs(prompt_tokens, output_tokens, model="gemini-2.5-flash"):
     return usd_with_vat, usd_with_vat * USD_TO_UZS
 
 
-def _generate(contents, max_retries=3, model="gemini-2.5-flash"):
+def _generate(contents, max_retries=4, model="gemini-2.5-flash"):
     """Gemini'ga so'rov yuboradi (qayta urinish + bo'sh javobni ushlash + safety bilan).
+    503 (UNAVAILABLE/band) bo'lsa - uzunroq kutib qayta urinadi (vaqtinchalik, o'tib ketadi).
     model: 'gemini-2.5-flash' (sifatli, pullik) yoki 'gemini-2.5-flash-lite' (arzon, bepul)."""
     last_error = None
     for attempt in range(max_retries):
@@ -1957,7 +1961,6 @@ def _generate(contents, max_retries=3, model="gemini-2.5-flash"):
             kwargs = {"model": model, "contents": contents}
             if genai_types is not None:
                 try:
-                    # temperature=0.3 -> javob barqarorroq (foiz har safar deyarli bir xil)
                     if SAFETY_SETTINGS is not None:
                         kwargs["config"] = genai_types.GenerateContentConfig(
                             safety_settings=SAFETY_SETTINGS, temperature=0.3)
@@ -1984,10 +1987,16 @@ def _generate(contents, max_retries=3, model="gemini-2.5-flash"):
             raise Exception("Bo'sh javob keldi")
         except Exception as e:
             last_error = e
-            logger.warning(f"Generate urinish {attempt+1}/{max_retries} (model={model}): {e}")
-            # Qisqa kutish: 2, 4 soniya (uzoq kutish videoni sekinlashtirardi)
+            emsg = str(e)
+            is_503 = ("503" in emsg or "UNAVAILABLE" in emsg or "overloaded" in emsg.lower()
+                      or "high demand" in emsg.lower())
+            logger.warning(f"Generate urinish {attempt+1}/{max_retries} (model={model}, 503={is_503}): {e}")
             if attempt < max_retries - 1:
-                time.sleep((attempt + 1) * 2)
+                # 503 (band) -> uzunroq kut (server tiklanguncha). Boshqa xato -> tez.
+                if is_503:
+                    time.sleep((attempt + 1) * 4)  # 4, 8, 12 sek
+                else:
+                    time.sleep((attempt + 1) * 2)  # 2, 4, 6 sek
     raise last_error
 
 
@@ -3218,10 +3227,25 @@ async def tarif7_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Qayta-qayta yuborish mumkin (belgilanmaydi)."""
     if not is_admin(update.effective_user.id):
         return
-    rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
-    targets = [r[0] for r in rows if not is_admin(r[0]) and not sub_active(r[0])]
+    rows = _db_execute("SELECT user_id, tarif7_sana FROM users", fetch='all') or []
+    # 3 kun ichida olganlarga QAYTA yubormaymiz (bezovta qilmaslik uchun)
+    bugun = datetime.now()
+    targets = []
+    for r in rows:
+        uid = r[0]
+        if is_admin(uid) or sub_active(uid):
+            continue
+        oxirgi = r[1]  # tarif7_sana (oxirgi yuborilgan sana)
+        if oxirgi:
+            try:
+                farq = (bugun - datetime.strptime(oxirgi, "%Y-%m-%d %H:%M")).total_seconds()
+                if farq < 3 * 24 * 3600:  # 3 kundan kam -> o'tkazamiz
+                    continue
+            except Exception:
+                pass
+        targets.append(uid)
     if not targets:
-        await update.message.reply_text("📭 Yuboriladigan foydalanuvchi yo'q.")
+        await update.message.reply_text("📭 Yuboriladigan foydalanuvchi yo'q (hammasi 3 kun ichida olgan).")
         return
     await update.message.reply_text(
         f"🎯 7 kunlik taklif boshlandi: {len(targets)} ta foydalanuvchiga...\n(Sekin yuboriladi, kuting)")
@@ -3235,6 +3259,8 @@ async def tarif7_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
             await context.bot.send_message(uid, TEXTS['uz']['test_taklif_msg'],
                                            reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET tarif7_sana = %s WHERE user_id = %s",
+                        (bugun.strftime("%Y-%m-%d %H:%M"), uid))
             sent += 1
         except Exception as e:
             failed += 1
@@ -4469,14 +4495,22 @@ def main():
     async def _run_all():
         global _main_loop
         _main_loop = asyncio.get_running_loop()
+        # MUHIM: asyncio.to_thread default 40 ta thread ishlatadi. Video upload
+        # (_upload_and_wait) thread'ni uzoq band qiladi (PROCESSING kutish). Ko'p
+        # video kelsa 40 thread to'lib, bot QOTADI ("bir necha upload'dan keyin"
+        # muammosi). Shuning uchun thread pool'ni kattalashtiramiz.
+        try:
+            import concurrent.futures
+            _executor = concurrent.futures.ThreadPoolExecutor(max_workers=256)
+            _main_loop.set_default_executor(_executor)
+            logger.info("Thread pool 256 ga oshirildi (ko'p video bir vaqtda)")
+        except Exception as e:
+            logger.warning(f"Thread pool sozlashda xato: {e}")
         await run_web_server()  # Payme web server (port 8080)
         async with app:
-            # post_init'ni QO'LDA chaqiramiz (run_polling ishlatmaymiz, shuning uchun
-            # avtomatik chaqirilmaydi). Bu - Pyrogram'ni ishga tushiradi (katta video uchun).
             await post_init(app)
             await app.start()
             await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-            # Cheksiz kutamiz (bot to'xtamasin)
             await asyncio.Event().wait()
     asyncio.run(_run_all())
 
