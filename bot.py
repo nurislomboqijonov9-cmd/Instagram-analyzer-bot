@@ -2192,8 +2192,17 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     used_model = model
     try:
         uploaded = _upload_and_wait(tmp_path)
-        # Model o'zgarmaydi - shu modelda 3 marta urinadi (503 bo'lsa qayta).
-        txt = _analyze(uploaded, prompt, model=model, max_retries=3)
+        # Avval shu modelda urinamiz (503 bo'lsa qayta).
+        try:
+            txt = _analyze(uploaded, prompt, model=model, max_retries=3)
+        except Exception as e:
+            # Flash-Lite (bepul) ishlamasa -> Flash'ga o'tamiz (ishlasin, rad bo'lmasin).
+            if "lite" in model:
+                logger.warning(f"Flash-Lite ishlamadi ({e}); Flash'ga o'tamiz")
+                used_model = "gemini-2.5-flash"
+                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash", max_retries=3)
+            else:
+                raise
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
@@ -3382,6 +3391,33 @@ async def drip_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     set_setting("drip_start", "")
     await update.message.reply_text("🔴 Drip tizimi o'chirildi. Yoqish: /drip_on")
+
+
+async def aksiya_ber_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: bitta foydalanuvchiga (ID bo'yicha) 7 kunlik aksiyani yuboradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Ishlatish: /aksiya_ber <ID>\nMasalan: /aksiya_ber 123456789")
+        return
+    try:
+        uid = int(context.args[0])
+    except Exception:
+        await update.message.reply_text("⚠️ ID raqam bo'lishi kerak. Masalan: /aksiya_ber 123456789")
+        return
+    # Aksiyani yoqamiz (tugma ishlasin)
+    set_setting("tarif7_aksiya", "on")
+    try:
+        payme_link = _payme_checkout_link(uid, TEST_PRICE)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(TEXTS['uz']['tarif7_2soat_btn'], url=payme_link)],
+            [InlineKeyboardButton(TEXTS['uz']['tarif7_btn_card'], callback_data='card_test')],
+        ])
+        await context.bot.send_message(uid, TEXTS['uz']['test_taklif_msg'],
+                                       reply_markup=kb, parse_mode="HTML")
+        await update.message.reply_text(f"✅ {uid} ga 7 kunlik aksiya yuborildi.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Yuborilmadi: {e}\n(Foydalanuvchi botni bloklagan bo'lishi mumkin)")
 
 
 async def aksiya_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4851,6 +4887,7 @@ def main():
     app.add_handler(CommandHandler("xatolar", xatolar_command))
     app.add_handler(CommandHandler("aksiya_off", aksiya_off_command))
     app.add_handler(CommandHandler("aksiya_on", aksiya_on_command))
+    app.add_handler(CommandHandler("aksiya_ber", aksiya_ber_command))
     app.add_handler(CommandHandler("drip_on", drip_on_command))
     app.add_handler(CommandHandler("drip_off", drip_off_command))
     app.add_handler(CommandHandler("videoid", videoid_command))
