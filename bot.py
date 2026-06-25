@@ -61,8 +61,8 @@ SUB_PRICE = 29900
 SUB_DAYS = 30
 # 1 martalik tahlil narxi (so'm)
 ONE_PRICE = 5090
-# Haftalik test paketi: 7 kun / 7000 so'm
-TEST_PRICE = 7000
+# Haftalik test paketi: 7 kun / 6990 so'm
+TEST_PRICE = 6990
 TEST_DAYS = 7
 # ===== Payme Merchant API =====
 PAYME_MERCHANT_ID = os.getenv("PAYME_MERCHANT_ID", "")   # kassa ID (Payme kabinetdan)
@@ -228,6 +228,8 @@ def init_db():
                                  ("video_xabar_given", "BOOLEAN DEFAULT FALSE"),
                                  ("video_sovga_olindi", "BOOLEAN DEFAULT FALSE"),
                                  ("tarif7_sana", "TEXT"),
+                                 ("drip2_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("drip3_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -752,7 +754,7 @@ TEXTS = {
         'test_taklif_msg': ("🎉 <b>10 000+ blogger InstaDoctor'dan foydalanmoqda — navbat sizda!</b>\n\n"
                             "Hali to'liq obunaga shoshilmayapsizmi? Tushunamiz! 😊\n"
                             "Avval <b>kichik qadamdan</b> boshlang:\n\n"
-                            "⚡️ <b>7 KUNLIK PREMIUM — atigi 7 000 so'm</b>\n"
+                            "⚡️ <b>7 KUNLIK PREMIUM — atigi 6 990 so'm</b>\n"
                             "━━━━━━━━━━━━━\n"
                             "🔍 <b>CHUQURROQ TAHLIL</b> — eng aniq, professional baho\n"
                             "♾ <b>CHEKSIZ video</b> — 7 kun limitsiz\n"
@@ -781,7 +783,7 @@ TEXTS = {
         'sorov_start_btn': "✍️ Javob berish",
         'test_sorov_msg': ("📋 Sizning fikringiz biz uchun muhim! 🙏\n\n"
                            "Yangi g'oyamiz bor, fikringizni bilmoqchimiz:\n\n"
-                           "💡 <b>7 KUNLIK TEST PREMIUM</b> ni atigi <b>7 000 so'mga</b> qo'shmoqchimiz!\n\n"
+                           "💡 <b>7 KUNLIK TEST PREMIUM</b> ni atigi <b>6 990 so'mga</b> qo'shmoqchimiz!\n\n"
                            "Premium imkoniyatlari:\n"
                            "🔍 <b>2 barobar kuchli tahlil</b>\n"
                            "♾ <b>Cheksiz tahlil</b> imkoniyati\n"
@@ -790,7 +792,7 @@ TEXTS = {
                            "📈 <b>Yashirin REK ehtimoli</b>\n\n"
                            "2 ta savolga javob bering 👇"),
         'test_sorov_btn': "✍️ Fikr bildirish",
-        'test_sorov_q1': ("1️⃣ <b>7 kunlik test Premium (atigi 7 000 so'm) qo'shmoqchimiz</b> — "
+        'test_sorov_q1': ("1️⃣ <b>7 kunlik test Premium (atigi 6 990 so'm) qo'shmoqchimiz</b> — "
                           "sizga qiziqmi, sinab ko'rarmidingiz?\n\nFikringizni yozing 👇"),
         'test_sorov_q2': ("Rahmat! 🙏 Endi 2-savol:\n\n"
                           "2️⃣ Yaqinda botni yangiladik — <b>tezlik va sifatni oshirdik</b>. "
@@ -850,11 +852,16 @@ TEXTS = {
         'video_2btn_sovga': "🎁 SOVG'ANI OLISH",
         'video_2btn_fikr': "💬 Fikr bildirish",
         'tarif7_2soat': ("⏰ <b>DIQQAT! Atigi 2 SOAT qoldi!</b>\n\n"
-                         "🎯 <b>7 KUNLIK PREMIUM — atigi 7 000 so'm</b> aksiyasi "
+                         "🎯 <b>7 KUNLIK PREMIUM — atigi 6 990 so'm</b> aksiyasi "
                          "bugun soat 22:00 da tugaydi!\n\n"
                          "Bu narx boshqa bo'lmaydi — ulgurib qoling! 🔥\n\n"
                          "👇 Hoziroq oling:"),
-        'tarif7_2soat_btn': "⚡️ 7 kunlik Premium olish (7 000)",
+        'tarif7_2soat_btn': "⚡️ 7 kunlik Premium olish (6 990)",
+        'drip2_empatiya': ("🤍 <b>Sizni eslab qoldik!</b>\n\n"
+                           "Kontent yaratish — oson ish emas, buni bilamiz. Shuning uchun "
+                           "biz har bir blogerga yordam berishni xohlaymiz.\n\n"
+                           "🎁 Sizga <b>yana 1 ta BEPUL tahlil</b> sovg'a qildik!\n\n"
+                           "Quyidagi videoda — loyiha ortida turgan jonli jamoa bilan tanishing 👇"),
         'video_fikr_btn': "💬 Fikringizni bildirish",
         'video_fikr_ask': ("💬 Video yoki bot haqida fikringizni yozing.\n\n"
                            "Fikringiz biz uchun juda muhim — botni yaxshilashga yordam beradi! 🤍"),
@@ -884,7 +891,7 @@ TEXTS = {
                          "Yarim tundan keyin u <b>yo'qoladi</b>! 😱\n\n"
                          "👇 Hoziroq video yuboring — bepul tahlil qiling!"),
         'tarif7_msg': ("🎯 <b>MAXSUS TAKLIF — 7 KUNLIK PREMIUM!</b>\n\n"
-                       "Atigi <b>7 000 so'm</b>ga 7 kun davomida to'liq Premium'dan foydalaning! 🔥\n\n"
+                       "Atigi <b>6 990 so'm</b>ga 7 kun davomida to'liq Premium'dan foydalaning! 🔥\n\n"
                        "✨ <b>Sizga ochiladi:</b>\n"
                        "♾ Cheksiz video tahlil\n"
                        "🔍 Chuqur, professional tahlil\n"
@@ -894,8 +901,8 @@ TEXTS = {
                        "⚡️ Navbatsiz, tezkor xizmat\n\n"
                        "💡 <b>Bir hafta sinab ko'ring</b> — natijani his qiling, keyin qaror qiling!\n\n"
                        "👇 Hoziroq boshlang:"),
-        'tarif7_btn_payme': "⚡️ Payme orqali to'lash (7 000)",
-        'tarif7_btn_card': "💳 Karta orqali to'lash (7 000)",
+        'tarif7_btn_payme': "⚡️ Payme orqali to'lash (6 990)",
+        'tarif7_btn_card': "💳 Karta orqali to'lash (6 990)",
         'sotuv_msg': ("Bilasizmi, nega ba'zi bloggerlar doimo TOPda? 🤔\n\n"
                       "Chunki ular har bir videoni joylashdan oldin kamchiliklarini to'g'rilashadi. "
                       "Lekin algoritmlar to'xtab turmaydi — har kuni tahlil qilish va trendda bo'lish kerak! 📊\n\n"
@@ -1124,7 +1131,7 @@ TEXTS = {
         'test_taklif_msg': ("🎉 <b>10 000+ блогеров используют InstaDoctor — теперь ваша очередь!</b>\n\n"
                             "Ещё не готовы к полной подписке? Понимаем! 😊\n"
                             "Начните с <b>малого шага</b>:\n\n"
-                            "⚡️ <b>7 ДНЕЙ PREMIUM — всего 7 000 сум</b>\n"
+                            "⚡️ <b>7 ДНЕЙ PREMIUM — всего 6 990 сум</b>\n"
                             "━━━━━━━━━━━━━\n"
                             "🚀 <b>VIP СКОРОСТЬ</b> — без очереди\n"
                             "🔍 <b>ГЛУБОКИЙ АНАЛИЗ</b> — точная оценка\n"
@@ -1150,7 +1157,7 @@ TEXTS = {
         'sorov_start_btn': "✍️ Ответить",
         'test_sorov_msg': ("📋 Ваше мнение очень важно для нас! 🙏\n\n"
                            "У нас есть новая идея, и мы хотим узнать ваше мнение:\n\n"
-                           "💡 <b>7-ДНЕВНЫЙ ТЕСТ PREMIUM</b> хотим добавить всего за <b>7 000 сум</b>!\n\n"
+                           "💡 <b>7-ДНЕВНЫЙ ТЕСТ PREMIUM</b> хотим добавить всего за <b>6 990 сум</b>!\n\n"
                            "Возможности Premium:\n"
                            "🔍 <b>В 2 раза мощнее анализ</b>\n"
                            "♾ <b>Безлимитный анализ</b>\n"
@@ -1159,7 +1166,7 @@ TEXTS = {
                            "📈 <b>Скрытая вероятность РЕК</b>\n\n"
                            "Ответьте на 2 вопроса 👇"),
         'test_sorov_btn': "✍️ Оставить отзыв",
-        'test_sorov_q1': ("1️⃣ <b>Хотим добавить 7-дневный тест Premium (всего 7 000 сум)</b> — "
+        'test_sorov_q1': ("1️⃣ <b>Хотим добавить 7-дневный тест Premium (всего 6 990 сум)</b> — "
                           "вам интересно, попробовали бы?\n\nНапишите ваше мнение 👇"),
         'test_sorov_q2': ("Спасибо! 🙏 Теперь 2-й вопрос:\n\n"
                           "2️⃣ Недавно мы обновили бота — <b>повысили скорость и качество</b>. "
@@ -1458,7 +1465,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
     elif data == 'buy_test':
         # Aksiya tugagan bo'lsa - 7 minglik o'chirilgan, to'liq obunaga yo'naltiramiz
-        if get_setting("tarif7_aksiya", "on") == "off":
+        # Aksiya tugaganmi? (1) qo'lda o'chirilgan, YOKI (2) tugash vaqti o'tgan
+        _aksiya_tugadi = (get_setting("tarif7_aksiya", "on") == "off")
+        if not _aksiya_tugadi:
+            _tugash = get_setting("tarif7_tugash", "")
+            if _tugash:
+                try:
+                    UZ_OFF = int(os.getenv("UZ_TZ_OFFSET", "5"))
+                    hozir_uz = datetime.utcnow() + timedelta(hours=UZ_OFF)
+                    if hozir_uz > datetime.strptime(_tugash, "%Y-%m-%d %H:%M"):
+                        _aksiya_tugadi = True
+                except Exception:
+                    pass
+        # DRIP foydalanuvchisi: shaxsiy 24 soat (drip aksiya olgan vaqtidan)
+        if not _aksiya_tugadi:
+            _urow = _db_execute("SELECT tarif7_sana FROM users WHERE user_id=%s",
+                                (query.from_user.id,), fetch='one')
+            if _urow and _urow[0]:
+                try:
+                    olingan = datetime.strptime(_urow[0], "%Y-%m-%d %H:%M")
+                    if (datetime.now() - olingan).total_seconds() > 24 * 3600:
+                        _aksiya_tugadi = True
+                except Exception:
+                    pass
+        if _aksiya_tugadi:
             kb = InlineKeyboardMarkup([
                 [InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')],
             ])
@@ -2082,30 +2112,16 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     """BLOKLAYDIGAN to'liq Gemini ishi. Faqat alohida thread'da chaqiriladi
     (asyncio.to_thread), shunda bot muzlamaydi va Pyrogram uzilmaydi.
     model: bepul -> flash-lite (arzon), pullik -> flash (sifatli).
-    FALLBACK: faqat Flash band bo'lsa Flash-Lite'ga tushadi (arzonlashadi, ruxsat).
-    Flash-Lite (bepul) band bo'lsa - Flash'ga KO'TARILMAYDI (qimmat bermaymiz).
+    MUHIM: model O'ZGARMAYDI (fallback yo'q). Chunki model almashsa, foiz (%) ham
+    o'zgaradi -> bir xil video har xil natija beradi -> foydalanuvchi ishonmaydi.
+    Shuning uchun 503 (band) bo'lsa - SHU modelda qayta urinamiz (foiz barqaror).
     QAYTARADI: (matn, usage_dict) - usage shu tahlilniki (global aralashmasin)."""
     uploaded = None
     used_model = model
     try:
         uploaded = _upload_and_wait(tmp_path)
-        try:
-            txt = _analyze(uploaded, prompt, model=model, max_retries=2)
-        except Exception as e:
-            emsg = str(e)
-            is_503 = ("503" in emsg or "UNAVAILABLE" in emsg or "overloaded" in emsg.lower())
-            if "lite" not in model:
-                # Flash (pullik) band/xato -> Flash-Lite (rad qilmasdan)
-                logger.warning(f"Flash xato ({e}); Flash-Lite'ga tushamiz")
-                used_model = "gemini-2.5-flash-lite"
-                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash-lite", max_retries=2)
-            else:
-                # Flash-Lite (bepul) 503/band -> Flash'ga o'tamiz (Flash serveri boshqa,
-                # ishlaydi). 503 paytida bepul ham ishlasin (vaqtincha qimmat, lekin rad
-                # qilmaymiz). Google 503 o'tgach, normal Flash-Lite'ga qaytadi.
-                logger.warning(f"Flash-Lite xato (503={is_503}): {e}; Flash'ga o'tamiz (ishlasin)")
-                used_model = "gemini-2.5-flash"
-                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash", max_retries=2)
+        # Model o'zgarmaydi - shu modelda 3 marta urinadi (503 bo'lsa qayta).
+        txt = _analyze(uploaded, prompt, model=model, max_retries=3)
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
@@ -3268,6 +3284,53 @@ async def xatolar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(txt, parse_mode="HTML")
 
 
+async def drip_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: drip tizimini yoqadi (bugundan keyin kirganlar uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    set_setting("drip_start", bugun)
+    await update.message.reply_text(
+        f"✅ Drip tizimi YOQILDI! (boshlanish: {bugun})\n\n"
+        "Bugundan keyin kirgan yangi foydalanuvchilar uchun:\n"
+        "• 2-kun: jamoa videosi + 1 bepul\n"
+        "• 3-kun: 7 kunlik aksiya\n\n"
+        "Eski 10 000 foydalanuvchiga BORMAYDI (faqat yangi).\n"
+        "Har kuni 19:00 da avtomatik ishlaydi.\n"
+        "O'chirish: /drip_off")
+
+
+async def drip_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: drip tizimini o'chiradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("drip_start", "")
+    await update.message.reply_text("🔴 Drip tizimi o'chirildi. Yoqish: /drip_on")
+
+
+async def aksiya_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 7 kunlik aksiyani DARROV o'chiradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("tarif7_aksiya", "off")
+    set_setting("tarif7_tugash", "")
+    await update.message.reply_text(
+        "🔴 7 kunlik aksiya DARROV o'chirildi!\n\n"
+        "Endi 7 minglik tugma bosilsa — 'aksiya tugadi, to'liq obuna' chiqadi.\n"
+        "Qayta yoqish: /aksiya_on yoki /tarif7")
+
+
+async def aksiya_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 7 kunlik aksiyani qayta yoqadi (yubormasdan, faqat tugma ishlasin)."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("tarif7_aksiya", "on")
+    set_setting("tarif7_tugash", "")  # vaqt cheksiz (qo'lda o'chirguncha)
+    await update.message.reply_text(
+        "✅ 7 kunlik aksiya yoqildi (tugma ishlaydi).\n"
+        "Hammaga yuborish: /tarif7\nO'chirish: /aksiya_off")
+
+
 async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: barcha admin buyruqlari ro'yxati."""
     if not is_admin(update.effective_user.id):
@@ -3329,6 +3392,15 @@ async def tarif7_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # Aksiyani YOQAMIZ (buy_test ishlasin) + ertaga 20:00 eslatma, 22:00 o'chirish jadvali
     set_setting("tarif7_aksiya", "on")
+    # Aksiya tugash vaqtini ham saqlaymiz (restart bo'lsa ham ishlasin - vaqtga bog'liq).
+    # Ertaga 22:00 (UZ) gacha. UZ->UTC.
+    try:
+        UZ_OFF = int(os.getenv("UZ_TZ_OFFSET", "5"))
+        tugash_uz = (datetime.utcnow() + timedelta(hours=UZ_OFF) + timedelta(days=1)).replace(
+            hour=22, minute=0, second=0, microsecond=0)
+        set_setting("tarif7_tugash", tugash_uz.strftime("%Y-%m-%d %H:%M"))
+    except Exception:
+        pass
     try:
         jq = context.application.job_queue
         if jq is not None:
@@ -4514,6 +4586,80 @@ async def tarif7_ochirish(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+async def drip_kunlik(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni: yangi kirgan (deploy'dan keyin) foydalanuvchilarni izchil isitadi.
+    1-kun: bepul (mavjud). 2-kun: jamoa videosi + empatiya +1 bepul. 3-kun: 7 kunlik aksiya.
+    FAQAT yangi kirganlarga (drip_start sanadan keyin) - eski 10000 ga emas."""
+    drip_start = get_setting("drip_start", "")
+    if not drip_start:
+        return  # drip hali yoqilmagan
+    try:
+        drip_start_dt = datetime.strptime(drip_start, "%Y-%m-%d")
+    except Exception:
+        return
+    bugun = datetime.now()
+    rows = _db_execute(
+        "SELECT user_id, joined, lang, COALESCE(drip2_given,FALSE), COALESCE(drip3_given,FALSE) "
+        "FROM users", fetch='all') or []
+    drip2_sent, drip3_sent = 0, 0
+    for r in rows:
+        uid, joined, lang, d2, d3 = r[0], r[1], r[2], r[3], r[4]
+        if is_admin(uid) or sub_active(uid):
+            continue
+        if not joined:
+            continue
+        try:
+            joined_dt = datetime.strptime(joined[:10], "%Y-%m-%d")
+        except Exception:
+            continue
+        # FAQAT yangi (drip_start dan keyin kirgan) - eski 10000 ga emas
+        if joined_dt < drip_start_dt:
+            continue
+        kun = (bugun.date() - joined_dt.date()).days
+        # 2-KUN: jamoa videosi + empatiya + 1 bepul
+        if kun == 1 and not d2:
+            try:
+                add_balance(uid, 1)
+                _db_execute("UPDATE users SET drip2_given=TRUE WHERE user_id=%s", (uid,))
+                await context.bot.send_message(uid, TEXTS['uz']['drip2_empatiya'], parse_mode="HTML")
+                await asyncio.sleep(0.3)
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(TEXTS['uz']['video_2btn_sovga'], callback_data="video_sovga_ol")],
+                    [InlineKeyboardButton(TEXTS['uz']['video_2btn_fikr'], callback_data="video_fikr")],
+                ])
+                await context.bot.send_video(uid, VIDEO_FILE_ID,
+                                             caption=TEXTS['uz']['video_caption'],
+                                             reply_markup=kb, parse_mode="HTML")
+                drip2_sent += 1
+            except Exception as e:
+                logger.warning(f"drip2 xato (uid={uid}): {e}")
+            await asyncio.sleep(0.4)
+        # 3-KUN: 7 kunlik aksiya (24 soat taymer)
+        elif kun == 2 and not d3:
+            try:
+                _db_execute("UPDATE users SET drip3_given=TRUE, tarif7_sana=%s WHERE user_id=%s",
+                            (bugun.strftime("%Y-%m-%d %H:%M"), uid))
+                payme_link = _payme_checkout_link(uid, TEST_PRICE)
+                kb = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(TEXTS['uz']['tarif7_2soat_btn'], url=payme_link)],
+                    [InlineKeyboardButton(TEXTS['uz']['tarif7_btn_card'], callback_data='card_test')],
+                ])
+                await context.bot.send_message(uid, TEXTS['uz']['test_taklif_msg'],
+                                               reply_markup=kb, parse_mode="HTML")
+                drip3_sent += 1
+            except Exception as e:
+                logger.warning(f"drip3 xato (uid={uid}): {e}")
+            await asyncio.sleep(0.4)
+    logger.info(f"Drip kunlik: 2-kun {drip2_sent} ta, 3-kun {drip3_sent} ta")
+    if drip2_sent or drip3_sent:
+        for aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    aid, f"🔄 Drip: 2-kun (video) {drip2_sent} ta, 3-kun (aksiya) {drip3_sent} ta yuborildi.")
+            except Exception:
+                pass
+
+
 async def juma_aksiya_boshla(context: ContextTypes.DEFAULT_TYPE):
     """Juma ertalab: premium olmaganlarga 1 juma-bepul beradi + xabar."""
     # Juma aksiyasi YOQILGANmi? (default: o'chirilgan)
@@ -4599,7 +4745,9 @@ def main():
             jq.run_daily(juma_eslatma_yubor, time=_dtime(hour=uz_to_utc(20), minute=0), days=(4,))
             # Kuydirish: shanba 00:30 UZ = juma 19:30 UTC (agar UZ_OFF=5)
             jq.run_daily(juma_kuydir, time=_dtime(hour=uz_to_utc(0), minute=30), days=(5,))
-            logger.info("Juma aksiyasi scheduler o'rnatildi (juma 10:00 va 20:00, shanba kuydirish)")
+            # Drip (3 kunlik isitish) - har kuni 19:00 UZ (aktiv payt)
+            jq.run_daily(drip_kunlik, time=_dtime(hour=uz_to_utc(19), minute=0))
+            logger.info("Juma + Drip scheduler o'rnatildi")
         else:
             logger.warning("job_queue yo'q - juma aksiyasi ishlamaydi (requirements: job-queue kerak)")
     except Exception as e:
@@ -4625,6 +4773,10 @@ def main():
     app.add_handler(CommandHandler("tarif7", tarif7_command))
     app.add_handler(CommandHandler("buyruqlar", buyruqlar_command))
     app.add_handler(CommandHandler("xatolar", xatolar_command))
+    app.add_handler(CommandHandler("aksiya_off", aksiya_off_command))
+    app.add_handler(CommandHandler("aksiya_on", aksiya_on_command))
+    app.add_handler(CommandHandler("drip_on", drip_on_command))
+    app.add_handler(CommandHandler("drip_off", drip_off_command))
     app.add_handler(CommandHandler("videoid", videoid_command))
     app.add_handler(CommandHandler("video_test", video_test_command))
     app.add_handler(CommandHandler("video_xabar", video_xabar_command))
