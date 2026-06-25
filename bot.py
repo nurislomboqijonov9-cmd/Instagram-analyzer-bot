@@ -104,7 +104,39 @@ FREE_TRIAL = 1
 # Payme (Telegram Payments) provider token - Railway Variables'dan olinadi
 PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+# ===== GEMINI CLIENT: Vertex AI (barqaror, 503 kam) yoki AI Studio (zaxira) =====
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
+GCS_BUCKET = os.getenv("GCS_BUCKET", "instadoctor-videos-2026")
+_gcp_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", "")
+
+client = None
+_using_vertex = False
+_gcs_client = None
+if GCP_PROJECT_ID and _gcp_json:
+    try:
+        _cred_path = "/tmp/gcp_creds.json"
+        with open(_cred_path, "w") as _f:
+            _f.write(_gcp_json)
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _cred_path
+        client = genai.Client(vertexai=True, project=GCP_PROJECT_ID, location=GCP_LOCATION)
+        _using_vertex = True
+        print(f"[INFO] Vertex AI ishga tushdi (project={GCP_PROJECT_ID}, loc={GCP_LOCATION})")
+        # GCS client (video saqlash uchun)
+        try:
+            from google.cloud import storage as _gcs_storage
+            _gcs_client = _gcs_storage.Client(project=GCP_PROJECT_ID)
+            print(f"[INFO] GCS bucket ulandi: {GCS_BUCKET}")
+        except Exception as _ge:
+            print(f"[ERROR] GCS ulanmadi ({_ge}); Vertex video ishlamasligi mumkin")
+    except Exception as _e:
+        print(f"[ERROR] Vertex AI ulanmadi ({_e}); AI Studio'ga qaytamiz")
+        client = None
+        _using_vertex = False
+
+if client is None:
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    print("[INFO] AI Studio API kaliti ishlatilmoqda (zaxira)")
 
 # Xavfsizlik sozlamalari: oddiy reklama/Instagram videolari xato "bloklanib"
 # bo'sh javob qaytmasligi uchun. Agar SDK qabul qilmasa, e'tiborsiz qoldiriladi.
@@ -1885,8 +1917,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def _upload_and_wait(tmp_path, max_retries=3, max_wait=300):
-    """Videoni Gemini'ga yuklaydi va ACTIVE bo'lguncha kutadi (qayta urinish bilan)."""
+    """Videoni Gemini'ga tayyorlaydi.
+    - Vertex AI: video GCS bucket'ga yuklanadi, GCS URI (Part) qaytadi.
+    - AI Studio: client.files.upload (eski usul), ACTIVE bo'lguncha kutadi.
+    QAYTARADI: Vertex'da (gcs_uri, blob_name) tuple, AI Studio'da uploaded obyekt."""
     last_error = None
+    # ===== VERTEX AI: GCS orqali =====
+    if _using_vertex and _gcs_client is not None:
+        for attempt in range(max_retries):
+            try:
+                bucket = _gcs_client.bucket(GCS_BUCKET)
+                blob_name = f"videos/{uuid.uuid4().hex}.mp4"
+                blob = bucket.blob(blob_name)
+                blob.upload_from_filename(tmp_path)
+                gcs_uri = f"gs://{GCS_BUCKET}/{blob_name}"
+                return (gcs_uri, blob_name)
+            except Exception as e:
+                last_error = e
+                logger.warning(f"GCS upload urinish {attempt+1}/{max_retries}: {e}")
+                time.sleep((attempt + 1) * 3)
+        raise last_error
+    # ===== AI STUDIO: eski usul =====
     for attempt in range(max_retries):
         try:
             uploaded = client.files.upload(file=tmp_path)
@@ -1905,6 +1956,15 @@ def _upload_and_wait(tmp_path, max_retries=3, max_wait=300):
             logger.warning(f"Upload urinish {attempt+1}/{max_retries}: {e}")
             time.sleep((attempt + 1) * 4)
     raise last_error
+
+
+def _gcs_delete(blob_name):
+    """GCS'dan videoni o'chiradi (tahlildan keyin, joy band qilmasin)."""
+    try:
+        if _gcs_client is not None and blob_name:
+            _gcs_client.bucket(GCS_BUCKET).blob(blob_name).delete()
+    except Exception as e:
+        logger.warning(f"GCS o'chirishda xato: {e}")
 
 
 def _extract_text(response):
@@ -2080,7 +2140,19 @@ def _generate(contents, max_retries=3, model="gemini-2.5-flash"):
 
 
 def _analyze(uploaded_file, prompt, max_retries=4, model="gemini-2.5-flash"):
-    """Bitta video uchun tahlil."""
+    """Bitta video uchun tahlil.
+    Vertex: uploaded_file = (gcs_uri, blob_name) -> GCS URI Part yasaymiz.
+    AI Studio: uploaded_file = uploaded obyekt (to'g'ridan ishlatamiz)."""
+    if _using_vertex and isinstance(uploaded_file, tuple):
+        gcs_uri = uploaded_file[0]
+        # Vertex uchun: GCS URI'dan video Part yasaymiz
+        try:
+            video_part = genai_types.Part.from_uri(file_uri=gcs_uri, mime_type="video/mp4")
+        except Exception:
+            # Ba'zi SDK versiyalarida boshqacha
+            video_part = genai_types.Part(file_data=genai_types.FileData(
+                file_uri=gcs_uri, mime_type="video/mp4"))
+        return _generate([video_part, prompt], max_retries=max_retries, model=model)
     return _generate([uploaded_file, prompt], max_retries=max_retries, model=model)
 
 
@@ -2132,10 +2204,14 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
         return txt, usage
     finally:
         if uploaded is not None:
-            try:
-                client.files.delete(name=uploaded.name)
-            except Exception:
-                pass
+            if _using_vertex and isinstance(uploaded, tuple):
+                # Vertex: GCS'dan videoni o'chiramiz (blob_name = uploaded[1])
+                _gcs_delete(uploaded[1])
+            else:
+                try:
+                    client.files.delete(name=uploaded.name)
+                except Exception:
+                    pass
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
