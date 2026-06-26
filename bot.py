@@ -438,7 +438,7 @@ def auto_aksiya_on():
     return get_setting("auto_aksiya", "off") == "on"
 
 
-SUB_PRICE_DISCOUNT = 19900  # Chegirma narxi
+SUB_PRICE_DISCOUNT = 24900  # Chegirma narxi (29900 -> 24900, 5000 chegirma)
 
 def discount_active():
     """Chegirma faolmi? (yoqilgan va 24 soat o'tmagan)"""
@@ -458,7 +458,7 @@ def current_sub_price():
 
 
 def sub_btn_label(context):
-    """Obuna tugmasi matni - joriy narx bilan (chegirma bo'lsa 19 900, aks holda 29 900)."""
+    """Obuna tugmasi matni - joriy narx bilan (chegirma bo'lsa 24 900, aks holda 29 900)."""
     narx = f"{current_sub_price():,}".replace(",", " ")
     return t(context, 'sub_btn_price').format(narx=narx)
 
@@ -1006,9 +1006,9 @@ TEXTS = {
                       "📈 <b>Yashirin trendlar</b> — algoritm yangiliklari birinchi sizga\n\n"
                       "🔥 FAQAT BUGUN — MAXSUS CHEGIRMA!\n"
                       "Hozirgi narx: <s>29 900 so'm</s>\n"
-                      "Faqat bugun: <b>19 900 so'm/oy</b> 🎉\n"
+                      "Faqat bugun: <b>24 900 so'm/oy</b> 🎉\n"
                       "(Kuniga atigi 650 so'm! ☕️ bir choydan ham arzon)\n\n"
-                      "⏳ Shoshiling — bu narx faqat BUGUN SOAT 17:00 gacha! Keyin yana ko'tariladi.\n\n"
+                      "⏳ Shoshiling — bu narx faqat BUGUN SOAT 22:00 gacha! Keyin yana ko'tariladi.\n\n"
                       "Bitta REKka chiqqan video bu pulni qoplaydi! 🚀\n\n"
                       "👇 Hoziroq faollashtiring — imkoniyatni boy bermang!"),
         'fikr_ask': ("💬 Fikr yoki taklifingizni yozib qoldiring 👇\n"
@@ -1041,6 +1041,18 @@ TEXTS = {
         'profile_analyzing': "🧠 Profil tahlil qilinmoqda... ⚡",
         'full_btn': "📖 To'liq tahlilni ko'rish",
         'qisqa_btn': "🔙 Qisqa tahlilga qaytish",
+        'maxsus_2700_msg': ("🎯 <b>Siz — bizning faol foydalanuvchimizsiz!</b>\n\n"
+                            "InstaDoctor'ni bir necha marta ishlatdingiz — demak kontentingizni "
+                            "jiddiy rivojlantiryapsiz 👏\n\n"
+                            "Aynan shunday izlanuvchilar uchun <b>maxsus taklif</b> tayyorladik 👇\n\n"
+                            "💎 <b>1 oylik Premium — 24,900 so'm</b> (29,900 o'rniga)\n\n"
+                            "Premium'da sizni kutadi:\n"
+                            "✅ <b>Cheksiz</b> tahlil\n"
+                            "🔥 <b>\"Qanday yaxshilash?\"</b> — hook + 3 ta tayyor variant\n"
+                            "🎙 <b>Ovozli</b> maslahat\n"
+                            "📊 <b>Profil tahlili</b> — shaxsiy strategiya\n\n"
+                            "⏰ Bu narx faqat <b>bugun 22:00 gacha</b>!\n\n"
+                            "👇 Premium oling va kontentingizni TOPga chiqaring!"),
         'tts_btn': "🔊 Qisqa eshitish",
         'yaxshilash_btn': "🔥 Qanday yaxshilash?",
         'yaxshilash_premium': ("🔒 <b>\"Qanday yaxshilash?\"</b> — bu PREMIUM funksiya!\n\n"
@@ -1142,10 +1154,17 @@ TEXTS = {
         'busy_quota': ("⏳ Hozir tizimda yuklama juda yuqori. Iltimos, biroz (5-10 daqiqa) "
                        "kutib, qaytadan urinib ko'ring. Balansingiz yechilmadi. 🙏"),
         'send_video': "🎬 Tahlil uchun videoni yuboring! 📤",
-        'no_balance': ("💳 Sizda bepul tahlil qolmagan.\n\n"
-                       "Davom etish uchun tanlang 👇\n"
-                       "• 1 oylik obuna — cheksiz tahlil (29,900 so'm)\n"
-                       "• 1 ta tahlil — 5,090 so'm"),
+        'no_balance': ("🎬 <b>Bepul tahlillaringiz tugadi!</b>\n\n"
+                       "Lekin siz endigina boshladingiz 😊 Premium'da sizni nimalar kutyapti:\n\n"
+                       "✅ <b>Cheksiz</b> tahlil — limitsiz\n"
+                       "🔥 <b>\"Qanday yaxshilash?\"</b> — hook + 3 ta tayyor variant\n"
+                       "🎙 <b>Ovozli</b> maslahat\n"
+                       "📊 <b>Profil tahlili</b> — shaxsiy strategiya\n"
+                       "⚡️ <b>Kuchli model</b> — eng aniq baho\n"
+                       "━━━━━━━━━━━━━\n"
+                       "💎 <b>1 oylik — 29,900 so'm</b> (cheksiz)\n"
+                       "📍 <b>1 ta tahlil — 5,090 so'm</b>\n\n"
+                       "👇 Tanlang va kontentingizni TOPga chiqaring!"),
         'balance_info': "💰 Sizda {n} ta bepul tahlil bor.",
         'choose_pkg': "💳 Obuna:",
         'pay_instr': ("💳 1 OYLIK OBUNA — cheksiz video tahlil (30 kun)\n\n"
@@ -1291,9 +1310,9 @@ TEXTS = {
                       "📈 <b>Скрытые тренды</b> — новинки алгоритмов первыми для вас\n\n"
                       "🔥 ТОЛЬКО СЕГОДНЯ — СКИДКА!\n"
                       "Текущая цена: <s>29 900 сум</s>\n"
-                      "Только сегодня: <b>19 900 сум/мес</b> 🎉\n"
+                      "Только сегодня: <b>24 900 сум/мес</b> 🎉\n"
                       "(Всего 650 сум в день! ☕️ дешевле чашки чая)\n\n"
-                      "⏳ Торопитесь — цена только СЕГОДНЯ ДО 17:00! Потом снова поднимется.\n\n"
+                      "⏳ Торопитесь — цена только СЕГОДНЯ ДО 22:00! Потом снова поднимется.\n\n"
                       "Одно видео в РЕК окупит эту сумму! 🚀\n\n"
                       "👇 Активируйте сейчас — не упустите шанс!"),
         'fikr_ask': ("💬 Напишите ваш отзыв или предложение 👇\n"
@@ -1326,6 +1345,18 @@ TEXTS = {
         'profile_analyzing': "🧠 Анализирую профиль... ⚡",
         'full_btn': "📖 Посмотреть полный анализ",
         'qisqa_btn': "🔙 Вернуться к краткому",
+        'maxsus_2700_msg': ("🎯 <b>Вы — наш активный пользователь!</b>\n\n"
+                            "Вы использовали InstaDoctor несколько раз — значит, серьёзно "
+                            "развиваете свой контент 👏\n\n"
+                            "Именно для таких мы подготовили <b>специальное предложение</b> 👇\n\n"
+                            "💎 <b>1 месяц Premium — 24 900 сум</b> (вместо 29 900)\n\n"
+                            "В Premium вас ждёт:\n"
+                            "✅ <b>Безлимитный</b> анализ\n"
+                            "🔥 <b>\"Как улучшить?\"</b> — хук + 3 готовых варианта\n"
+                            "🎙 <b>Голосовой</b> совет\n"
+                            "📊 <b>Анализ профиля</b> — личная стратегия\n\n"
+                            "⏰ Эта цена только <b>сегодня до 22:00</b>!\n\n"
+                            "👇 Оформите Premium и выводите контент в ТОП!"),
         'tts_btn': "🔊 Кратко голосом",
         'yaxshilash_btn': "🔥 Как улучшить?",
         'yaxshilash_premium': ("🔒 <b>\"Как улучшить?\"</b> — это PREMIUM функция!\n\n"
@@ -1426,10 +1457,17 @@ TEXTS = {
         'busy_quota': ("⏳ Сейчас система сильно загружена. Пожалуйста, подождите немного "
                        "(5-10 минут) и попробуйте снова. Баланс не списан. 🙏"),
         'send_video': "🎬 Отправьте видео для анализа! 📤",
-        'no_balance': ("💳 У вас не осталось бесплатных анализов.\n\n"
-                       "Выберите, чтобы продолжить 👇\n"
-                       "• Подписка на 1 месяц — безлимит (29 900 сум)\n"
-                       "• 1 анализ — 5 090 сум"),
+        'no_balance': ("🎬 <b>Ваши бесплатные анализы закончились!</b>\n\n"
+                       "Но вы только начали 😊 В Premium вас ждёт:\n\n"
+                       "✅ <b>Безлимитный</b> анализ\n"
+                       "🔥 <b>\"Как улучшить?\"</b> — хук + 3 готовых варианта\n"
+                       "🎙 <b>Голосовой</b> совет\n"
+                       "📊 <b>Анализ профиля</b> — личная стратегия\n"
+                       "⚡️ <b>Мощная модель</b> — точная оценка\n"
+                       "━━━━━━━━━━━━━\n"
+                       "💎 <b>1 месяц — 29 900 сум</b> (безлимит)\n"
+                       "📍 <b>1 анализ — 5 090 сум</b>\n\n"
+                       "👇 Выберите и выводите контент в ТОП!"),
         'balance_info': "💰 У вас {n} бесплатных анализов.",
         'choose_pkg': "💳 Подписка:",
         'pay_instr': ("💳 ПОДПИСКА НА 1 МЕСЯЦ — безлимитный анализ видео (30 дней)\n\n"
@@ -1828,6 +1866,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Tugmalar: Qisqaga qaytish + audio
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")],
+            [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
             [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
              InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
         ])
@@ -1853,6 +1892,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
+            [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
             [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
              InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
         ])
@@ -2585,7 +2625,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Kirish tekshiruvi: admin / obuna faol / bepul tahlil bor bo'lsa - o'tadi
     if has_access(user_id) == 'none':
-        await message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context))
+        await message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context), parse_mode="HTML")
         return
 
     wait_msg = await message.reply_text(t(context, 'received'))
@@ -2643,7 +2683,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if discount_active():
                     _narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
                                "Eski narx: <s>29 900 so'm</s>\n"
-                               "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
+                               "Yangi narx: <b>24 900 so'm/oy</b> 🎉\n"
                                "Bu — kuniga 650 so'mdan ham emas! ☕️")
                 else:
                     _narx_q = "\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan ham emas! ☕️"
@@ -3639,7 +3679,7 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/javoblar — so'rov javoblari\n"
         "/javoblar_bugun — bugungi javoblar\n\n"
         "💰 <b>CHEGIRMA / SOTUV</b>\n"
-        "/chegirma — chegirma yoqish (17:00 gacha)\n"
+        "/chegirma — chegirma yoqish (22:00 gacha)\n"
         "/chegirma_ochir — chegirmani o'chirish\n"
         "/sotuv_matn &lt;matn&gt; — sotuv matnini o'zgartirish\n"
         "/sotuv_korish — sotuv matnini ko'rish\n"
@@ -4156,21 +4196,69 @@ async def sotuv_matn_tikla_command(update: Update, context: ContextTypes.DEFAULT
     await update.message.reply_text("♻️ Sotuv matni asl holatiga qaytarildi.")
 
 
-async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: chegirmani BUGUN 17:00 gacha YOQADI (19 900) va sotuv xabarini yuboradi.
-    Agar hozir 17:00 dan o'tgan bo'lsa - ERTAGA 17:00 gacha."""
+async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 2+ marta tahlil qilgan, premium OLMAGAN faol foydalanuvchilarga
+    maxsus taklif + chegirma (24 900, bugun 22:00 gacha)."""
     if not is_admin(update.effective_user.id):
         return
-    # Chegirmani BUGUN soat 17:00 gacha yoqamiz
+    # Chegirmani 22:00 gacha yoqamiz (narx 24 900 bo'lsin)
     now = datetime.now()
-    until_dt = now.replace(hour=17, minute=0, second=0, microsecond=0)
+    until_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
     if until_dt <= now:
-        # 17:00 o'tib ketgan bo'lsa - ertaga 17:00
+        until_dt = until_dt + timedelta(days=1)
+    set_setting("chegirma_until", until_dt.strftime("%Y-%m-%d %H:%M:%S"))
+    now_str = now.strftime("%Y-%m-%d %H:%M")
+    # Nishon: 2+ marta video tahlil qilgan, premium emas
+    rows = _db_execute(
+        "SELECT u.user_id FROM users u "
+        "JOIN (SELECT user_id, COUNT(*) c FROM analyses WHERE kind='video' "
+        "GROUP BY user_id HAVING COUNT(*) >= 2) a ON a.user_id = u.user_id "
+        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s)",
+        (now_str,), fetch='all'
+    ) or []
+    targets = [r[0] for r in rows if not is_admin(r[0])]
+    if not targets:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"🎯 Maxsus taklif (2+ tahlil, premium emas): {len(targets)} ta\n"
+        f"Chegirma 24 900 (bugun 22:00 gacha) yoqildi.\n(Sekin yuboriladi, kuting)")
+    sent, failed = 0, 0
+    for uid in targets:
+        try:
+            ulang = _db_execute("SELECT lang FROM users WHERE user_id=%s", (uid,), fetch='one')
+            lang = (ulang[0] if ulang and ulang[0] else 'uz')
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS[lang]['obuna_taklif_btn'], callback_data="buy_sub")
+            ]])
+            await context.bot.send_message(uid, TEXTS[lang]['maxsus_2700_msg'],
+                                           reply_markup=kb, parse_mode="HTML")
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ Maxsus 2700: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
+
+
+async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: chegirmani BUGUN 22:00 gacha YOQADI (24 900) va sotuv xabarini yuboradi.
+    Agar hozir 22:00 dan o'tgan bo'lsa - ERTAGA 22:00 gacha."""
+    if not is_admin(update.effective_user.id):
+        return
+    # Chegirmani BUGUN soat 22:00 gacha yoqamiz
+    now = datetime.now()
+    until_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
+    if until_dt <= now:
+        # 22:00 o'tib ketgan bo'lsa - ertaga 22:00
         until_dt = until_dt + timedelta(days=1)
     set_setting("chegirma_until", until_dt.strftime("%Y-%m-%d %H:%M:%S"))
     await update.message.reply_text(
-        f"🔥 Chegirma YOQILDI! (19 900 so'm)\n"
-        f"⏳ Tugash: {until_dt.strftime('%Y-%m-%d %H:%M')} (bugun soat 17:00)\n"
+        f"🔥 Chegirma YOQILDI! (24 900 so'm)\n"
+        f"⏳ Tugash: {until_dt.strftime('%Y-%m-%d %H:%M')} (bugun soat 22:00)\n"
         f"Keyin avtomatik 29 900 ga qaytadi.\n\n"
         f"📤 Sotuv xabari obunasizlarga yuborilmoqda..."
     )
@@ -5148,6 +5236,7 @@ def main():
     app.add_handler(CommandHandler("obuna_taklif", obuna_taklif_command))
     app.add_handler(CommandHandler("test_taklif", test_taklif_command))
     app.add_handler(CommandHandler("chegirma", chegirma_command))
+    app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
     app.add_handler(CommandHandler("sotuv_matn", sotuv_matn_command))
     app.add_handler(CommandHandler("sotuv_korish", sotuv_korish_command))
     app.add_handler(CommandHandler("sotuv_matn_tikla", sotuv_matn_tikla_command))
