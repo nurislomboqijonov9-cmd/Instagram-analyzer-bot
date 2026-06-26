@@ -405,6 +405,34 @@ def set_setting(key, value):
     )
 
 
+def tarif7_tugadimi(user_id=None):
+    """7 kunlik aksiya tugaganmi? (1) qo'lda o'chirilgan, (2) global vaqt o'tgan,
+    (3) shu user uchun shaxsiy 24 soat o'tgan. True = tugagan (ko'rsatmaymiz)."""
+    if get_setting("tarif7_aksiya", "on") == "off":
+        return True
+    # Global tugash vaqti
+    _tugash = get_setting("tarif7_tugash", "")
+    if _tugash:
+        try:
+            UZ_OFF = int(os.getenv("UZ_TZ_OFFSET", "5"))
+            hozir_uz = datetime.utcnow() + timedelta(hours=UZ_OFF)
+            if hozir_uz > datetime.strptime(_tugash, "%Y-%m-%d %H:%M"):
+                return True
+        except Exception:
+            pass
+    # Shaxsiy 24 soat (drip foydalanuvchisi)
+    if user_id is not None:
+        _urow = _db_execute("SELECT tarif7_sana FROM users WHERE user_id=%s", (user_id,), fetch='one')
+        if _urow and _urow[0]:
+            try:
+                olingan = datetime.strptime(_urow[0], "%Y-%m-%d %H:%M")
+                if (datetime.now() - olingan).total_seconds() > 24 * 3600:
+                    return True
+            except Exception:
+                pass
+    return False
+
+
 def auto_aksiya_on():
     """Avtomatik +2 aksiya yoqilganmi? (default: o'chiq)"""
     return get_setting("auto_aksiya", "off") == "on"
@@ -1603,6 +1631,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == 'pm_sub':
             summa, nom = current_sub_price(), "1 oylik obuna"
         elif data == 'pm_test':
+            if tarif7_tugadimi(query.from_user.id):
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')]])
+                await query.message.reply_text(
+                    "⏰ <b>Aksiya tugadi!</b>\n\n7 kunlik maxsus narx muddati o'tdi. "
+                    "To'liq obunadan foydalaning — barcha imkoniyatlar ochiq! 💎",
+                    reply_markup=kb, parse_mode="HTML")
+                return
             summa, nom = TEST_PRICE, "7 kunlik Premium"
         else:
             summa, nom = ONE_PRICE, "1 ta tahlil"
@@ -1624,6 +1659,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == 'cl_sub':
             summa, nom, pkg = current_sub_price(), "1 oylik obuna", "sub_1month"
         elif data == 'cl_test':
+            if tarif7_tugadimi(query.from_user.id):
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')]])
+                await query.message.reply_text(
+                    "⏰ <b>Aksiya tugadi!</b>\n\n7 kunlik maxsus narx muddati o'tdi. "
+                    "To'liq obunadan foydalaning — barcha imkoniyatlar ochiq! 💎",
+                    reply_markup=kb, parse_mode="HTML")
+                return
             summa, nom, pkg = TEST_PRICE, "7 kunlik Premium", "test_7day"
         else:
             summa, nom, pkg = ONE_PRICE, "1 ta tahlil", "one_1"
@@ -1642,6 +1684,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == 'card_sub':
             paket_nom, summa, pkg = "1 oylik obuna", current_sub_price(), "sub_1month"
         elif data == 'card_test':
+            if tarif7_tugadimi(query.from_user.id):
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')]])
+                await query.message.reply_text(
+                    "⏰ <b>Aksiya tugadi!</b>\n\n7 kunlik maxsus narx muddati o'tdi. "
+                    "To'liq obunadan foydalaning — barcha imkoniyatlar ochiq! 💎",
+                    reply_markup=kb, parse_mode="HTML")
+                return
             paket_nom, summa, pkg = "7 kunlik Premium", TEST_PRICE, "test_7day"
         else:
             paket_nom, summa, pkg = "1 ta tahlil", ONE_PRICE, "one_1"
