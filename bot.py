@@ -68,6 +68,11 @@ TEST_DAYS = 7
 PAYME_MERCHANT_ID = os.getenv("PAYME_MERCHANT_ID", "")   # kassa ID (Payme kabinetdan)
 PAYME_KEY = os.getenv("PAYME_KEY", "")                    # maxfiy kalit (Payme kabinetdan)
 PAYME_TEST_KEY = os.getenv("PAYME_TEST_KEY", "")          # test kaliti (sandbox)
+# ===== Click Merchant API =====
+CLICK_SERVICE_ID = os.getenv("CLICK_SERVICE_ID", "")      # Click service ID
+CLICK_MERCHANT_ID = os.getenv("CLICK_MERCHANT_ID", "")    # Click merchant ID
+CLICK_SECRET_KEY = os.getenv("CLICK_SECRET_KEY", "")      # Click maxfiy kalit (imzo uchun)
+CLICK_MERCHANT_USER_ID = os.getenv("CLICK_MERCHANT_USER_ID", "")  # merchant user id
 WEB_PORT = int(os.getenv("PORT", "8080"))                 # Railway web port
 _bot_app = None                                           # global bot ilovasi (Payme tabrigi uchun)
 _main_loop = None                                         # asosiy event loop (web thread'dan xabar yuborish uchun)
@@ -713,6 +718,34 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 Оценка должна соответствовать реальному качеству. Процент реальный. Ты не обычный AI, а эксперт, глубоко знающий узбекский рынок Instagram — давай местные, конкретные, полезные советы."""
 
 
+# ===== PREMIUM QO'SHIMCHA: hook ko'tarish (baho + muammo + yechim + tayyor variant) =====
+PROMPT_PREMIUM_UZ = """
+
+[PREMIUM_BONUS]
+Bu PREMIUM foydalanuvchi. Yuqoridagi tahlilga QO'SHIMCHA, eng oxirida quyidagi maxsus bo'limni ham yoz (faqat to'liq tahlilda):
+
+🔥 HOOKNI KUCHAYTIRISH (PREMIUM)
+Videoning hozirgi hook'ini chuqur tahlil qil va shu 3 qismni ber:
+1️⃣ MUAMMO: Hozirgi hook nega kuchsiz/o'rtacha — aniq sabab (1-2 jumla).
+2️⃣ YECHIM: Hook'ni qanday kuchaytirish — amaliy maslahat (1-2 jumla).
+3️⃣ TAYYOR VARIANTLAR: Shu video uchun 3 ta TAYYOR, kuchli hook matni yoz (foydalanuvchi to'g'ridan ko'chirib ishlatsa bo'ladigan, o'zbek auditoriyasiga mos, e'tibor tortadigan). Har birini alohida qatorda, "▪️" bilan boshlab yoz.
+
+Bu bo'lim foydalanuvchiga ANIQ, ko'chirib ishlatса bo'ladigan qiymat bersin — umumiy gap emas, aniq tayyor matnlar."""
+
+PROMPT_PREMIUM_RU = """
+
+[PREMIUM_BONUS]
+Это PREMIUM пользователь. В ДОПОЛНЕНИЕ к анализу выше, в самом конце добавь специальный раздел (только в полном анализе):
+
+🔥 УСИЛЕНИЕ ХУКА (PREMIUM)
+Глубоко проанализируй текущий хук видео и дай 3 части:
+1️⃣ ПРОБЛЕМА: почему текущий хук слабый/средний — конкретная причина (1-2 предложения).
+2️⃣ РЕШЕНИЕ: как усилить хук — практический совет (1-2 предложения).
+3️⃣ ГОТОВЫЕ ВАРИАНТЫ: напиши 3 ГОТОВЫХ сильных текста хука для этого видео (которые можно скопировать и использовать). Каждый с новой строки, начиная с "▪️".
+
+Дай конкретную ценность — не общие слова, а готовые тексты."""
+
+
 PROMPT_PROFILE_UZ = """Sen Instagram bo'yicha tajribali, xolis ekspertsan. Senga foydalanuvchining Instagram profili va/yoki statistikasi (Insights) skrinshot(lar)i berildi.
 
 AVVAL TEKSHIR: Agar skrinshot(lar)dan profil MAVZUSINI (nima haqida ekanini) aniq tushuna olmasang (rasm xira, kam ma'lumot, bio yo'q, postlar ko'rinmaydi) — boshqa hech narsa yozma, FAQAT shu so'zni yoz: [MAVZU_KERAK]
@@ -981,6 +1014,14 @@ TEXTS = {
         'full_btn': "📖 To'liq tahlilni ko'rish",
         'qisqa_btn': "🔙 Qisqa tahlilga qaytish",
         'tts_btn': "🔊 Qisqa eshitish",
+        'yaxshilash_btn': "🔥 Qanday yaxshilash?",
+        'yaxshilash_premium': ("🔒 <b>\"Qanday yaxshilash?\"</b> — bu PREMIUM funksiya!\n\n"
+                               "Premium'da videongiz uchun:\n"
+                               "✅ Hook nega kuchsiz — aniq sabab\n"
+                               "✅ Qanday kuchaytirish — amaliy yechim\n"
+                               "✅ <b>3 ta TAYYOR hook</b> — ko'chirib ishlatasiz!\n\n"
+                               "👇 Premium oling va kontentingizni TOPga chiqaring:"),
+        'yaxshilash_loading': "🔥 Hook tahlili tayyorlanmoqda... ⏳",
         'tts_full_btn': "🔊 To'liq eshitish",
         'inv_sub_title': "InstaDoctor — 1 oylik obuna",
         'inv_sub_desc': "1 oy davomida cheksiz video tahlil. 🔒 To'lov Payme orqali xavfsiz. To'lovdan so'ng obuna avtomatik faollashadi.",
@@ -1102,6 +1143,7 @@ TEXTS = {
                            "3️⃣ Tez orada tasdiqlanadi va Premium faollashadi! ✅"),
         'card_choose': "💳 Karta orqali to'lash",
         'payme_choose': "⚡️ Payme (avtomatik)",
+        'click_choose': "🔵 Click (avtomatik)",
         'approved': "🎉 To'lovingiz tasdiqlandi!\n✅ Obunangiz faol — {until} gacha.\nEndi cheksiz video tahlil qilishingiz mumkin! 🎬",
         'sub_btn': "💳 Obuna sotib olish",
         'sub_btn_price': "💳 Obuna sotib olish (30 kun / {narx} so'm)",
@@ -1257,6 +1299,14 @@ TEXTS = {
         'full_btn': "📖 Посмотреть полный анализ",
         'qisqa_btn': "🔙 Вернуться к краткому",
         'tts_btn': "🔊 Кратко голосом",
+        'yaxshilash_btn': "🔥 Как улучшить?",
+        'yaxshilash_premium': ("🔒 <b>\"Как улучшить?\"</b> — это PREMIUM функция!\n\n"
+                               "В Premium для вашего видео:\n"
+                               "✅ Почему хук слабый — точная причина\n"
+                               "✅ Как усилить — практическое решение\n"
+                               "✅ <b>3 ГОТОВЫХ хука</b> — копируй и используй!\n\n"
+                               "👇 Оформите Premium и выводите контент в ТОП:"),
+        'yaxshilash_loading': "🔥 Готовлю анализ хука... ⏳",
         'tts_full_btn': "🔊 Полностью голосом",
         'inv_sub_title': "InstaDoctor — подписка на 1 месяц",
         'inv_sub_desc': "Безлимитный анализ видео в течение 1 месяца. 🔒 Оплата через Payme безопасна. После оплаты подписка активируется автоматически.",
@@ -1377,6 +1427,7 @@ TEXTS = {
                            "3️⃣ Скоро подтвердим и Premium активируется! ✅"),
         'card_choose': "💳 Оплата по карте",
         'payme_choose': "⚡️ Payme (автоматически)",
+        'click_choose': "🔵 Click (автоматически)",
         'approved': "🎉 Оплата подтверждена!\n✅ Подписка активна — до {until}.\nТеперь безлимитный анализ видео! 🎬",
         'sub_btn': "💳 Оформить подписку",
         'sub_btn_price': "💳 Оформить подписку (30 дней / {narx} сум)",
@@ -1492,6 +1543,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # To'lov turini tanlash: Payme yoki Karta
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_sub')],
+            [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_sub')],
             [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_sub')],
         ])
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
@@ -1532,12 +1584,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_test')],
+            [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_test')],
             [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_test')],
         ])
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
     elif data == 'buy_one':
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_one')],
+            [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_one')],
             [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_one')],
         ])
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
@@ -1559,6 +1613,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             f"💳 <b>{nom}</b> — <b>{summa:,} so'm</b>\n\n"
             f"Quyidagi tugmani bosing — <b>Payme</b> orqali xavfsiz to'lang.\n"
+            f"To'lovdan so'ng Premium <b>avtomatik</b> faollashadi! ✅",
+            reply_markup=kb, parse_mode="HTML"
+        )
+    # ===== CLICK tanlandi (avtomatik havola) =====
+    elif data in ('cl_sub', 'cl_test', 'cl_one'):
+        if not CLICK_SERVICE_ID or not CLICK_MERCHANT_ID:
+            await query.message.reply_text(t(context, 'pay_unavailable'))
+            return
+        if data == 'cl_sub':
+            summa, nom, pkg = current_sub_price(), "1 oylik obuna", "sub_1month"
+        elif data == 'cl_test':
+            summa, nom, pkg = TEST_PRICE, "7 kunlik Premium", "test_7day"
+        else:
+            summa, nom, pkg = ONE_PRICE, "1 ta tahlil", "one_1"
+        link = _click_checkout_link(query.from_user.id, summa, pkg)
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"🔵 {summa:,} so'm to'lash", url=link)
+        ]])
+        await query.message.reply_text(
+            f"🔵 <b>{nom}</b> — <b>{summa:,} so'm</b>\n\n"
+            f"Quyidagi tugmani bosing — <b>Click</b> orqali xavfsiz to'lang.\n"
             f"To'lovdan so'ng Premium <b>avtomatik</b> faollashadi! ✅",
             reply_markup=kb, parse_mode="HTML"
         )
@@ -1739,6 +1814,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(qisqa, reply_markup=kb)
         else:
             await query.message.reply_text(qisqa, reply_markup=kb)
+    elif data.startswith('yax_'):
+        # "Qanday yaxshilash?" - faqat PREMIUM (admin yoki obunachi)
+        if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
+            premium_kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            await query.message.reply_text(t(context, 'yaxshilash_premium'),
+                                           reply_markup=premium_kb, parse_mode="HTML")
+            return
+        try:
+            aid = int(data.split('_', 1)[1])
+        except Exception:
+            return
+        toliq = get_full_analysis(aid) or get_qisqa_analysis(aid)
+        if not toliq:
+            await query.message.reply_text(t(context, 'full_gone'))
+            return
+        wait = await query.message.reply_text(t(context, 'yaxshilash_loading'))
+        try:
+            lang = get_lang(context)
+            bonus_prompt = (PROMPT_PREMIUM_RU if lang == 'ru' else PROMPT_PREMIUM_UZ)
+            # Saqlangan tahlil asosida hook taklifini so'raymiz (video qayta kerak emas)
+            asos = (f"Quyida videoning tahlili berilgan. Shu asosda hook yaxshilash bo'limini yoz.\n\n"
+                    f"TAHLIL:\n{toliq}\n") if lang != 'ru' else (
+                    f"Ниже анализ видео. На его основе напиши раздел улучшения хука.\n\nАНАЛИЗ:\n{toliq}\n")
+            txt = await asyncio.to_thread(_generate, [asos + bonus_prompt],
+                                          3, "gemini-2.5-flash")
+            await wait.edit_text(txt if txt else "😔 Hozir tayyorlab bo'lmadi, qayta urinib ko'ring.")
+        except Exception as e:
+            logger.warning(f"Yaxshilash xato: {e}")
+            await wait.edit_text("😔 Hozir tayyorlab bo'lmadi, qayta urinib ko'ring.")
+        return
     elif data.startswith('tts_'):
         # Audio faqat PREMIUM (admin yoki obunachi) uchun
         if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
@@ -2192,17 +2299,10 @@ def _gemini_process(tmp_path, prompt, model="gemini-2.5-flash"):
     used_model = model
     try:
         uploaded = _upload_and_wait(tmp_path)
-        # Avval shu modelda urinamiz (503 bo'lsa qayta).
-        try:
-            txt = _analyze(uploaded, prompt, model=model, max_retries=3)
-        except Exception as e:
-            # Flash-Lite (bepul) ishlamasa -> Flash'ga o'tamiz (ishlasin, rad bo'lmasin).
-            if "lite" in model:
-                logger.warning(f"Flash-Lite ishlamadi ({e}); Flash'ga o'tamiz")
-                used_model = "gemini-2.5-flash"
-                txt = _analyze(uploaded, prompt, model="gemini-2.5-flash", max_retries=3)
-            else:
-                raise
+        # Vertex AI'da 503 (band) deyarli yo'q. Shuning uchun model O'ZGARMAYDI:
+        # Flash-Lite (bepul) o'z modelida qoladi -> foiz barqaror + xarajat kam
+        # (Flash'ga o'tib qimmatlashmaydi). 503 bo'lsa shu modelda qayta urinadi.
+        txt = _analyze(uploaded, prompt, model=model, max_retries=3)
         # Token sarfini shu yerda NUSXALAB olamiz (global _last_usage aralashmasin)
         usage = {
             "prompt": _last_usage.get("prompt", 0),
@@ -2481,6 +2581,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_path = os.path.join("/tmp", f"{uuid.uuid4().hex}.mp4")
             is_big = bool(video.file_size and video.file_size > 20 * 1024 * 1024)
             prompt = PROMPT_RU if get_lang(context) == 'ru' else PROMPT_UZ
+            # Hook bonus endi alohida "Qanday yaxshilash?" tugma orqali beriladi
 
             # Tahlil boshlanish vaqti
             _analiz_start = datetime.now()
@@ -2676,6 +2777,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if aid:
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
+                    [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
                     [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
                      InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
                 ])
@@ -4357,6 +4459,15 @@ def _payme_checkout_link(user_id, amount_som):
     return f"https://checkout.paycom.uz/{encoded}"
 
 
+def _click_checkout_link(user_id, amount_som, pkg):
+    """Click to'lov havolasini yasaydi (my.click.uz).
+    transaction_param = "uid_pkg" -> Complete'da uid va pkg ajratamiz."""
+    trans_param = f"{user_id}_{pkg}"
+    return (f"https://my.click.uz/services/pay?service_id={CLICK_SERVICE_ID}"
+            f"&merchant_id={CLICK_MERCHANT_ID}&amount={amount_som}"
+            f"&transaction_param={trans_param}")
+
+
 def _payme_handle(body):
     """Payme JSON-RPC so'rovini qayta ishlaydi. body - dict. Javob - dict."""
     req_id = body.get("id")
@@ -4629,17 +4740,103 @@ async def health_handler(request):
     return web.Response(text="OK")
 
 
+# ===== CLICK Merchant API (Prepare + Complete) =====
+def _click_signature(data, secret_key):
+    """Click imzosini (MD5) tekshiradi/yasaydi.
+    Prepare: md5(click_trans_id + service_id + secret_key + merchant_trans_id +
+             amount + action + sign_time)
+    Complete: md5(click_trans_id + service_id + secret_key + merchant_trans_id +
+             merchant_prepare_id + amount + action + sign_time)"""
+    import hashlib
+    action = str(data.get("action", ""))
+    parts = [
+        str(data.get("click_trans_id", "")),
+        str(data.get("service_id", "")),
+        secret_key,
+        str(data.get("merchant_trans_id", "")),
+    ]
+    if action == "1":  # Complete'da merchant_prepare_id ham bor
+        parts.append(str(data.get("merchant_prepare_id", "")))
+    parts.append(str(data.get("amount", "")))
+    parts.append(action)
+    parts.append(str(data.get("sign_time", "")))
+    return hashlib.md5("".join(parts).encode()).hexdigest()
+
+
+def _click_handle(data):
+    """Click so'rovini qayta ishlaydi (Prepare action=0, Complete action=1).
+    merchant_trans_id = "uid_pkg" formatida (masalan "123456_test_7day")."""
+    action = str(data.get("action", ""))
+    # Imzo tekshirish
+    sign = data.get("sign_string", "")
+    if sign != _click_signature(data, CLICK_SECRET_KEY):
+        return {"error": -1, "error_note": "SIGN CHECK FAILED"}
+    merchant_trans_id = str(data.get("merchant_trans_id", ""))
+    click_trans_id = data.get("click_trans_id", "")
+    amount = data.get("amount", "")
+    # merchant_trans_id'dan uid va pkg ajratamiz
+    try:
+        parts = merchant_trans_id.split("_", 1)
+        uid = int(parts[0])
+        pkg = parts[1] if len(parts) > 1 else "one_1"
+    except Exception:
+        return {"error": -5, "error_note": "Foydalanuvchi topilmadi"}
+
+    if action == "0":  # PREPARE
+        return {
+            "click_trans_id": click_trans_id,
+            "merchant_trans_id": merchant_trans_id,
+            "merchant_prepare_id": int(time.time()),  # tayyorlov ID
+            "error": 0,
+            "error_note": "Success",
+        }
+    elif action == "1":  # COMPLETE
+        error_code = data.get("error", "0")
+        if str(error_code) == "0":
+            # To'lov muvaffaqiyatli -> obuna/balans beramiz (som)
+            try:
+                amount_som = int(float(amount))
+            except Exception:
+                amount_som = 0
+            _payme_activate(uid, pkg, amount_som * 100)  # _payme_activate som*100 kutadi
+        return {
+            "click_trans_id": click_trans_id,
+            "merchant_trans_id": merchant_trans_id,
+            "merchant_confirm_id": int(time.time()),
+            "error": 0,
+            "error_note": "Success",
+        }
+    return {"error": -3, "error_note": "Action topilmadi"}
+
+
+async def click_web_handler(request):
+    """aiohttp: /click endpoint - Click so'rovlarini qabul qiladi."""
+    try:
+        # Click form-data yuboradi (JSON emas)
+        data = await request.post()
+        data = dict(data)
+    except Exception:
+        data = {}
+    try:
+        result = await asyncio.to_thread(_click_handle, data)
+    except Exception as e:
+        logger.error(f"Click handler xato: {e}")
+        result = {"error": -9, "error_note": "Sistema xatosi"}
+    return web.json_response(result, status=200)
+
+
 async def run_web_server():
-    """aiohttp web serverni ishga tushiradi (Payme uchun)."""
+    """aiohttp web serverni ishga tushiradi (Payme + Click uchun)."""
     web_app = web.Application()
     web_app.router.add_post("/payme", payme_web_handler)
+    web_app.router.add_post("/click", click_web_handler)
     web_app.router.add_get("/", health_handler)
     web_app.router.add_get("/health", health_handler)
     runner = web.AppRunner(web_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)
     await site.start()
-    logger.info(f"Web server ishga tushdi (port {WEB_PORT}) - Payme /payme tayyor")
+    logger.info(f"Web server ishga tushdi (port {WEB_PORT}) - Payme /payme + Click /click tayyor")
 
 
 async def sticker_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
