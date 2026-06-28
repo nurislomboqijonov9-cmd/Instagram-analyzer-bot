@@ -262,6 +262,7 @@ def init_db():
                                  ("juma_balance", "INTEGER DEFAULT 0"),
                                  ("juma_sana", "TEXT"),
                                  ("video_fikr_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("premium_fikr_given", "BOOLEAN DEFAULT FALSE"),
                                  ("video_xabar_given", "BOOLEAN DEFAULT FALSE"),
                                  ("video_sovga_olindi", "BOOLEAN DEFAULT FALSE"),
                                  ("tarif7_sana", "TEXT"),
@@ -571,6 +572,15 @@ def get_qisqa_analysis(analysis_id):
     """Qisqa tahlil matnini qaytaradi (ovozli eshitish uchun)."""
     row = _db_execute("SELECT qisqa FROM analyses WHERE id = %s", (analysis_id,), fetch='one')
     return row[0] if row and row[0] else None
+
+
+def get_analysis_video(analysis_id):
+    """Tahlilning video file_id, foiz va user ma'lumotini qaytaradi (admin nazorati uchun)."""
+    row = _db_execute("SELECT file_id, foiz, user_id, username FROM analyses WHERE id = %s",
+                      (analysis_id,), fetch='one')
+    if not row:
+        return None
+    return {"file_id": row[0], "foiz": row[1], "user_id": row[2], "username": row[3]}
 
 
 def get_last_video_foiz(user_id):
@@ -956,6 +966,22 @@ TEXTS = {
                            "🎁 Sizga <b>yana 1 ta BEPUL tahlil</b> sovg'a qildik!\n\n"
                            "Quyidagi videoda — loyiha ortida turgan jonli jamoa bilan tanishing 👇"),
         'video_fikr_btn': "💬 Fikringizni bildirish",
+        'premium_fikr_btn': "💬 Fikr qoldirish",
+        'premium_fikr_msg': ("Assalomu alaykum! 😊\n\n"
+                             "Siz InstaDoctor Premium'dan foydalanyapsiz — bu biz uchun katta "
+                             "mas'uliyat va quvonch! 🤍\n\n"
+                             "Xizmatimizni yanada yaxshilash uchun sizning samimiy fikringiz juda "
+                             "muhim. Bir necha soniya vaqt ajratsangiz:\n\n"
+                             "✨ Premium'da sizga eng ko'p nima yoqdi?\n"
+                             "📈 Kontentingizga qanday yordam berdi?\n"
+                             "💡 Nimani yaxshilashimizni xohlaysiz?\n\n"
+                             "👇 Tugmani bosib, fikringizni yozib qoldiring — har bir fikringiz "
+                             "biz uchun qadrli! 🙏"),
+        'premium_fikr_ask': ("💬 Fikringizni yozing — Premium'da nima yoqdi, qanday yordam berdi, "
+                             "nimani yaxshilash kerak?\n\nHar bir fikringiz biz uchun qadrli! 🤍"),
+        'premium_fikr_thanks': ("🤍 <b>Fikringiz uchun katta rahmat!</b>\n\n"
+                                "Har bir fikr xizmatimizni yaxshiroq qiladi. Sizdek faol "
+                                "foydalanuvchilarimiz borligi — biz uchun eng katta baxt! 🙏"),
         'video_fikr_ask': ("💬 Video yoki bot haqida fikringizni yozing.\n\n"
                            "Fikringiz biz uchun juda muhim — botni yaxshilashga yordam beradi! 🤍"),
         'video_fikr_thanks': ("🎁 <b>Чин дилдан кичик бир совға:</b>\n\n"
@@ -1818,6 +1844,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'video_fikr':
         context.user_data['mode'] = 'video_fikr'
         await query.message.reply_text(t(context, 'video_fikr_ask'), parse_mode="HTML")
+    elif data == 'premium_fikr':
+        context.user_data['mode'] = 'premium_fikr'
+        await query.message.reply_text(t(context, 'premium_fikr_ask'), parse_mode="HTML")
     elif data == 'aksiya_video':
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
@@ -1903,6 +1932,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(qisqa, reply_markup=kb)
         else:
             await query.message.reply_text(qisqa, reply_markup=kb)
+    elif data.startswith('advid_'):
+        # Admin: tahlil qilingan videoni ko'rish (nazorat uchun)
+        if not is_admin(query.from_user.id):
+            return
+        try:
+            aid = int(data.split('_', 1)[1])
+        except Exception:
+            return
+        info = get_analysis_video(aid)
+        if not info or not info.get("file_id"):
+            await query.message.reply_text("😔 Video topilmadi (eski tahlil bo'lishi mumkin).")
+            return
+        try:
+            cap = f"🎬 Tahlil #{aid}\n👤 @{info.get('username') or '-'} (ID: {info.get('user_id')})\n📈 Natija: {info.get('foiz')}%"
+            await query.message.reply_video(info["file_id"], caption=cap)
+        except Exception as e:
+            logger.warning(f"Admin video ko'rsatishda xato: {e}")
+            await query.message.reply_text("😔 Videoni yuborib bo'lmadi (muddati o'tgan bo'lishi mumkin).")
+        return
     elif data.startswith('yax_'):
         # "Qanday yaxshilash?" - faqat PREMIUM (admin yoki obunachi)
         if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
@@ -2835,15 +2883,19 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"📊 Tannarx hisobi (video tahlil)\n"
                     f"👤 @{uname} (ID: {user_id})\n"
                     f"🎬 Video: {_mb:.1f} MB, {_dur_txt}\n"
+                    f"📈 Natija: {foiz}%\n"
                     f"🔢 Kiruvchi: {p_tok:,} token\n"
                     f"🔢 Javob: {o_tok:,} token\n"
                     f"🔢 Jami: {tot:,} token\n"
                     f"💵 ≈ ${usd:.4f}\n"
                     f"💰 ≈ {uzs:,.0f} so'm"
                 )
+                _admin_kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🎬 Videoni ko'rish", callback_data=f"advid_{aid}")
+                ]])
                 for _aid in ADMIN_IDS:
                     try:
-                        await context.bot.send_message(_aid, report)
+                        await context.bot.send_message(_aid, report, reply_markup=_admin_kb)
                     except Exception:
                         pass
             except Exception as e:
@@ -3020,6 +3072,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(context, 'sorov_thanks'))
         return
     # Video "Fikr bildirish" rejimi - fikr guruhga boradi (bepul YO'Q, sovg'a alohida tugmada)
+    if context.user_data.get('mode') == 'premium_fikr':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        fikr = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                grp_txt = f"💎 PREMIUM FIKRI\n👤 {who}\n\n{fikr}"
+                await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
+            except Exception as e:
+                logger.warning(f"Premium fikrini guruhga yuborishda xato: {e}")
+        await update.message.reply_text(t(context, 'premium_fikr_thanks'), parse_mode="HTML")
+        return
     if context.user_data.get('mode') == 'video_fikr':
         context.user_data['mode'] = None
         uid = update.effective_user.id
@@ -4196,6 +4262,43 @@ async def sotuv_matn_tikla_command(update: Update, context: ContextTypes.DEFAULT
     await update.message.reply_text("♻️ Sotuv matni asl holatiga qaytarildi.")
 
 
+async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: PREMIUM (faol obunachi) foydalanuvchilardan fikr so'raydi.
+    Har bir premium foydalanuvchiga FAQAT BIR MARTA boradi (premium_fikr_given)."""
+    if not is_admin(update.effective_user.id):
+        return
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id, lang FROM users WHERE sub_until > %s "
+        "AND (premium_fikr_given IS NULL OR premium_fikr_given = FALSE)",
+        (now_str,), fetch='all'
+    ) or []
+    targets = [(r[0], r[1] or 'uz') for r in rows]
+    if not targets:
+        await update.message.reply_text("📭 Mos premium foydalanuvchi yo'q (yoki hammasidan so'ralgan).")
+        return
+    await update.message.reply_text(
+        f"💬 Premium fikr so'rovi: {len(targets)} ta obunachiga yuborilmoqda...\n"
+        f"(Har biriga FAQAT bir marta. Sekin yuboriladi, kuting)")
+    sent, failed = 0, 0
+    for uid, lang in targets:
+        try:
+            btn = TEXTS.get(lang, TEXTS['uz']).get('premium_fikr_btn', "💬 Fikr qoldirish")
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton(btn, callback_data="premium_fikr")]])
+            msg = TEXTS.get(lang, TEXTS['uz']).get('premium_fikr_msg') or TEXTS['uz']['premium_fikr_msg']
+            await context.bot.send_message(uid, msg, reply_markup=kb)
+            _db_execute("UPDATE users SET premium_fikr_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ Premium fikr so'rovi: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
+
+
 async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: 2+ marta tahlil qilgan, premium OLMAGAN faol foydalanuvchilarga
     maxsus taklif + chegirma (24 900, bugun 22:00 gacha)."""
@@ -5237,6 +5340,7 @@ def main():
     app.add_handler(CommandHandler("test_taklif", test_taklif_command))
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
+    app.add_handler(CommandHandler("premium_fikr", premium_fikr_command))
     app.add_handler(CommandHandler("sotuv_matn", sotuv_matn_command))
     app.add_handler(CommandHandler("sotuv_korish", sotuv_korish_command))
     app.add_handler(CommandHandler("sotuv_matn_tikla", sotuv_matn_tikla_command))
