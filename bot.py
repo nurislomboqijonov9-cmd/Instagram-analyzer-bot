@@ -4262,6 +4262,16 @@ async def sotuv_matn_tikla_command(update: Update, context: ContextTypes.DEFAULT
     await update.message.reply_text("♻️ Sotuv matni asl holatiga qaytarildi.")
 
 
+async def premium_fikr_reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: premium_fikr_given ni HAMMADA FALSE qiladi (qaytadan so'rash uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    _db_execute("UPDATE users SET premium_fikr_given = FALSE")
+    await update.message.reply_text(
+        "♻️ Tayyor! Barcha foydalanuvchilarda 'premium_fikr_given' FALSE qilindi.\n"
+        "Endi /premium_fikr bosing — premium'larga fikr so'rovi boradi.")
+
+
 async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: PREMIUM (faol obunachi) foydalanuvchilardan fikr so'raydi.
     Har bir premium foydalanuvchiga FAQAT BIR MARTA boradi (premium_fikr_given)."""
@@ -5352,6 +5362,7 @@ def main():
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
     app.add_handler(CommandHandler("premium_fikr", premium_fikr_command))
+    app.add_handler(CommandHandler("premium_fikr_reset", premium_fikr_reset_command))
     app.add_handler(CommandHandler("sotuv_matn", sotuv_matn_command))
     app.add_handler(CommandHandler("sotuv_korish", sotuv_korish_command))
     app.add_handler(CommandHandler("sotuv_matn_tikla", sotuv_matn_tikla_command))
