@@ -3664,6 +3664,41 @@ async def drip_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "O'chirish: /drip_off")
 
 
+async def drip_holat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: drip statistikasi - necha kishi drip2/drip3 oldi (ishlayaptimi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    drip_start = get_setting("drip_start", "")
+    d2 = _db_execute("SELECT COUNT(*) FROM users WHERE drip2_given = TRUE", fetch='one')
+    d3 = _db_execute("SELECT COUNT(*) FROM users WHERE drip3_given = TRUE", fetch='one')
+    d2n = d2[0] if d2 else 0
+    d3n = d3[0] if d3 else 0
+    yangi = 0
+    if drip_start:
+        rows = _db_execute("SELECT joined FROM users WHERE joined IS NOT NULL", fetch='all') or []
+        try:
+            ds = datetime.strptime(drip_start, "%Y-%m-%d")
+            for r in rows:
+                try:
+                    if datetime.strptime(r[0][:10], "%Y-%m-%d") >= ds:
+                        yangi += 1
+                except Exception:
+                    continue
+        except Exception:
+            pass
+    holat = "🟢 YOQILGAN" if drip_start else "🔴 O'CHIQ"
+    natija = "✅ Drip ishlayapti!" if (d2n + d3n) > 0 else "⏳ Hali xabar yuborilmagan (yangilar 2-kunga yetmagan yoki drip yangi yoqilgan)."
+    await update.message.reply_text(
+        f"📊 DRIP HOLATI\n\n"
+        f"Holat: {holat}\n"
+        f"Boshlanish: {drip_start or '—'}\n"
+        f"Drip boshlangach kirgan: {yangi} ta\n\n"
+        f"📤 Yuborilgan:\n"
+        f"• 2-kun (jamoa video): {d2n} ta\n"
+        f"• 3-kun (7 kunlik aksiya): {d3n} ta\n\n"
+        f"{natija}")
+
+
 async def drip_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: drip tizimini o'chiradi."""
     if not is_admin(update.effective_user.id):
@@ -4290,50 +4325,55 @@ async def premium_fikr_reset_command(update: Update, context: ContextTypes.DEFAU
         return
     _db_execute("UPDATE users SET premium_fikr_given = FALSE")
     await update.message.reply_text(
-        "♻️ Tayyor! Barcha foydalanuvchilarda 'premium_fikr_given' FALSE qilindi.\n"
-        "Endi /premium_fikr bosing — premium'larga fikr so'rovi boradi.")
+        "♻️ Tayyor! Hammada qayta tiklandi. Endi /premium_fikr bosing.")
 
 
 async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: PREMIUM (faol obunachi) foydalanuvchilardan fikr so'raydi.
-    Har bir premium foydalanuvchiga FAQAT BIR MARTA boradi (premium_fikr_given)."""
+    """Admin: AKTIV PREMIUM (obunasi hali tugamagan) foydalanuvchilardan fikr so'raydi.
+    Har bir premium'ga FAQAT BIR MARTA boradi (premium_fikr_given orqali)."""
     if not is_admin(update.effective_user.id):
         return
-    # Hamma aktiv premium'ga yuboramiz. lang DB'da yo'q bo'lishi mumkin - default 'uz'
-    rows = _db_execute("SELECT user_id FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
+    # 1) Hamma userni olamiz (faqat user_id - lang DB'da yo'q, ishlatmaymiz)
+    rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
+    # 2) Faqat AKTIV PREMIUM + hali fikr so'ralmaganlarni ajratamiz
     targets = []
     for r in rows:
         uid = r[0]
-        if is_admin(uid) or not sub_active(uid):
+        if is_admin(uid):
             continue
-        targets.append((uid, 'uz'))  # lang DB'da yo'q, default uz
+        if not sub_active(uid):   # obuna faol emas -> tashlab ketamiz
+            continue
+        # fikr allaqachon so'ralganmi? (NULL yoki FALSE bo'lsa - so'ralmagan)
+        gr = _db_execute("SELECT COALESCE(premium_fikr_given, FALSE) FROM users WHERE user_id = %s",
+                         (uid,), fetch='one')
+        if gr and gr[0]:
+            continue   # allaqachon so'ralgan
+        targets.append(uid)
     if not targets:
-        namuna = _db_execute("SELECT user_id, sub_until FROM users WHERE sub_until IS NOT NULL LIMIT 3", fetch='all') or []
-        dbg = "\n".join([f"• ID {r[0]}: sub_until='{r[1]}'" for r in namuna])
-        if not dbg:
-            dbg = "(bo'sh)"
         await update.message.reply_text(
-            f"📭 Aktiv premium foydalanuvchi yo'q.\n\n"
-            f"🔍 sub_until IS NOT NULL: {len(rows)} ta\n"
-            f"Namuna:\n{dbg}")
+            "📭 Yangi premium foydalanuvchi yo'q.\n"
+            "(Hammasidan so'ralgan bo'lishi mumkin — qayta so'rash: /premium_fikr_reset)")
         return
+    # 3) Yuboramiz (har biriga bir marta) va belgilab boramiz
     await update.message.reply_text(
         f"💬 Premium fikr so'rovi: {len(targets)} ta obunachiga yuborilmoqda...\n"
-        f"(Har biriga FAQAT bir marta. Sekin yuboriladi, kuting)")
+        f"(Sekin yuboriladi, kuting)")
     sent, failed = 0, 0
-    for uid, lang in targets:
+    for uid in targets:
         try:
-            btn = TEXTS.get(lang, TEXTS['uz']).get('premium_fikr_btn', "💬 Fikr qoldirish")
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton(btn, callback_data="premium_fikr")]])
-            msg = TEXTS.get(lang, TEXTS['uz']).get('premium_fikr_msg') or TEXTS['uz']['premium_fikr_msg']
-            await context.bot.send_message(uid, msg, reply_markup=kb)
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(TEXTS['uz']['premium_fikr_btn'], callback_data="premium_fikr")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['premium_fikr_msg'], reply_markup=kb)
+            # Yuborildi -> belgilaymiz (qayta bormasin)
+            _db_execute("UPDATE users SET premium_fikr_given = TRUE WHERE user_id = %s", (uid,))
             sent += 1
         except Exception:
             failed += 1
         await asyncio.sleep(0.4)
     for aid in ADMIN_IDS:
         try:
-            await context.bot.send_message(aid, f"✅ Premium fikr so'rovi: {sent} yuborildi, {failed} xato.")
+            await context.bot.send_message(aid, f"✅ Premium fikr: {sent} yuborildi, {failed} xato.")
         except Exception:
             pass
 
@@ -5187,11 +5227,12 @@ async def drip_kunlik(context: ContextTypes.DEFAULT_TYPE):
         return
     bugun = datetime.now()
     rows = _db_execute(
-        "SELECT user_id, joined, lang, COALESCE(drip2_given,FALSE), COALESCE(drip3_given,FALSE) "
+        "SELECT user_id, joined, COALESCE(drip2_given,FALSE), COALESCE(drip3_given,FALSE) "
         "FROM users", fetch='all') or []
     drip2_sent, drip3_sent = 0, 0
     for r in rows:
-        uid, joined, lang, d2, d3 = r[0], r[1], r[2], r[3], r[4]
+        uid, joined, d2, d3 = r[0], r[1], r[2], r[3]
+        lang = 'uz'  # lang DB'da yo'q - default uz
         if is_admin(uid) or sub_active(uid):
             continue
         if not joined:
@@ -5366,6 +5407,7 @@ def main():
     app.add_handler(CommandHandler("aksiya_ber", aksiya_ber_command))
     app.add_handler(CommandHandler("drip_on", drip_on_command))
     app.add_handler(CommandHandler("drip_off", drip_off_command))
+    app.add_handler(CommandHandler("drip_holat", drip_holat_command))
     app.add_handler(CommandHandler("videoid", videoid_command))
     app.add_handler(CommandHandler("video_test", video_test_command))
     app.add_handler(CommandHandler("video_xabar", video_xabar_command))
