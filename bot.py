@@ -3216,6 +3216,32 @@ async def til_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
 
 
+async def kim_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID dan username topadi. Ishlatish: /kim 123456789"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Ishlatish: /kim <ID>\nMasalan: /kim 8660237405")
+        return
+    try:
+        uid = int(context.args[0])
+    except Exception:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    row = _db_execute("SELECT username, first_name FROM users WHERE user_id = %s", (uid,), fetch='one')
+    if not row:
+        await update.message.reply_text(f"📭 ID {uid} bazada topilmadi (bot bilan ishlashmagan).")
+        return
+    uname = row[0]
+    fname = row[1] if len(row) > 1 else ""
+    if uname:
+        await update.message.reply_text(f"👤 @{uname}")
+    elif fname:
+        await update.message.reply_text(f"👤 {fname} (username yo'q)")
+    else:
+        await update.message.reply_text(f"👤 ID {uid} — username va ism yo'q.")
+
+
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
@@ -3913,6 +3939,42 @@ async def paymetest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔗 Havola:\n<code>{link}</code>",
         reply_markup=kb, parse_mode="HTML"
     )
+
+
+async def tahlil_faol_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 5+ faol VA to'lovchilar kesishmasi. 'Faol->to'laydi' gipotezasini tekshiradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    faol_rows = _db_execute(
+        "SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 5", fetch='all') or []
+    faol_set = set(r[0] for r in faol_rows)
+    paid_rows = _db_execute(
+        "SELECT DISTINCT user_id FROM payments WHERE status = 'approved'", fetch='all') or []
+    paid_set = set(r[0] for r in paid_rows)
+    faol_n = len(faol_set)
+    paid_n = len(paid_set)
+    faol_va_paid = len(faol_set & paid_set)
+    faol_emas_paid = len(paid_set - faol_set)
+    faol_paid_emas = len(faol_set - paid_set)
+    faol_conv = (faol_va_paid / faol_n * 100) if faol_n else 0
+    paid_faol_pct = (faol_va_paid / paid_n * 100) if paid_n else 0
+    txt = "🔬 <b>FAOL ↔ TO'LOVCHI TAHLILI</b>\n\n"
+    txt += f"🔥 5+ tahlil (faol): <b>{faol_n}</b>\n"
+    txt += f"💰 To'lovchilar: <b>{paid_n}</b>\n\n"
+    txt += "━━━━━━━━━━━━━\n"
+    txt += f"✅ 5+ VA to'lagan: <b>{faol_va_paid}</b>\n"
+    txt += f"🔥 5+, to'lamagan: <b>{faol_paid_emas}</b>\n"
+    txt += f"💸 To'lagan, 5+ EMAS: <b>{faol_emas_paid}</b>\n\n"
+    txt += "━━━━━━━━━━━━━\n📈 <b>XULOSA:</b>\n"
+    txt += f"• 5+ faollarning <b>{faol_conv:.0f}%</b> to'lagan\n"
+    txt += f"• To'lovchilarning <b>{paid_faol_pct:.0f}%</b> 5+ faol edi\n\n"
+    if paid_faol_pct >= 60:
+        txt += "✅ Gipoteza TASDIQLANDI: to'lovchilar asosan 5+ faollardan!\n→ Strategiya: odamlarni 5+ ga yetkazish."
+    elif faol_conv >= 60:
+        txt += "✅ 5+ faollar yaxshi to'laydi, lekin to'lovchilarning ko'pi boshqa yo'ldan.\n→ Faollik + boshqa kanallar."
+    else:
+        txt += "⚠️ To'lovchilar 5+ faollardan EMAS.\n→ Boshqa omillarni izlash kerak."
+    await update.message.reply_text(txt, parse_mode="HTML")
 
 
 async def voronka_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5059,6 +5121,97 @@ async def health_handler(request):
     return web.Response(text="OK")
 
 
+# ===== MINI APP (Telegram WebApp) =====
+MINIAPP_HTML = """<!DOCTYPE html>
+<html lang="uz"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>InstaDoctor AI</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#0B0E14;--card:#151A23;--accent:#00E5A0;--accent2:#7C5CFF;--text:#EAF0F6;--muted:#8A94A6;--line:#232C38;--warn:#FFB020}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding:16px 14px 40px;max-width:520px;margin:0 auto;-webkit-font-smoothing:antialiased}
+.hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+.hdr h1{font-size:19px;font-weight:700;letter-spacing:-0.3px}.hdr p{font-size:12.5px;color:var(--muted);margin-top:2px}
+.status{border-radius:16px;padding:16px;margin-bottom:14px;background:linear-gradient(135deg,rgba(0,229,160,0.12),rgba(124,92,255,0.10));border:1px solid var(--line)}
+.status.free{background:linear-gradient(135deg,rgba(255,176,32,0.10),rgba(255,92,92,0.06))}
+.status .row{display:flex;justify-content:space-between;align-items:center}
+.status .badge{font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px;background:var(--accent);color:#05221A}
+.status.free .badge{background:var(--warn);color:#2A1C00}
+.status .big{font-size:26px;font-weight:800;margin-top:10px;letter-spacing:-0.5px}.status .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:13px 10px;text-align:center}
+.stat .n{font-size:21px;font-weight:800;letter-spacing:-0.5px}.stat .n.accent{color:var(--accent)}.stat .l{font-size:10.5px;color:var(--muted);margin-top:3px}
+.sec-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin:20px 4px 11px}
+.btn-primary{width:100%;border:none;border-radius:14px;padding:16px;background:linear-gradient(135deg,var(--accent),#00C98D);color:#05221A;font-size:16px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 20px rgba(0,229,160,0.25)}
+.btn-primary:active{transform:scale(0.985)}
+.tariffs{display:flex;flex-direction:column;gap:10px}
+.tariff{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:15px;cursor:pointer;position:relative}
+.tariff.best{border-color:var(--accent)}
+.tariff .tag{position:absolute;top:-9px;right:14px;background:var(--accent);color:#05221A;font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:999px}
+.tariff .row{display:flex;justify-content:space-between;align-items:flex-start}
+.tariff .name{font-size:15.5px;font-weight:700}.tariff .desc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+.tariff .price{font-size:19px;font-weight:800;white-space:nowrap}.tariff .price small{font-size:11px;color:var(--muted);font-weight:500}
+.tariff .old{font-size:12px;color:var(--muted);text-decoration:line-through;display:block;text-align:right}
+.feat{display:flex;flex-direction:column;gap:9px}
+.frow{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 13px}
+.frow .ic{font-size:19px;width:24px;text-align:center;flex-shrink:0}.frow .ft{font-size:13.5px;font-weight:600}.frow .fd{font-size:11.5px;color:var(--muted);margin-top:1px}.frow .lock{margin-left:auto;font-size:13px;color:var(--warn)}
+.foot{text-align:center;font-size:11px;color:var(--muted);margin-top:26px;line-height:1.6}
+</style></head><body>
+<div class="hdr"><div class="logo">\U0001FA7A</div><div><h1>InstaDoctor AI</h1><p id="greeting">Reels tahlilchingiz</p></div></div>
+<div id="statusCard" class="status"><div class="row"><span class="badge" id="statusBadge">PREMIUM</span><span class="sub" id="statusDate"></span></div><div class="big" id="statusBig">Premium faol</div><div class="sub" id="statusSub">Cheksiz tahlil ochiq</div></div>
+<div class="stats"><div class="stat"><div class="n accent" id="stTotal">0</div><div class="l">Tahlil</div></div><div class="stat"><div class="n" id="stBest">\u2014</div><div class="l">Eng yuqori</div></div><div class="stat"><div class="n" id="stBalance">0</div><div class="l">Bepul qoldi</div></div></div>
+<button class="btn-primary" onclick="pickVideo()">\U0001F3AC Video tahlil qilish</button>
+<input type="file" id="vfile" accept="video/*" style="display:none">
+<div id="vmsg" style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:8px;display:none"></div>
+<div class="sec-title">Premium imkoniyatlar</div>
+<div class="feat">
+<div class="frow"><span class="ic">\u267E\uFE0F</span><div><div class="ft">Cheksiz tahlil</div><div class="fd">Limitsiz video va profil</div></div><span class="lock" id="l1"></span></div>
+<div class="frow"><span class="ic">\U0001F525</span><div><div class="ft">Qanday yaxshilash?</div><div class="fd">Hook + 3 ta tayyor variant</div></div><span class="lock" id="l2"></span></div>
+<div class="frow"><span class="ic">\U0001F399\uFE0F</span><div><div class="ft">Ovozli maslahat</div><div class="fd">Tahlilni eshiting</div></div><span class="lock" id="l3"></span></div>
+<div class="frow"><span class="ic">\U0001F4CA</span><div><div class="ft">Profil tahlili</div><div class="fd">Shaxsiy strategiya</div></div><span class="lock" id="l4"></span></div>
+</div>
+<div id="tariffSection"><div class="sec-title">Tariflar</div><div class="tariffs">
+<div class="tariff best" onclick="sendAction('buy_sub')"><div class="tag">ENG MASHHUR</div><div class="row"><div><div class="name">1 oylik Premium</div><div class="desc">Cheksiz tahlil + barcha imkoniyatlar</div></div><div><span class="old" id="subOld"></span><div class="price" id="subPrice">29 900<small> so'm</small></div></div></div></div>
+<div class="tariff" onclick="sendAction('buy_one')"><div class="row"><div><div class="name">1 ta tahlil</div><div class="desc">Bir martalik chuqur tahlil</div></div><div class="price">5 090<small> so'm</small></div></div></div>
+</div></div>
+<div class="foot">InstaDoctor AI \u2014 Instagram algoritmlari bo'yicha tahlil<br>Yordam: @Nurislom_admin</div>
+<script>
+const tg=window.Telegram?window.Telegram.WebApp:null;if(tg){tg.ready();tg.expand();}
+const p=new URLSearchParams(location.search);
+const isPremium=p.get('premium')==='1';const total=p.get('total')||'0';const best=p.get('best')||'\u2014';const balance=p.get('balance')||'0';const name=p.get('name')||'';const price=p.get('price')||'29 900';const oldPrice=p.get('old')||'';const subUntil=p.get('until')||'';
+if(name)document.getElementById('greeting').textContent=name+', xush kelibsiz!';
+document.getElementById('stTotal').textContent=total;document.getElementById('stBest').textContent=best==='\u2014'?'\u2014':best+'%';document.getElementById('stBalance').textContent=balance;
+const card=document.getElementById('statusCard'),badge=document.getElementById('statusBadge'),big=document.getElementById('statusBig'),sub=document.getElementById('statusSub'),sdate=document.getElementById('statusDate');
+if(isPremium){card.classList.remove('free');badge.textContent='PREMIUM';big.textContent='Premium faol \u2728';sub.textContent='Barcha imkoniyatlar ochiq';if(subUntil)sdate.textContent='Tugaydi: '+subUntil;document.getElementById('tariffSection').style.display='none';['l1','l2','l3','l4'].forEach(id=>document.getElementById(id).textContent='\u2713');}
+else{card.classList.add('free');badge.textContent='BEPUL';big.textContent='Bepul rejim';sub.textContent=balance>0?balance+' ta bepul tahlil qoldi':'Bepul tahlillar tugadi';['l1','l2','l3','l4'].forEach(id=>document.getElementById(id).textContent='\U0001F512');document.getElementById('subPrice').innerHTML=price+"<small> so'm</small>";if(oldPrice)document.getElementById('subOld').textContent=oldPrice+" so'm";}
+function sendAction(action){if(tg){tg.HapticFeedback&&tg.HapticFeedback.impactOccurred('medium');tg.sendData(JSON.stringify({action:action}));tg.close();}else{alert('Telegram ichida ishlaydi: '+action);}}
+var LIMIT_MB=20;
+function pickVideo(){document.getElementById('vfile').click();}
+document.getElementById('vfile').addEventListener('change',function(e){
+  var f=e.target.files[0];if(!f)return;
+  var mb=f.size/(1024*1024);
+  var msg=document.getElementById('vmsg');msg.style.display='block';
+  if(mb>LIMIT_MB){
+    msg.style.color='#FFB020';
+    msg.innerHTML='\u26A0\uFE0F Bu video katta ('+mb.toFixed(1)+' MB). Katta videolarni to\\'g\\'ridan botga tashlang \u2014 ilova yopiladi.';
+    if(tg){tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred('warning');setTimeout(function(){tg.sendData(JSON.stringify({action:'analyze'}));tg.close();},1800);}
+  }else{
+    msg.style.color='#00E5A0';
+    msg.innerHTML='\u2705 Video tanlandi ('+mb.toFixed(1)+' MB). Tahlilga yuborilmoqda...';
+    if(tg){tg.HapticFeedback&&tg.HapticFeedback.impactOccurred('medium');}
+    // 2-QADAM (keyingi): bu yerda kichik video serverga yuklanadi
+  }
+});
+</script></body></html>"""
+
+
+async def miniapp_handler(request):
+    """Mini App sahifasini ko'rsatadi (Telegram WebApp)."""
+    return web.Response(text=MINIAPP_HTML, content_type="text/html")
+
+
 # ===== CLICK Merchant API (Prepare + Complete) =====
 def _click_signature(data, secret_key):
     """Click imzosini (MD5) tekshiradi/yasaydi.
@@ -5151,6 +5304,7 @@ async def run_web_server():
     web_app.router.add_post("/click", click_web_handler)
     web_app.router.add_get("/", health_handler)
     web_app.router.add_get("/health", health_handler)
+    web_app.router.add_get("/app", miniapp_handler)
     runner = web.AppRunner(web_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)
@@ -5385,6 +5539,7 @@ def main():
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("til", til_command))
     app.add_handler(CommandHandler("admin", admin_command))
+    app.add_handler(CommandHandler("kim", kim_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("berbalans", berbalans_command))
     app.add_handler(CommandHandler("yoz", yoz_command))
@@ -5398,6 +5553,7 @@ def main():
     app.add_handler(CommandHandler("yangilik", yangilik_command))
     app.add_handler(CommandHandler("yangilik_test", yangilik_test_command))
     app.add_handler(CommandHandler("voronka", voronka_command))
+    app.add_handler(CommandHandler("tahlil_faol", tahlil_faol_command))
     app.add_handler(CommandHandler("paymetest", paymetest_command))
     app.add_handler(CommandHandler("tarif7", tarif7_command))
     app.add_handler(CommandHandler("buyruqlar", buyruqlar_command))
