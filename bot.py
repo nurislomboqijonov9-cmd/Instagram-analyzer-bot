@@ -4277,26 +4277,11 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
     Har bir premium foydalanuvchiga FAQAT BIR MARTA boradi (premium_fikr_given)."""
     if not is_admin(update.effective_user.id):
         return
-    # Hamma foydalanuvchini olib, Python'da sub_active bilan filtrlash (ishonchli)
-    rows = _db_execute(
-        "SELECT user_id, lang FROM users "
-        "WHERE (premium_fikr_given IS NULL OR premium_fikr_given = FALSE)",
-        fetch='all'
-    ) or []
-    # DEBUG: jami va premium sonini ko'rsatamiz
-    _jami = len(rows)
-    _premium_all = _db_execute("SELECT user_id FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
-    _aktiv_premium = [r[0] for r in _premium_all if sub_active(r[0])]
+    # Hamma aktiv premium'ga yuboramiz (ustun tekshiruvisiz - oddiy, ishonchli)
+    rows = _db_execute("SELECT user_id, lang FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
     targets = [(r[0], r[1] or 'uz') for r in rows if sub_active(r[0]) and not is_admin(r[0])]
     if not targets:
-        await update.message.reply_text(
-            f"📭 Mos premium foydalanuvchi yo'q.\n\n"
-            f"🔍 DEBUG:\n"
-            f"• Fikr so'ralmagan userlar: {_jami}\n"
-            f"• sub_until to'ldirilган: {len(_premium_all)}\n"
-            f"• Aktiv premium (sub_active): {len(_aktiv_premium)}\n\n"
-            f"Agar 'aktiv premium' 0 bo'lsa — sub_until format muammosi.\n"
-            f"Agar >0 bo'lsa-yu targets 0 bo'lsa — premium_fikr_given allaqachon TRUE.")
+        await update.message.reply_text("📭 Aktiv premium foydalanuvchi yo'q.")
         return
     await update.message.reply_text(
         f"💬 Premium fikr so'rovi: {len(targets)} ta obunachiga yuborilmoqda...\n"
@@ -4308,7 +4293,6 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
             kb = InlineKeyboardMarkup([[InlineKeyboardButton(btn, callback_data="premium_fikr")]])
             msg = TEXTS.get(lang, TEXTS['uz']).get('premium_fikr_msg') or TEXTS['uz']['premium_fikr_msg']
             await context.bot.send_message(uid, msg, reply_markup=kb)
-            _db_execute("UPDATE users SET premium_fikr_given = TRUE WHERE user_id = %s", (uid,))
             sent += 1
         except Exception:
             failed += 1
