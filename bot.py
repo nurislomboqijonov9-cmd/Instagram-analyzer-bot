@@ -4299,11 +4299,15 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
     Har bir premium foydalanuvchiga FAQAT BIR MARTA boradi (premium_fikr_given)."""
     if not is_admin(update.effective_user.id):
         return
-    # Hamma aktiv premium'ga yuboramiz (ustun tekshiruvisiz - oddiy, ishonchli)
-    rows = _db_execute("SELECT user_id, lang FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
-    targets = [(r[0], r[1] or 'uz') for r in rows if sub_active(r[0]) and not is_admin(r[0])]
+    # Hamma aktiv premium'ga yuboramiz. lang DB'da yo'q bo'lishi mumkin - default 'uz'
+    rows = _db_execute("SELECT user_id FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
+    targets = []
+    for r in rows:
+        uid = r[0]
+        if is_admin(uid) or not sub_active(uid):
+            continue
+        targets.append((uid, 'uz'))  # lang DB'da yo'q, default uz
     if not targets:
-        # DEBUG: namuna sub_until qiymatlarini ko'rsatamiz
         namuna = _db_execute("SELECT user_id, sub_until FROM users WHERE sub_until IS NOT NULL LIMIT 3", fetch='all') or []
         dbg = "\n".join([f"• ID {r[0]}: sub_until='{r[1]}'" for r in namuna])
         if not dbg:
@@ -4311,7 +4315,7 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(
             f"📭 Aktiv premium foydalanuvchi yo'q.\n\n"
             f"🔍 sub_until IS NOT NULL: {len(rows)} ta\n"
-            f"Namuna (format tekshirish uchun):\n{dbg}")
+            f"Namuna:\n{dbg}")
         return
     await update.message.reply_text(
         f"💬 Premium fikr so'rovi: {len(targets)} ta obunachiga yuborilmoqda...\n"
