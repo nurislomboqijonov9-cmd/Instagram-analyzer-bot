@@ -322,6 +322,24 @@ def use_balance(user_id):
     _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
 
 
+def _parse_dt(s):
+    """sub_until ni turli formatlarda o'qiydi (DB'da format har xil bo'lishi mumkin)."""
+    if not s:
+        return None
+    s = str(s).strip()
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            continue
+    # Oxirgi urinish: ISO (mikrosekund, timezone)
+    try:
+        return datetime.fromisoformat(s.split("+")[0].split(".")[0].strip())
+    except Exception:
+        return None
+
+
 def sub_active(user_id):
     """Obuna faolmi? (sub_until hozirgi vaqtdan keyinmi)"""
     if is_admin(user_id):
@@ -329,10 +347,10 @@ def sub_active(user_id):
     row = _db_execute("SELECT sub_until FROM users WHERE user_id = %s", (user_id,), fetch='one')
     if not row or not row[0]:
         return False
-    try:
-        return datetime.strptime(row[0], "%Y-%m-%d %H:%M") > datetime.now()
-    except Exception:
+    d = _parse_dt(row[0])
+    if d is None:
         return False
+    return d > datetime.now()
 
 
 def sub_until_str(user_id):
@@ -1089,7 +1107,7 @@ TEXTS = {
                                "✅ <b>3 ta TAYYOR hook</b> — ko'chirib ishlatasiz!\n\n"
                                "👇 Premium oling va kontentingizni TOPga chiqaring:"),
         'yaxshilash_loading': "🔥 Hook tahlili tayyorlanmoqda... ⏳",
-        'tts_full_btn': "🔊 To'liq eshitish",
+        'tts_full_btn': "🔊 Ovozli eshitish",
         'inv_sub_title': "InstaDoctor — 1 oylik obuna",
         'inv_sub_desc': "1 oy davomida cheksiz video tahlil. 🔒 To'lov Payme orqali xavfsiz. To'lovdan so'ng obuna avtomatik faollashadi.",
         'inv_one_title': "InstaDoctor — 1 ta tahlil",
@@ -1394,7 +1412,7 @@ TEXTS = {
                                "✅ <b>3 ГОТОВЫХ хука</b> — копируй и используй!\n\n"
                                "👇 Оформите Premium и выводите контент в ТОП:"),
         'yaxshilash_loading': "🔥 Готовлю анализ хука... ⏳",
-        'tts_full_btn': "🔊 Полностью голосом",
+        'tts_full_btn': "🔊 Прослушать",
         'inv_sub_title': "InstaDoctor — подписка на 1 месяц",
         'inv_sub_desc': "Безлимитный анализ видео в течение 1 месяца. 🔒 Оплата через Payme безопасна. После оплаты подписка активируется автоматически.",
         'inv_one_title': "InstaDoctor — 1 анализ",
@@ -1894,8 +1912,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")],
             [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-            [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
-             InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
         ])
         # O'SHA xabarni to'liqqa o'zgartiramiz (yangi xabar emas, kasha bo'lmasin).
         # Agar juda uzun bo'lsa - 4000 belgiga kesamiz (bitta xabar, edit ishlaydi).
@@ -1920,8 +1937,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
             [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-            [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
-             InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
         ])
         if len(qisqa) <= 4000:
             try:
@@ -2926,8 +2942,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 kb = InlineKeyboardMarkup([
                     [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
                     [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-                    [InlineKeyboardButton(t(context, 'tts_btn'), callback_data=f"tts_{aid}"),
-                     InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+                    [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
                 ])
             if len(qisqa) <= 4000:
                 await message.reply_text(qisqa, reply_markup=kb)
@@ -4288,7 +4303,15 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
     rows = _db_execute("SELECT user_id, lang FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
     targets = [(r[0], r[1] or 'uz') for r in rows if sub_active(r[0]) and not is_admin(r[0])]
     if not targets:
-        await update.message.reply_text("📭 Aktiv premium foydalanuvchi yo'q.")
+        # DEBUG: namuna sub_until qiymatlarini ko'rsatamiz
+        namuna = _db_execute("SELECT user_id, sub_until FROM users WHERE sub_until IS NOT NULL LIMIT 3", fetch='all') or []
+        dbg = "\n".join([f"• ID {r[0]}: sub_until='{r[1]}'" for r in namuna])
+        if not dbg:
+            dbg = "(bo'sh)"
+        await update.message.reply_text(
+            f"📭 Aktiv premium foydalanuvchi yo'q.\n\n"
+            f"🔍 sub_until IS NOT NULL: {len(rows)} ta\n"
+            f"Namuna (format tekshirish uchun):\n{dbg}")
         return
     await update.message.reply_text(
         f"💬 Premium fikr so'rovi: {len(targets)} ta obunachiga yuborilmoqda...\n"
