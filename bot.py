@@ -4267,13 +4267,13 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
     Har bir premium foydalanuvchiga FAQAT BIR MARTA boradi (premium_fikr_given)."""
     if not is_admin(update.effective_user.id):
         return
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Hamma foydalanuvchini olib, Python'da sub_active bilan filtrlash (ishonchli)
     rows = _db_execute(
-        "SELECT user_id, lang FROM users WHERE sub_until > %s "
-        "AND (premium_fikr_given IS NULL OR premium_fikr_given = FALSE)",
-        (now_str,), fetch='all'
+        "SELECT user_id, lang FROM users "
+        "WHERE (premium_fikr_given IS NULL OR premium_fikr_given = FALSE)",
+        fetch='all'
     ) or []
-    targets = [(r[0], r[1] or 'uz') for r in rows]
+    targets = [(r[0], r[1] or 'uz') for r in rows if sub_active(r[0]) and not is_admin(r[0])]
     if not targets:
         await update.message.reply_text("📭 Mos premium foydalanuvchi yo'q (yoki hammasidan so'ralgan).")
         return
