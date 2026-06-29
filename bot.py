@@ -4273,9 +4273,20 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
         "WHERE (premium_fikr_given IS NULL OR premium_fikr_given = FALSE)",
         fetch='all'
     ) or []
+    # DEBUG: jami va premium sonini ko'rsatamiz
+    _jami = len(rows)
+    _premium_all = _db_execute("SELECT user_id FROM users WHERE sub_until IS NOT NULL", fetch='all') or []
+    _aktiv_premium = [r[0] for r in _premium_all if sub_active(r[0])]
     targets = [(r[0], r[1] or 'uz') for r in rows if sub_active(r[0]) and not is_admin(r[0])]
     if not targets:
-        await update.message.reply_text("📭 Mos premium foydalanuvchi yo'q (yoki hammasidan so'ralgan).")
+        await update.message.reply_text(
+            f"📭 Mos premium foydalanuvchi yo'q.\n\n"
+            f"🔍 DEBUG:\n"
+            f"• Fikr so'ralmagan userlar: {_jami}\n"
+            f"• sub_until to'ldirilган: {len(_premium_all)}\n"
+            f"• Aktiv premium (sub_active): {len(_aktiv_premium)}\n\n"
+            f"Agar 'aktiv premium' 0 bo'lsa — sub_until format muammosi.\n"
+            f"Agar >0 bo'lsa-yu targets 0 bo'lsa — premium_fikr_given allaqachon TRUE.")
         return
     await update.message.reply_text(
         f"💬 Premium fikr so'rovi: {len(targets)} ta obunachiga yuborilmoqda...\n"
