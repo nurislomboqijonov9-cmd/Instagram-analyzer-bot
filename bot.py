@@ -268,6 +268,11 @@ def init_db():
                                  ("tarif7_sana", "TEXT"),
                                  ("drip2_given", "BOOLEAN DEFAULT FALSE"),
                                  ("drip3_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv1_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv1b_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv3_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv4_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv5_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -457,7 +462,7 @@ def auto_aksiya_on():
     return get_setting("auto_aksiya", "off") == "on"
 
 
-SUB_PRICE_DISCOUNT = 24900  # Chegirma narxi (29900 -> 24900, 5000 chegirma)
+SUB_PRICE_DISCOUNT = 19900  # Chegirma narxi (29900 -> 19900, sotuv voronkasi rejasi)
 
 def discount_active():
     """Chegirma faolmi? (yoqilgan va 24 soat o'tmagan)"""
@@ -477,7 +482,7 @@ def current_sub_price():
 
 
 def sub_btn_label(context):
-    """Obuna tugmasi matni - joriy narx bilan (chegirma bo'lsa 24 900, aks holda 29 900)."""
+    """Obuna tugmasi matni - joriy narx bilan (chegirma bo'lsa 19 900, aks holda 29 900)."""
     narx = f"{current_sub_price():,}".replace(",", " ")
     return t(context, 'sub_btn_price').format(narx=narx)
 
@@ -1051,7 +1056,7 @@ TEXTS = {
                       "📈 <b>Yashirin trendlar</b> — algoritm yangiliklari birinchi sizga\n\n"
                       "🔥 FAQAT BUGUN — MAXSUS CHEGIRMA!\n"
                       "Hozirgi narx: <s>29 900 so'm</s>\n"
-                      "Faqat bugun: <b>24 900 so'm/oy</b> 🎉\n"
+                      "Faqat bugun: <b>19 900 so'm/oy</b> 🎉\n"
                       "(Kuniga atigi 650 so'm! ☕️ bir choydan ham arzon)\n\n"
                       "⏳ Shoshiling — bu narx faqat BUGUN SOAT 22:00 gacha! Keyin yana ko'tariladi.\n\n"
                       "Bitta REKka chiqqan video bu pulni qoplaydi! 🚀\n\n"
@@ -1090,7 +1095,7 @@ TEXTS = {
                             "InstaDoctor'ni bir necha marta ishlatdingiz — demak kontentingizni "
                             "jiddiy rivojlantiryapsiz 👏\n\n"
                             "Aynan shunday izlanuvchilar uchun <b>maxsus taklif</b> tayyorladik 👇\n\n"
-                            "💎 <b>1 oylik Premium — 24,900 so'm</b> (29,900 o'rniga)\n\n"
+                            "💎 <b>1 oylik Premium — 19,900 so'm</b> (29,900 o'rniga)\n\n"
                             "Premium'da sizni kutadi:\n"
                             "✅ <b>Cheksiz</b> tahlil\n"
                             "🔥 <b>\"Qanday yaxshilash?\"</b> — hook + 3 ta tayyor variant\n"
@@ -1098,6 +1103,30 @@ TEXTS = {
                             "📊 <b>Profil tahlili</b> — shaxsiy strategiya\n\n"
                             "⏰ Bu narx faqat <b>bugun 22:00 gacha</b>!\n\n"
                             "👇 Premium oling va kontentingizni TOPga chiqaring!"),
+        # ===== SOTUV VORONKASI XABARLARI =====
+        'sotuv1_msg': ("Botni 5 martadan ko'p ishlatibsiz, demak InstaDoctor sizga foyda beryapti, "
+                       "bundan juda xursandman! 🤩\n\n"
+                       "Lekin bir narsa meni o'ylantirib qo'ydi: nega Premium tarifga o'tmadingiz? 🤔 "
+                       "Balki narxidadir, funksiya yetishmayotgandir yoki shunchaki ishonch kamdir?\n\n"
+                       "Rostini aytsangiz, juda minnatdor bo'lardim. Javob yozgan har bir kishiga "
+                       "Premium tahlildan BEPUL foydalanish imkoniyatini sovg'a qilaman! 🎁"),
+        'sotuv1b_msg': ("Siz botning eng faol foydalanuvchisisiz — <b>top 1%</b> 🏆\n\n"
+                        "Shuning uchun faqat sizga maxsus narx:\n"
+                        "💎 Premium 1 oy: <s>29,900</s> → <b>19,900 so'm</b>\n\n"
+                        "⏳ Faqat bugun! Ertaga 29,900 ga qaytadi.\n\n"
+                        "👇 Premium oling va cheksiz tahlildan foydalaning!"),
+        'sotuv3_msg': ("Siz botni sinab ko'rdingiz — lekin eng kuchli qismini hali ko'rmadingiz 👀\n\n"
+                       "🔥 Premium videongiz <b>hook'ini</b> soniyaba-soniya ochib beradi va "
+                       "<b>3 ta tayyor yaxshi variant</b> yozadi.\n\n"
+                       "Bugun <b>bepul</b> sinab ko'ring 👇 Farqni o'zingiz ko'rasiz!"),
+        'sotuv4_msg': ("Bitta video tashlab ketdingiz — keyin qaytmadingiz 😔\n\n"
+                       "Balki birinchi tahlil sizni ishontirmagandir. Endi bot ancha kuchli: "
+                       "hook'ni soniyaba-soniya, strukturani chuqur tahlil qiladi.\n\n"
+                       "Bitta video tashlang — <b>bepul</b>, farqni ko'ring 🎬"),
+        'sotuv5_msg': ("Botga kirdingiz, lekin bitta ham video tashlamadingiz 🎬\n\n"
+                       "10 soniya — bitta Reels tashlang, professional tahlil oling: "
+                       "hook ishlaydimi, qayerda odamlar chiqib ketadi, qanday tuzatish.\n\n"
+                       "Mutlaqo <b>bepul</b>. Hozir sinab ko'ring 👇"),
         'tts_btn': "🔊 Qisqa eshitish",
         'yaxshilash_btn': "🔥 Qanday yaxshilash?",
         'yaxshilash_premium': ("🔒 <b>\"Qanday yaxshilash?\"</b> — bu PREMIUM funksiya!\n\n"
@@ -1356,7 +1385,7 @@ TEXTS = {
                       "📈 <b>Скрытые тренды</b> — новинки алгоритмов первыми для вас\n\n"
                       "🔥 ТОЛЬКО СЕГОДНЯ — СКИДКА!\n"
                       "Текущая цена: <s>29 900 сум</s>\n"
-                      "Только сегодня: <b>24 900 сум/мес</b> 🎉\n"
+                      "Только сегодня: <b>19 900 сум/мес</b> 🎉\n"
                       "(Всего 650 сум в день! ☕️ дешевле чашки чая)\n\n"
                       "⏳ Торопитесь — цена только СЕГОДНЯ ДО 22:00! Потом снова поднимется.\n\n"
                       "Одно видео в РЕК окупит эту сумму! 🚀\n\n"
@@ -1395,7 +1424,7 @@ TEXTS = {
                             "Вы использовали InstaDoctor несколько раз — значит, серьёзно "
                             "развиваете свой контент 👏\n\n"
                             "Именно для таких мы подготовили <b>специальное предложение</b> 👇\n\n"
-                            "💎 <b>1 месяц Premium — 24 900 сум</b> (вместо 29 900)\n\n"
+                            "💎 <b>1 месяц Premium — 19 900 сум</b> (вместо 29 900)\n\n"
                             "В Premium вас ждёт:\n"
                             "✅ <b>Безлимитный</b> анализ\n"
                             "🔥 <b>\"Как улучшить?\"</b> — хук + 3 готовых варианта\n"
@@ -2092,12 +2121,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not tahlil or not tahlil.strip():
                     raise Exception("Profil tahlili bo'sh keldi")
 
-                # Gemini mavzuni tushunmagan bo'lsa - mavzu so'raymiz
+                # Gemini mavzuni tushunmagan bo'lsa - mavzu so'raymiz (faqat 1 marta)
                 if "[MAVZU_KERAK]" in tahlil and not mavzu:
                     await wait_msg.delete()
                     context.user_data['mode'] = 'profile_mavzu'
                     await query.message.reply_text(t(context, 'profile_mavzu_ask'))
                     return
+                # Mavzu berilgan, lekin Gemini yana [MAVZU_KERAK] qaytargan bo'lsa -
+                # uni tozalaymiz va mavzuni hisobga olib qayta yo'naltiramiz (mijozga ko'rinmasin)
+                if "[MAVZU_KERAK]" in tahlil:
+                    tahlil = tahlil.replace("[MAVZU_KERAK]", "").strip()
+                    if not tahlil:
+                        # Bo'sh qoldi - mavzu bilan qayta urinish
+                        prompt2 = (PROMPT_PROFILE_RU if get_lang(context) == 'ru' else PROMPT_PROFILE_UZ)
+                        prompt2 += (f"\n\nFoydalanuvchi profil mavzusini aniq aytdi: {mavzu}. "
+                                    f"Endi [MAVZU_KERAK] YOZMA — shu mavzu asosida to'liq tahlil ber.")
+                        tahlil, _pusage = await asyncio.to_thread(_gemini_process_images, tmp_paths, prompt2)
+                        tahlil = (tahlil or "").replace("[MAVZU_KERAK]", "").strip()
+                    if not tahlil:
+                        await wait_msg.edit_text("😔 Profilni tahlil qilib bo'lmadi. Aniqroq skrinshot bilan qayta urinib ko'ring.")
+                        context.user_data.pop('profile_mavzu', None)
+                        return
 
                 await wait_msg.edit_text(t(context, 'ready'))
                 _uname = query.from_user.username or query.from_user.first_name or ""
@@ -2745,7 +2789,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if discount_active():
                     _narx_q = ("\n\n🔥 FAQAT BUGUN — CHEGIRMA!\n"
                                "Eski narx: <s>29 900 so'm</s>\n"
-                               "Yangi narx: <b>24 900 so'm/oy</b> 🎉\n"
+                               "Yangi narx: <b>19 900 so'm/oy</b> 🎉\n"
                                "Bu — kuniga 650 so'mdan ham emas! ☕️")
                 else:
                     _narx_q = "\n\n💎 Atigi 29 900 so'm/oy — kuniga 1 000 so'mdan ham emas! ☕️"
@@ -3832,7 +3876,14 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/chegirma_ochir — chegirmani o'chirish\n"
         "/sotuv_matn &lt;matn&gt; — sotuv matnini o'zgartirish\n"
         "/sotuv_korish — sotuv matnini ko'rish\n"
-        "/sotuv_matn_tikla — sotuv matnini tiklash"
+        "/sotuv_matn_tikla — sotuv matnini tiklash\n\n"
+        "🚀 <b>SOTUV VORONKASI</b> (real vaqtda, takrorsiz)\n"
+        "/sotuv1 — 5+ ishlatgan, to'lamaganga SAVOL\n"
+        "/sotuv1b — 5+ ishlatganga TAKLIF (19,900)\n"
+        "/sotuv3 — 2+ ishlatganga premium tatish\n"
+        "/sotuv4 — 1 marta ishlatganga (qaytmagan)\n"
+        "/sotuv5 — ishlatmaganlarga (sovuq)\n"
+        "/tahlil_faol — faol↔to'lovchi tahlili"
     )
     await update.message.reply_text(txt, parse_mode="HTML")
 
@@ -4440,12 +4491,125 @@ async def premium_fikr_command(update: Update, context: ContextTypes.DEFAULT_TYP
             pass
 
 
-async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: 2+ marta tahlil qilgan, premium OLMAGAN faol foydalanuvchilarga
-    maxsus taklif + chegirma (24 900, bugun 22:00 gacha)."""
+async def _sotuv_broadcast(update, context, target_uids, flag_col, msg_key, with_buy_btn=True):
+    """Sotuv voronkasi yordamchisi: target_uids ga msg yuboradi (flag bilan, takrorsiz).
+    flag_col - DB ustun (masalan 'sotuv1_given'). Yuborilgach TRUE bo'ladi."""
+    if not target_uids:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q (yoki hammasiga yuborilgan).")
+        return
+    await update.message.reply_text(
+        f"📤 Yuborilmoqda: {len(target_uids)} ta\n(Har biriga FAQAT bir marta. Kuting...)")
+    sent, failed = 0, 0
+    for uid in target_uids:
+        try:
+            if with_buy_btn:
+                kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(TEXTS['uz']['obuna_taklif_btn'], callback_data="buy_sub")
+                ]])
+            else:
+                kb = None
+            await context.bot.send_message(uid, TEXTS['uz'][msg_key], reply_markup=kb, parse_mode="HTML")
+            _db_execute(f"UPDATE users SET {flag_col} = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ Yuborildi: {sent}, xato: {failed}.")
+        except Exception:
+            pass
+
+
+def _kup_tahlil_uids(min_count, flag_col):
+    """min_count+ video tahlil qilgan, premium EMAS, flag hali FALSE bo'lganlar."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        f"SELECT u.user_id FROM users u "
+        f"JOIN (SELECT user_id, COUNT(*) c FROM analyses WHERE kind='video' "
+        f"GROUP BY user_id HAVING COUNT(*) >= %s) a ON a.user_id = u.user_id "
+        f"WHERE (u.sub_until IS NULL OR u.sub_until <= %s) "
+        f"AND (u.{flag_col} IS NULL OR u.{flag_col} = FALSE)",
+        (min_count, now_str), fetch='all') or []
+    return [r[0] for r in rows if not is_admin(r[0])]
+
+
+def _aniq_tahlil_uids(exact_count, flag_col):
+    """AYNAN exact_count marta tahlil qilgan, premium emas, flag FALSE."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        f"SELECT u.user_id FROM users u "
+        f"JOIN (SELECT user_id, COUNT(*) c FROM analyses WHERE kind='video' "
+        f"GROUP BY user_id HAVING COUNT(*) = %s) a ON a.user_id = u.user_id "
+        f"WHERE (u.sub_until IS NULL OR u.sub_until <= %s) "
+        f"AND (u.{flag_col} IS NULL OR u.{flag_col} = FALSE)",
+        (exact_count, now_str), fetch='all') or []
+    return [r[0] for r in rows if not is_admin(r[0])]
+
+
+def _ishlatmagan_uids(flag_col):
+    """Ro'yxatdan o'tib, BITTA HAM video tahlil qilmagan, flag FALSE."""
+    rows = _db_execute(
+        f"SELECT u.user_id FROM users u "
+        f"LEFT JOIN (SELECT DISTINCT user_id FROM analyses WHERE kind='video') a "
+        f"ON a.user_id = u.user_id WHERE a.user_id IS NULL "
+        f"AND (u.{flag_col} IS NULL OR u.{flag_col} = FALSE)",
+        fetch='all') or []
+    return [r[0] for r in rows if not is_admin(r[0])]
+
+
+async def sotuv1_command(update, context):
+    """Qadam 1 — 5+ ishlatgan, to'lamagan: SAVOL (sabab bilish)."""
     if not is_admin(update.effective_user.id):
         return
-    # Chegirmani 22:00 gacha yoqamiz (narx 24 900 bo'lsin)
+    uids = _kup_tahlil_uids(5, "sotuv1_given")
+    await _sotuv_broadcast(update, context, uids, "sotuv1_given", "sotuv1_msg", with_buy_btn=False)
+
+
+async def sotuv1b_command(update, context):
+    """Qadam 1b — 5+ ishlatgan, to'lamagan: TAKLIF (19,900 chegirma)."""
+    if not is_admin(update.effective_user.id):
+        return
+    # Chegirma 19,900 yoqamiz (bugun 22:00 gacha)
+    now = datetime.now()
+    until_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
+    if until_dt <= now:
+        until_dt = until_dt + timedelta(days=1)
+    set_setting("chegirma_until", until_dt.strftime("%Y-%m-%d %H:%M:%S"))
+    uids = _kup_tahlil_uids(5, "sotuv1b_given")
+    await _sotuv_broadcast(update, context, uids, "sotuv1b_given", "sotuv1b_msg", with_buy_btn=True)
+
+
+async def sotuv3_command(update, context):
+    """Qadam 3 — 2+ ishlatgan (qiziqqan): premium bepul tatish."""
+    if not is_admin(update.effective_user.id):
+        return
+    uids = _kup_tahlil_uids(2, "sotuv3_given")
+    await _sotuv_broadcast(update, context, uids, "sotuv3_given", "sotuv3_msg", with_buy_btn=False)
+
+
+async def sotuv4_command(update, context):
+    """Qadam 4 — aynan 1 marta ishlatgan (qaytmagan)."""
+    if not is_admin(update.effective_user.id):
+        return
+    uids = _aniq_tahlil_uids(1, "sotuv4_given")
+    await _sotuv_broadcast(update, context, uids, "sotuv4_given", "sotuv4_msg", with_buy_btn=False)
+
+
+async def sotuv5_command(update, context):
+    """Qadam 5 — ishlatmagan (sovuq)."""
+    if not is_admin(update.effective_user.id):
+        return
+    uids = _ishlatmagan_uids("sotuv5_given")
+    await _sotuv_broadcast(update, context, uids, "sotuv5_given", "sotuv5_msg", with_buy_btn=False)
+
+
+async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 2+ marta tahlil qilgan, premium OLMAGAN faol foydalanuvchilarga
+    maxsus taklif + chegirma (19 900, bugun 22:00 gacha)."""
+    if not is_admin(update.effective_user.id):
+        return
+    # Chegirmani 22:00 gacha yoqamiz (narx 19 900 bo'lsin)
     now = datetime.now()
     until_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
     if until_dt <= now:
@@ -4466,7 +4630,7 @@ async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     await update.message.reply_text(
         f"🎯 Maxsus taklif (2+ tahlil, premium emas): {len(targets)} ta\n"
-        f"Chegirma 24 900 (bugun 22:00 gacha) yoqildi.\n(Sekin yuboriladi, kuting)")
+        f"Chegirma 19 900 (bugun 22:00 gacha) yoqildi.\n(Sekin yuboriladi, kuting)")
     sent, failed = 0, 0
     for uid in targets:
         try:
@@ -4489,7 +4653,7 @@ async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: chegirmani BUGUN 22:00 gacha YOQADI (24 900) va sotuv xabarini yuboradi.
+    """Admin: chegirmani BUGUN 22:00 gacha YOQADI (19 900) va sotuv xabarini yuboradi.
     Agar hozir 22:00 dan o'tgan bo'lsa - ERTAGA 22:00 gacha."""
     if not is_admin(update.effective_user.id):
         return
@@ -4501,7 +4665,7 @@ async def chegirma_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         until_dt = until_dt + timedelta(days=1)
     set_setting("chegirma_until", until_dt.strftime("%Y-%m-%d %H:%M:%S"))
     await update.message.reply_text(
-        f"🔥 Chegirma YOQILDI! (24 900 so'm)\n"
+        f"🔥 Chegirma YOQILDI! (19 900 so'm)\n"
         f"⏳ Tugash: {until_dt.strftime('%Y-%m-%d %H:%M')} (bugun soat 22:00)\n"
         f"Keyin avtomatik 29 900 ga qaytadi.\n\n"
         f"📤 Sotuv xabari obunasizlarga yuborilmoqda..."
@@ -5187,7 +5351,7 @@ const card=document.getElementById('statusCard'),badge=document.getElementById('
 if(isPremium){card.classList.remove('free');badge.textContent='PREMIUM';big.textContent='Premium faol \u2728';sub.textContent='Barcha imkoniyatlar ochiq';if(subUntil)sdate.textContent='Tugaydi: '+subUntil;document.getElementById('tariffSection').style.display='none';['l1','l2','l3','l4'].forEach(id=>document.getElementById(id).textContent='\u2713');}
 else{card.classList.add('free');badge.textContent='BEPUL';big.textContent='Bepul rejim';sub.textContent=balance>0?balance+' ta bepul tahlil qoldi':'Bepul tahlillar tugadi';['l1','l2','l3','l4'].forEach(id=>document.getElementById(id).textContent='\U0001F512');document.getElementById('subPrice').innerHTML=price+"<small> so'm</small>";if(oldPrice)document.getElementById('subOld').textContent=oldPrice+" so'm";}
 function sendAction(action){if(tg){tg.HapticFeedback&&tg.HapticFeedback.impactOccurred('medium');tg.sendData(JSON.stringify({action:action}));tg.close();}else{alert('Telegram ichida ishlaydi: '+action);}}
-var LIMIT_MB=20;
+var LIMIT_MB=(isPremium?500:100);
 function pickVideo(){document.getElementById('vfile').click();}
 document.getElementById('vfile').addEventListener('change',function(e){
   var f=e.target.files[0];if(!f)return;
@@ -5195,13 +5359,19 @@ document.getElementById('vfile').addEventListener('change',function(e){
   var msg=document.getElementById('vmsg');msg.style.display='block';
   if(mb>LIMIT_MB){
     msg.style.color='#FFB020';
-    msg.innerHTML='\u26A0\uFE0F Bu video katta ('+mb.toFixed(1)+' MB). Katta videolarni to\\'g\\'ridan botga tashlang \u2014 ilova yopiladi.';
-    if(tg){tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred('warning');setTimeout(function(){tg.sendData(JSON.stringify({action:'analyze'}));tg.close();},1800);}
+    msg.innerHTML='\u26A0\uFE0F Bu video katta ('+mb.toFixed(1)+' MB). '+(isPremium?'Premium\\'da 500 MB gacha mumkin. ':'Bepul 100 MB gacha. ')+'Kattaroq videolarni to\\'g\\'ridan botga tashlang \u2014 ilova yopiladi.';
+    if(tg){tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred('warning');setTimeout(function(){tg.sendData(JSON.stringify({action:'analyze'}));tg.close();},2200);}
   }else{
     msg.style.color='#00E5A0';
-    msg.innerHTML='\u2705 Video tanlandi ('+mb.toFixed(1)+' MB). Tahlilga yuborilmoqda...';
+    msg.innerHTML='\u2705 Video tanlandi ('+mb.toFixed(1)+' MB). Yuklanmoqda... \u23F3';
     if(tg){tg.HapticFeedback&&tg.HapticFeedback.impactOccurred('medium');}
-    // 2-QADAM (keyingi): bu yerda kichik video serverga yuklanadi
+    var uid=(tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user)?tg.initDataUnsafe.user.id:p.get('uid');
+    if(!uid){msg.style.color='#FF5C5C';msg.innerHTML='\u274C Foydalanuvchi aniqlanmadi. Botga to\\'g\\'ridan tashlang.';return;}
+    var fd=new FormData();fd.append('user_id',uid);fd.append('video',f);
+    fetch('/upload',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
+      if(d.ok){msg.style.color='#00E5A0';msg.innerHTML='\u2705 Yuklandi! Tahlil botda boshlandi \u2014 ilova yopilmoqda...';if(tg){tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred('success');setTimeout(function(){tg.close();},1600);}}
+      else{msg.style.color='#FF5C5C';msg.innerHTML='\u274C Xato: '+(d.error||'')+'. Botga to\\'g\\'ridan tashlang.';}
+    }).catch(function(){msg.style.color='#FF5C5C';msg.innerHTML='\u274C Yuklab bo\\'lmadi. Botga to\\'g\\'ridan tashlang.';});
   }
 });
 </script></body></html>"""
@@ -5210,6 +5380,56 @@ document.getElementById('vfile').addEventListener('change',function(e){
 async def miniapp_handler(request):
     """Mini App sahifasini ko'rsatadi (Telegram WebApp)."""
     return web.Response(text=MINIAPP_HTML, content_type="text/html")
+
+
+async def upload_handler(request):
+    """Mini App'dan kelgan videoni qabul qiladi va foydalanuvchi chatiga yuboradi.
+    Bot videoni avtomatik tahlil qiladi (mavjud oqim)."""
+    try:
+        reader = await request.multipart()
+        uid = None
+        video_bytes = None
+        filename = "video.mp4"
+        while True:
+            field = await reader.next()
+            if field is None:
+                break
+            if field.name == "user_id":
+                uid = (await field.read()).decode().strip()
+            elif field.name == "video":
+                filename = field.filename or "video.mp4"
+                video_bytes = await field.read()
+        if not uid or not video_bytes:
+            return web.json_response({"ok": False, "error": "uid yoki video yo'q"}, status=400)
+        try:
+            uid_int = int(uid)
+        except Exception:
+            return web.json_response({"ok": False, "error": "uid xato"}, status=400)
+        # Vaqtincha saqlash
+        import tempfile, os as _os
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4", dir="/tmp")
+        tmp.write(video_bytes)
+        tmp.close()
+        # Foydalanuvchi chatiga video yuboramiz (bot uni tahlil qiladi)
+        try:
+            if _bot_app and _main_loop:
+                async def _send():
+                    with open(tmp.name, "rb") as vf:
+                        await _bot_app.bot.send_video(uid_int, vf,
+                            caption="🎬 Mini App'dan kelgan video — tahlil qilinmoqda...")
+                fut = asyncio.run_coroutine_threadsafe(_send(), _main_loop) if False else None
+                await _send()
+            else:
+                return web.json_response({"ok": False, "error": "bot tayyor emas"}, status=500)
+        finally:
+            try:
+                _os.unlink(tmp.name)
+            except Exception:
+                pass
+        return web.json_response({"ok": True})
+    except Exception as e:
+        logger.error(f"Upload xato: {e}")
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
 # ===== CLICK Merchant API (Prepare + Complete) =====
@@ -5305,6 +5525,7 @@ async def run_web_server():
     web_app.router.add_get("/", health_handler)
     web_app.router.add_get("/health", health_handler)
     web_app.router.add_get("/app", miniapp_handler)
+    web_app.router.add_post("/upload", upload_handler)
     runner = web.AppRunner(web_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)
@@ -5577,6 +5798,11 @@ def main():
     app.add_handler(CommandHandler("test_taklif", test_taklif_command))
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
+    app.add_handler(CommandHandler("sotuv1", sotuv1_command))
+    app.add_handler(CommandHandler("sotuv1b", sotuv1b_command))
+    app.add_handler(CommandHandler("sotuv3", sotuv3_command))
+    app.add_handler(CommandHandler("sotuv4", sotuv4_command))
+    app.add_handler(CommandHandler("sotuv5", sotuv5_command))
     app.add_handler(CommandHandler("premium_fikr", premium_fikr_command))
     app.add_handler(CommandHandler("premium_fikr_reset", premium_fikr_reset_command))
     app.add_handler(CommandHandler("sotuv_matn", sotuv_matn_command))
