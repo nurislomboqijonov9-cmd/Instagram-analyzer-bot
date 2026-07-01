@@ -1116,13 +1116,15 @@ TEXTS = {
                         "⏳ Faqat bugun! Ertaga 29,900 ga qaytadi.\n\n"
                         "👇 Premium oling va cheksiz tahlildan foydalaning!"),
         'sotuv3_msg': ("Siz botni sinab ko'rdingiz — lekin eng kuchli qismini hali ko'rmadingiz 👀\n\n"
-                       "🔥 Premium videongiz <b>hook'ini</b> soniyaba-soniya ochib beradi va "
+                       "🔥 Premium videongiz <b>hook'ini</b> soniyama-soniya ochib beradi va "
                        "<b>3 ta tayyor yaxshi variant</b> yozadi.\n\n"
-                       "Bugun <b>bepul</b> sinab ko'ring 👇 Farqni o'zingiz ko'rasiz!"),
+                       "🎁 Pastdagi tugmani bosing — sizga <b>1 ta BEPUL PREMIUM tahlil</b> beramiz, "
+                       "farqni o'zingiz ko'rasiz! 👇"),
         'sotuv4_msg': ("Bitta video tashlab ketdingiz — keyin qaytmadingiz 😔\n\n"
                        "Balki birinchi tahlil sizni ishontirmagandir. Endi bot ancha kuchli: "
-                       "hook'ni soniyaba-soniya, strukturani chuqur tahlil qiladi.\n\n"
-                       "Bitta video tashlang — <b>bepul</b>, farqni ko'ring 🎬"),
+                       "hook'ni soniyama-soniya, strukturani chuqur tahlil qiladi.\n\n"
+                       "🎁 Sizga <b>1 ta BEPUL PREMIUM tahlil</b> sovg'a qildik — pastdagi tugmani "
+                       "bosing va videongizni yuboring, farqni ko'ring 🎬"),
         'sotuv5_msg': ("Botga kirdingiz, lekin bitta ham video tashlamadingiz 🎬\n\n"
                        "10 soniya — bitta Reels tashlang, professional tahlil oling: "
                        "hook ishlaydimi, qayerda odamlar chiqib ketadi, qanday tuzatish.\n\n"
@@ -1892,6 +1894,50 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'premium_fikr':
         context.user_data['mode'] = 'premium_fikr'
         await query.message.reply_text(t(context, 'premium_fikr_ask'), parse_mode="HTML")
+    elif data == 'sotuv1_fikr':
+        context.user_data['mode'] = 'sotuv1_fikr'
+        await query.answer()
+        await query.message.reply_text(
+            "Juda yaxshi! 🤍 Iltimos, sababini yozing — nega premium olmadingiz?\n\n"
+            "(Narx, funksiya, ishonch yoki boshqa sabab — qandayini yozing, "
+            "javobingiz uchun darhol 1 ta BEPUL PREMIUM tahlil qo'shiladi!)"
+        )
+    elif data == 'sotuv3_bepul':
+        # 2-4 marta ishlatganga bepul premium (premium kuchini sinash)
+        uid = update.effective_user.id
+        add_balance(uid, 1)
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        for aid in ADMIN_IDS:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                await context.bot.send_message(aid, f"🎁 BEPUL PREMIUM berildi (sotuv3)\n👤 {who}")
+            except Exception:
+                pass
+        await query.answer("✅ Bepul premium qo'shildi!")
+        await query.message.reply_text(
+            "🎁 Zo'r! Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
+            "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
+            "Hoziroq videongizni yuboring — premium kuchini ko'ring! 🎬",
+            parse_mode="HTML"
+        )
+    elif data == 'sotuv4_bepul':
+        # 1 marta ishlatganga bepul premium tahlil beramiz (sinab ko'rish)
+        uid = update.effective_user.id
+        add_balance(uid, 1)
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        for aid in ADMIN_IDS:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                await context.bot.send_message(aid, f"🎁 BEPUL PREMIUM berildi (sotuv4)\n👤 {who}")
+            except Exception:
+                pass
+        await query.answer("✅ Bepul premium qo'shildi!")
+        await query.message.reply_text(
+            "🎁 Zo'r! Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
+            "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
+            "Hoziroq videongizni yuboring 🎬",
+            parse_mode="HTML"
+        )
     elif data == 'aksiya_video':
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
@@ -3138,6 +3184,36 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(context, 'sorov_thanks'))
         return
     # Video "Fikr bildirish" rejimi - fikr guruhga boradi (bepul YO'Q, sovg'a alohida tugmada)
+    if context.user_data.get('mode') == 'sotuv1_fikr':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        fikr = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        # Fikrni admin guruhiga yuboramiz
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                grp_txt = f"💬 SOTUV FIKRI (5+ ishlatgan, to'lamagan)\n👤 {who}\n\n{fikr}"
+                await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
+            except Exception as e:
+                logger.warning(f"sotuv1 fikrini guruhga yuborishda xato: {e}")
+        # +1 BEPUL PREMIUM tahlil (balance) beramiz - ovozli + hook bilan
+        add_balance(uid, 1)
+        # Adminlarga xabar (kim bepul premium oldi)
+        for aid in ADMIN_IDS:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                await context.bot.send_message(aid, f"🎁 BEPUL PREMIUM berildi (sotuv1 fikr)\n👤 {who}")
+            except Exception:
+                pass
+        await update.message.reply_text(
+            "Rahmat, fikringiz uchun juda minnatdorman! 🤍\n\n"
+            "✅ Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
+            "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
+            "Hoziroq videongizni yuboring — enjoy! 🎬",
+            parse_mode="HTML"
+        )
+        return
     if context.user_data.get('mode') == 'premium_fikr':
         context.user_data['mode'] = None
         uid = update.effective_user.id
@@ -3878,12 +3954,16 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sotuv_korish — sotuv matnini ko'rish\n"
         "/sotuv_matn_tikla — sotuv matnini tiklash\n\n"
         "🚀 <b>SOTUV VORONKASI</b> (real vaqtda, takrorsiz)\n"
-        "/sotuv1 — 5+ ishlatgan, to'lamaganga SAVOL\n"
+        "/sotuv_test — hammasini FAQAT o'zingizga (sinash)\n"
+        "/sotuv1 — 5+ ishlatgan, to'lamaganga SAVOL (+bepul)\n"
         "/sotuv1b — 5+ ishlatganga TAKLIF (19,900)\n"
-        "/sotuv3 — 2+ ishlatganga premium tatish\n"
-        "/sotuv4 — 1 marta ishlatganga (qaytmagan)\n"
-        "/sotuv5 — ishlatmaganlarga (sovuq)\n"
-        "/tahlil_faol — faol↔to'lovchi tahlili"
+        "/sotuv3 — 2-4 ishlatganga premium sinash (+bepul)\n"
+        "/sotuv4 — 1 marta ishlatganga (+bepul premium)\n"
+        "/sotuv5 — ishlatmaganlarga (video tugma)\n"
+        "/tahlil_faol — faol↔to'lovchi tahlili\n\n"
+        "🔧 <b>QO'SHIMCHA</b>\n"
+        "/kim &lt;ID&gt; — ID dan username topish\n"
+        "/drip_holat — drip statistikasi"
     )
     await update.message.reply_text(txt, parse_mode="HTML")
 
@@ -4559,11 +4639,34 @@ def _ishlatmagan_uids(flag_col):
 
 
 async def sotuv1_command(update, context):
-    """Qadam 1 — 5+ ishlatgan, to'lamagan: SAVOL (sabab bilish)."""
+    """Qadam 1 — 5+ ishlatgan, to'lamagan: SAVOL + Fikr bildirish tugmasi."""
     if not is_admin(update.effective_user.id):
         return
     uids = _kup_tahlil_uids(5, "sotuv1_given")
-    await _sotuv_broadcast(update, context, uids, "sotuv1_given", "sotuv1_msg", with_buy_btn=False)
+    if not uids:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"📤 Yuborilmoqda: {len(uids)} ta\n(Har biriga FAQAT bir marta. Kuting...)")
+    sent, failed = 0, 0
+    for uid in uids:
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💬 Fikr bildirish (va bepul tahlil oling!)",
+                                     callback_data="sotuv1_fikr")
+            ]])
+            await context.bot.send_message(
+                uid, TEXTS['uz']['sotuv1_msg'], reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET sotuv1_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ sotuv1: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
 
 
 async def sotuv1b_command(update, context):
@@ -4581,27 +4684,140 @@ async def sotuv1b_command(update, context):
 
 
 async def sotuv3_command(update, context):
-    """Qadam 3 — 2+ ishlatgan (qiziqqan): premium bepul tatish."""
+    """Qadam 3 — 2-4 tahlil (qiziqqan, 5+ EMAS): premium kuchini bepul sinash tugmasi."""
     if not is_admin(update.effective_user.id):
         return
-    uids = _kup_tahlil_uids(2, "sotuv3_given")
-    await _sotuv_broadcast(update, context, uids, "sotuv3_given", "sotuv3_msg", with_buy_btn=False)
+    # Faqat 2-4 tahlil (5+ larni CHIQARIB TASHLAB - ular sotuv1 guruhida)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT u.user_id FROM users u "
+        "JOIN (SELECT user_id FROM analyses WHERE kind='video' "
+        "GROUP BY user_id HAVING COUNT(*) >= 2 AND COUNT(*) < 5) a ON a.user_id = u.user_id "
+        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s) "
+        "AND (u.sotuv3_given IS NULL OR u.sotuv3_given = FALSE)",
+        (now_str,), fetch='all') or []
+    uids = [r[0] for r in rows if not is_admin(r[0])]
+    if not uids:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"📤 Yuborilmoqda: {len(uids)} ta\n(Har biriga FAQAT bir marta. Kuting...)")
+    sent, failed = 0, 0
+    for uid in uids:
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔥 Premium kuchini sinab ko'rish", callback_data="sotuv3_bepul")
+            ]])
+            await context.bot.send_message(
+                uid, TEXTS['uz']['sotuv3_msg'], reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET sotuv3_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ sotuv3: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
 
 
 async def sotuv4_command(update, context):
-    """Qadam 4 — aynan 1 marta ishlatgan (qaytmagan)."""
+    """Qadam 4 — aynan 1 marta ishlatgan (qaytmagan): bepul premium tugma."""
     if not is_admin(update.effective_user.id):
         return
     uids = _aniq_tahlil_uids(1, "sotuv4_given")
-    await _sotuv_broadcast(update, context, uids, "sotuv4_given", "sotuv4_msg", with_buy_btn=False)
+    if not uids:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"📤 Yuborilmoqda: {len(uids)} ta\n(Har biriga FAQAT bir marta. Kuting...)")
+    sent, failed = 0, 0
+    for uid in uids:
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎁 Bepul premium olish", callback_data="sotuv4_bepul")
+            ]])
+            await context.bot.send_message(
+                uid, TEXTS['uz']['sotuv4_msg'], reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET sotuv4_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ sotuv4: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
 
 
 async def sotuv5_command(update, context):
-    """Qadam 5 — ishlatmagan (sovuq)."""
+    """Qadam 5 — ishlatmagan (sovuq): video tashlash tugmasi."""
     if not is_admin(update.effective_user.id):
         return
     uids = _ishlatmagan_uids("sotuv5_given")
-    await _sotuv_broadcast(update, context, uids, "sotuv5_given", "sotuv5_msg", with_buy_btn=False)
+    if not uids:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"📤 Yuborilmoqda: {len(uids)} ta\n(Har biriga FAQAT bir marta. Kuting...)")
+    sent, failed = 0, 0
+    for uid in uids:
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎬 Videoni tahlil qilish", callback_data="aksiya_video")
+            ]])
+            await context.bot.send_message(
+                uid, TEXTS['uz']['sotuv5_msg'], reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET sotuv5_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ sotuv5: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
+
+
+async def sotuv_test_command(update, context):
+    """Admin: HAMMA sotuv xabarini (1,1b,3,4,5) faqat O'ZINGIZGA yuboradi (sinash uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    aid = update.effective_user.id
+    await update.message.reply_text("🧪 Test: hamma sotuv xabari sizga yuboriladi (5 ta)...")
+    # sotuv1
+    kb1 = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "💬 Fikr bildirish (va bepul tahlil oling!)", callback_data="sotuv1_fikr")]])
+    await context.bot.send_message(aid, "1️⃣ SOTUV1 (5+ ishlatgan):\n\n" + TEXTS['uz']['sotuv1_msg'],
+                                   reply_markup=kb1, parse_mode="HTML")
+    await asyncio.sleep(0.3)
+    # sotuv1b
+    kb1b = InlineKeyboardMarkup([[InlineKeyboardButton(
+        TEXTS['uz']['obuna_taklif_btn'], callback_data="buy_sub")]])
+    await context.bot.send_message(aid, "2️⃣ SOTUV1b (taklif 19,900):\n\n" + TEXTS['uz']['sotuv1b_msg'],
+                                   reply_markup=kb1b, parse_mode="HTML")
+    await asyncio.sleep(0.3)
+    # sotuv3
+    kb3 = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "🔥 Premium kuchini sinab ko'rish", callback_data="sotuv3_bepul")]])
+    await context.bot.send_message(aid, "3️⃣ SOTUV3 (2-4 tahlil):\n\n" + TEXTS['uz']['sotuv3_msg'],
+                                   reply_markup=kb3, parse_mode="HTML")
+    await asyncio.sleep(0.3)
+    # sotuv4
+    kb4 = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "🎁 Bepul premium olish", callback_data="sotuv4_bepul")]])
+    await context.bot.send_message(aid, "4️⃣ SOTUV4 (1 marta):\n\n" + TEXTS['uz']['sotuv4_msg'],
+                                   reply_markup=kb4, parse_mode="HTML")
+    await asyncio.sleep(0.3)
+    # sotuv5
+    kb5 = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "🎬 Videoni tahlil qilish", callback_data="aksiya_video")]])
+    await context.bot.send_message(aid, "5️⃣ SOTUV5 (ishlatmagan):\n\n" + TEXTS['uz']['sotuv5_msg'],
+                                   reply_markup=kb5, parse_mode="HTML")
+    await update.message.reply_text("✅ Hammasi yuborildi! Tugmalarni bosib sinab ko'ring.")
 
 
 async def maxsus_2700_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5798,6 +6014,7 @@ def main():
     app.add_handler(CommandHandler("test_taklif", test_taklif_command))
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
+    app.add_handler(CommandHandler("sotuv_test", sotuv_test_command))
     app.add_handler(CommandHandler("sotuv1", sotuv1_command))
     app.add_handler(CommandHandler("sotuv1b", sotuv1b_command))
     app.add_handler(CommandHandler("sotuv3", sotuv3_command))
