@@ -273,6 +273,7 @@ def init_db():
                                  ("sotuv3_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sotuv4_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sotuv5_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv_bepul_olindi", "TEXT"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -1906,6 +1907,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 2-4 marta ishlatganga bepul premium (premium kuchini sinash)
         uid = update.effective_user.id
         add_balance(uid, 1)
+        _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
+                    ("sotuv3: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
         uname = update.effective_user.username or update.effective_user.first_name or ""
         for aid in ADMIN_IDS:
             try:
@@ -1924,6 +1927,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1 marta ishlatganga bepul premium tahlil beramiz (sinab ko'rish)
         uid = update.effective_user.id
         add_balance(uid, 1)
+        _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
+                    ("sotuv4: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
         uname = update.effective_user.username or update.effective_user.first_name or ""
         for aid in ADMIN_IDS:
             try:
@@ -3199,6 +3204,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.warning(f"sotuv1 fikrini guruhga yuborishda xato: {e}")
         # +1 BEPUL PREMIUM tahlil (balance) beramiz - ovozli + hook bilan
         add_balance(uid, 1)
+        _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
+                    ("sotuv1: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
         # Adminlarga xabar (kim bepul premium oldi)
         for aid in ADMIN_IDS:
             try:
@@ -3955,6 +3962,8 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sotuv_matn_tikla — sotuv matnini tiklash\n\n"
         "🚀 <b>SOTUV VORONKASI</b> (real vaqtda, takrorsiz)\n"
         "/sotuv_test — hammasini FAQAT o'zingizga (sinash)\n"
+        "/sotuv_reset &lt;raqam&gt; — sotuv flagini tiklash (qayta yuborish)\n"
+        "/bepul_royxat — kim bepul premium oldi\n"
         "/sotuv1 — 5+ ishlatgan, to'lamaganga SAVOL (+bepul)\n"
         "/sotuv1b — 5+ ishlatganga TAKLIF (19,900)\n"
         "/sotuv3 — 2-4 ishlatganga premium sinash (+bepul)\n"
@@ -4636,6 +4645,50 @@ def _ishlatmagan_uids(flag_col):
         f"AND (u.{flag_col} IS NULL OR u.{flag_col} = FALSE)",
         fetch='all') or []
     return [r[0] for r in rows if not is_admin(r[0])]
+
+
+async def bepul_royxat_command(update, context):
+    """Admin: kim sotuv voronkasidan BEPUL PREMIUM olganini ko'rsatadi."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT user_id, username, sotuv_bepul_olindi FROM users "
+        "WHERE sotuv_bepul_olindi IS NOT NULL ORDER BY sotuv_bepul_olindi DESC",
+        fetch='all') or []
+    if not rows:
+        await update.message.reply_text("📭 Hali hech kim bepul premium olmagan.")
+        return
+    txt = f"🎁 <b>BEPUL PREMIUM OLGANLAR</b> ({len(rows)} ta)\n\n"
+    for r in rows[:60]:
+        uid, uname, manba = r[0], r[1], r[2]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        txt += f"• {who} — {manba}\n"
+    if len(rows) > 60:
+        txt += f"\n... va yana {len(rows)-60} ta"
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
+async def sotuv_reset_command(update, context):
+    """Admin: sotuv flaglarini tiklaydi. /sotuv_reset 1  (yoki 1b, 3, 4, 5)
+    Tiklangач o'sha buyruq qayta yuborilganda HAMMAGA qayta boradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "Ishlatish: /sotuv_reset <raqam>\n"
+            "Masalan: /sotuv_reset 1  (sotuv1 ni tiklaydi)\n"
+            "Variantlar: 1, 1b, 3, 4, 5")
+        return
+    key = context.args[0].strip().lower()
+    col_map = {"1": "sotuv1_given", "1b": "sotuv1b_given", "3": "sotuv3_given",
+               "4": "sotuv4_given", "5": "sotuv5_given"}
+    col = col_map.get(key)
+    if not col:
+        await update.message.reply_text("❌ Noto'g'ri. Variantlar: 1, 1b, 3, 4, 5")
+        return
+    _db_execute(f"UPDATE users SET {col} = FALSE")
+    await update.message.reply_text(
+        f"♻️ sotuv{key} tiklandi! Endi /sotuv{key} bosing — HAMMAGA qayta boradi.")
 
 
 async def sotuv1_command(update, context):
@@ -6015,6 +6068,8 @@ def main():
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
     app.add_handler(CommandHandler("sotuv_test", sotuv_test_command))
+    app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
+    app.add_handler(CommandHandler("bepul_royxat", bepul_royxat_command))
     app.add_handler(CommandHandler("sotuv1", sotuv1_command))
     app.add_handler(CommandHandler("sotuv1b", sotuv1b_command))
     app.add_handler(CommandHandler("sotuv3", sotuv3_command))
