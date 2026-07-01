@@ -277,6 +277,9 @@ def init_db():
                                  ("premium_balance", "INTEGER DEFAULT 0"),
                                  ("bloklangan", "BOOLEAN DEFAULT FALSE"),
                                  ("renewal_eslatma_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("test_renewal_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("renewal_chegirma_sana", "TEXT"),
+                                 ("tugash_xabar_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -443,7 +446,7 @@ def activate_subscription(user_id, days=SUB_DAYS):
             pass
     new_until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
     # Yangi obuna - renewal eslatma bayrog'ini tiklaymiz (keyingi tugashda yana eslatamiz)
-    _db_execute("UPDATE users SET sub_until = %s, renewal_eslatma_given = FALSE WHERE user_id = %s",
+    _db_execute("UPDATE users SET sub_until = %s, renewal_eslatma_given = FALSE, tugash_xabar_given = FALSE WHERE user_id = %s",
                 (new_until, user_id))
     return new_until
 
@@ -504,6 +507,7 @@ def auto_aksiya_on():
 
 
 SUB_PRICE_DISCOUNT = 19900  # Chegirma narxi (29900 -> 19900, sotuv voronkasi rejasi)
+SUB_PRICE_RENEWAL = 23900   # Renewal chegirma (29900 -> 23900, 20% - obuna uzaytirish)
 
 def discount_active():
     """Chegirma faolmi? (yoqilgan va 24 soat o'tmagan)"""
@@ -1724,6 +1728,55 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'lang_ru':
         context.user_data['lang'] = 'ru'
         await show_menu(query.message, context)
+    elif data == 'buy_sub_20':
+        # Renewal 20% chegirma (23,900). 24 soat ichida - chegirma, keyin to'liq 29,900
+        uid = query.from_user.id
+        _sana = _db_execute("SELECT renewal_chegirma_sana FROM users WHERE user_id = %s", (uid,), fetch='one')
+        chegirma_faol = False
+        if _sana and _sana[0]:
+            d = _parse_dt(_sana[0])
+            if d and (datetime.now() - d).total_seconds() <= 24 * 3600:
+                chegirma_faol = True
+        if chegirma_faol:
+            # 23,900 chegirma to'lovi
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_renewal')],
+                [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_renewal')],
+                [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_renewal')],
+            ])
+            await query.message.reply_text(
+                "💎 <b>1 oylik Premium — 23,900 so'm</b> (20% chegirma)\n\n👇 To'lov turini tanlang:",
+                reply_markup=kb, parse_mode="HTML")
+        else:
+            # Chegirma tugadi - to'liq narx
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💎 1 oylik olish (29,900)", callback_data='buy_sub')],
+            ])
+            await query.message.reply_text(
+                "⏰ <b>Chegirma vaqti tugadi!</b>\n\n"
+                "20% chegirma muddati o'tdi. Lekin siz to'liq narxda davom etishingiz mumkin: "
+                "<b>29,900 so'm</b> 💎",
+                reply_markup=kb, parse_mode="HTML")
+    elif data == 'buy_sub_19':
+        # sotuv1b 19,900 chegirma. Chegirma vaqti (chegirma_until) tugaganmi tekshiramiz
+        if discount_active():
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_sub')],
+                [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_sub')],
+                [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_sub')],
+            ])
+            await query.message.reply_text(
+                "💎 <b>1 oylik Premium — 19,900 so'm</b> (chegirma)\n\n👇 To'lov turini tanlang:",
+                reply_markup=kb, parse_mode="HTML")
+        else:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💎 1 oylik olish (29,900)", callback_data='buy_sub')],
+            ])
+            await query.message.reply_text(
+                "⏰ <b>Chegirma vaqti tugadi!</b>\n\n"
+                "19,900 chegirma muddati o'tdi. Lekin siz to'liq narxda davom etishingiz mumkin: "
+                "<b>29,900 so'm</b> 💎",
+                reply_markup=kb, parse_mode="HTML")
     elif data == 'buy_sub':
         # To'lov turini tanlash: Payme yoki Karta
         kb = InlineKeyboardMarkup([
@@ -1781,12 +1834,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
     # ===== PAYME tanlandi (GET havola -> Payme sahifasi, Merchant API avtomatik) =====
-    elif data in ('pm_sub', 'pm_test', 'pm_one'):
+    elif data in ('pm_sub', 'pm_test', 'pm_one', 'pm_renewal'):
         if not PAYME_MERCHANT_ID:
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
         if data == 'pm_sub':
             summa, nom = current_sub_price(), "1 oylik obuna"
+        elif data == 'pm_renewal':
+            summa, nom = SUB_PRICE_RENEWAL, "1 oylik obuna (20% chegirma)"
         elif data == 'pm_test':
             if tarif7_tugadimi(query.from_user.id):
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')]])
@@ -1809,12 +1864,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb, parse_mode="HTML"
         )
     # ===== CLICK tanlandi (avtomatik havola) =====
-    elif data in ('cl_sub', 'cl_test', 'cl_one'):
+    elif data in ('cl_sub', 'cl_test', 'cl_one', 'cl_renewal'):
         if not CLICK_SERVICE_ID or not CLICK_MERCHANT_ID:
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
         if data == 'cl_sub':
             summa, nom, pkg = current_sub_price(), "1 oylik obuna", "sub_1month"
+        elif data == 'cl_renewal':
+            summa, nom, pkg = SUB_PRICE_RENEWAL, "1 oylik obuna (20% chegirma)", "sub_1month_renewal"
         elif data == 'cl_test':
             if tarif7_tugadimi(query.from_user.id):
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')]])
@@ -1837,9 +1894,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=kb, parse_mode="HTML"
         )
     # ===== KARTA tanlandi (chek yuborish) =====
-    elif data in ('card_sub', 'card_test', 'card_one'):
+    elif data in ('card_sub', 'card_test', 'card_one', 'card_renewal'):
         if data == 'card_sub':
             paket_nom, summa, pkg = "1 oylik obuna", current_sub_price(), "sub_1month"
+        elif data == 'card_renewal':
+            paket_nom, summa, pkg = "1 oylik obuna (20% chegirma)", SUB_PRICE_RENEWAL, "sub_1month_renewal"
         elif data == 'card_test':
             if tarif7_tugadimi(query.from_user.id):
                 kb = InlineKeyboardMarkup([[InlineKeyboardButton(sub_btn_label(context), callback_data='buy_sub')]])
@@ -4169,6 +4228,7 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sotuv_test — hammasini FAQAT o'zingizga (sinash)\n"
         "/sotuv_natija — har sotuv natijasi (bosdi, to'ladi)\n"
         "/renewal_hozir — obuna tugash eslatmasini sinash\n"
+        "/test_tugaganlar — 7 kunligi tugaganlarga 20% taklif\n"
         "/sotuv_reset &lt;raqam&gt; — sotuv flagini tiklash (qayta yuborish)\n"
         "/bepul_royxat — kim bepul premium oldi\n"
         "/sotuv1 — 5+ ishlatgan, to'lamaganga SAVOL (+bepul)\n"
@@ -4998,14 +5058,33 @@ async def sotuv1b_command(update, context):
     """Qadam 1b — 5+ ishlatgan, to'lamagan: TAKLIF (19,900 chegirma)."""
     if not is_admin(update.effective_user.id):
         return
-    # Chegirma 19,900 yoqamiz (bugun 22:00 gacha)
+    # Chegirma 19,900 yoqamiz (24 soat)
     now = datetime.now()
-    until_dt = now.replace(hour=22, minute=0, second=0, microsecond=0)
-    if until_dt <= now:
-        until_dt = until_dt + timedelta(days=1)
+    until_dt = now + timedelta(hours=24)
     set_setting("chegirma_until", until_dt.strftime("%Y-%m-%d %H:%M:%S"))
     uids = _kup_tahlil_uids(5, "sotuv1b_given")
-    await _sotuv_broadcast(update, context, uids, "sotuv1b_given", "sotuv1b_msg", with_buy_btn=True)
+    if not uids:
+        await update.message.reply_text("📭 Mos foydalanuvchi yo'q.")
+        return
+    await update.message.reply_text(
+        f"📤 Yuborilmoqda: {len(uids)} ta (chegirma 24 soat). Kuting...")
+    sent, failed = 0, 0
+    for uid in uids:
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔥 19,900 ga Premium olish", callback_data="buy_sub_19")
+            ]])
+            await context.bot.send_message(uid, TEXTS['uz']['sotuv1b_msg'], reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET sotuv1b_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"✅ sotuv1b: {sent} yuborildi, {failed} xato.")
+        except Exception:
+            pass
 
 
 async def sotuv3_command(update, context):
@@ -5105,6 +5184,54 @@ async def sotuv5_command(update, context):
             await context.bot.send_message(aid, f"✅ sotuv5: {sent} yuborildi, {failed} xato.")
         except Exception:
             pass
+
+
+async def test_tugaganlar_command(update, context):
+    """Admin: 7 kunlik (test_7day) olib, obunasi TUGAGAN odamlarga
+    20% chegirma bilan 1 oylik taklif. /test_tugaganlar (ko'rish) yoki /test_tugaganlar YUBOR"""
+    if not is_admin(update.effective_user.id):
+        return
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT DISTINCT u.user_id, u.username FROM users u "
+        "JOIN payments p ON p.user_id = u.user_id AND p.status='approved' AND p.package='test_7day' "
+        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s) "
+        "AND (u.test_renewal_given IS NULL OR u.test_renewal_given = FALSE)",
+        (now_str,), fetch='all') or []
+    uids = [(r[0], r[1]) for r in rows if not is_admin(r[0])]
+    if not uids:
+        await update.message.reply_text("📭 7 kunligi tugagan (taklif kutayotgan) odam yo'q.")
+        return
+    yubor = context.args and context.args[0].upper() == "YUBOR"
+    if not yubor:
+        txt = f"📋 <b>7 KUNLIGI TUGAGAN</b> — {len(uids)} ta\n(20% chegirma taklifi kutmoqda)\n\n"
+        for i, (uid, uname) in enumerate(uids[:50], 1):
+            who = f"@{uname}" if uname else f"ID {uid}"
+            txt += f"{i}. {who} (ID {uid})\n"
+        txt += "\n📤 Yuborish: /test_tugaganlar YUBOR"
+        await update.message.reply_text(txt, parse_mode="HTML")
+        return
+    await update.message.reply_text(f"📤 {len(uids)} ta odamga 20% chegirma taklifi yuborilmoqda...")
+    sent, failed = 0, 0
+    for uid, uname in uids:
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💎 1 oylik olish (20% chegirma)", callback_data="buy_sub_20")
+            ]])
+            await context.bot.send_message(
+                uid,
+                "⏳ <b>7 kunlik Premiumingiz tugadi!</b>\n\n"
+                "Yoqdimi? 😊 Kontentingiz o'sishni boshladi — to'xtatmang!\n\n"
+                "🎁 Faqat sizga: 1 oylik Premium <s>29,900</s> → <b>23,900 so'm</b> (20% chegirma)\n\n"
+                "⏰ Chegirma faqat 24 soat!\n\n👇 Davom eting!",
+                reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET test_renewal_given = TRUE, renewal_chegirma_sana = %s WHERE user_id = %s",
+                        (datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.4)
+    await update.message.reply_text(f"✅ Yuborildi: {sent}, xato: {failed}.")
 
 
 async def renewal_hozir_command(update, context):
@@ -5220,7 +5347,7 @@ async def sotuv_test_command(update, context):
     await asyncio.sleep(0.3)
     # sotuv1b
     kb1b = InlineKeyboardMarkup([[InlineKeyboardButton(
-        TEXTS['uz']['obuna_taklif_btn'], callback_data="buy_sub")]])
+        "🔥 19,900 ga Premium olish", callback_data="buy_sub_19")]])
     await context.bot.send_message(aid, "2️⃣ SOTUV1b (taklif 19,900):\n\n" + TEXTS['uz']['sotuv1b_msg'],
                                    reply_markup=kb1b, parse_mode="HTML")
     await asyncio.sleep(0.3)
@@ -5628,6 +5755,8 @@ def _payme_package_by_amount(amount_tiyin):
         return ("sub_1month", SUB_DAYS)
     if som == SUB_PRICE_DISCOUNT:
         return ("sub_1month_discount", SUB_DAYS)
+    if som == SUB_PRICE_RENEWAL:
+        return ("sub_1month_renewal", SUB_DAYS)
     if som == TEST_PRICE:
         return ("test_7day", TEST_DAYS)
     if som == ONE_PRICE:
@@ -5846,7 +5975,7 @@ def _payme_activate(uid, pkg, amount):
     celebrate_key = None
     until = None
     try:
-        if pkg in ("sub_1month", "sub_1month_discount"):
+        if pkg in ("sub_1month", "sub_1month_discount", "sub_1month_renewal"):
             until = activate_subscription(uid, SUB_DAYS)
             create_payment(uid, pkg, amount // 100)
             celebrate_key = "celebrate_sub"
@@ -6229,6 +6358,37 @@ async def tarif7_ochirish(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+async def obuna_tugadi_xabar(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni: obunasi endigina TUGAGAN userlar haqida adminga xabar beradi.
+    Har user uchun 1 marta (tugash_xabar_given)."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Obunasi o'tган (tugagan), lekin hali xabar berilmagan, sub_until bor
+    rows = _db_execute(
+        "SELECT u.user_id, u.username, u.sub_until, "
+        "(SELECT package FROM payments p WHERE p.user_id=u.user_id AND p.status='approved' "
+        " ORDER BY p.created DESC LIMIT 1) "
+        "FROM users u WHERE u.sub_until IS NOT NULL AND u.sub_until <= %s "
+        "AND (u.tugash_xabar_given IS NULL OR u.tugash_xabar_given = FALSE)",
+        (now_str,), fetch='all') or []
+    if not rows:
+        return
+    paket_nom = {"sub_1month": "1 oylik", "sub_1month_discount": "1 oylik (chegirma)",
+                 "sub_1month_renewal": "1 oylik (renewal)", "test_7day": "7 kunlik", "one_1": "1 tahlil"}
+    for r in rows:
+        uid, uname, sub_until, paket = r[0], r[1], r[2], r[3]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        pnom = paket_nom.get(paket, paket or "obuna")
+        for aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    aid, f"⌛️ <b>OBUNA TUGADI</b>\n📦 {pnom}\n👤 {who} (ID {uid})",
+                    parse_mode="HTML")
+            except Exception:
+                pass
+        _db_execute("UPDATE users SET tugash_xabar_given = TRUE WHERE user_id = %s", (uid,))
+        await asyncio.sleep(0.2)
+
+
 async def obuna_tugash_eslatma(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: obunasi 1 kundan keyin tugaydigan foydalanuvchilarga
     1 oylik taklif yuboradi (renewal). Har userga 1 marta (renewal_eslatma_given)."""
@@ -6435,6 +6595,8 @@ def main():
             jq.run_daily(drip_kunlik, time=_dtime(hour=uz_to_utc(19), minute=0))
             # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
             jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
+            # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
+            jq.run_daily(obuna_tugadi_xabar, time=_dtime(hour=uz_to_utc(11), minute=5))
             logger.info("Juma + Drip scheduler o'rnatildi")
         else:
             logger.warning("job_queue yo'q - juma aksiyasi ishlamaydi (requirements: job-queue kerak)")
@@ -6492,6 +6654,7 @@ def main():
     app.add_handler(CommandHandler("sotuv_natija", sotuv_natija_command))
     app.add_handler(CommandHandler("tolovchilar", tolovchilar_command))
     app.add_handler(CommandHandler("renewal_hozir", renewal_hozir_command))
+    app.add_handler(CommandHandler("test_tugaganlar", test_tugaganlar_command))
     app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
     app.add_handler(CommandHandler("bepul_royxat", bepul_royxat_command))
     app.add_handler(CommandHandler("sotuv1", sotuv1_command))
