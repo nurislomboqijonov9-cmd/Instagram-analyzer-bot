@@ -5140,7 +5140,7 @@ async def tolovchilar_command(update, context):
     }
     txt = f"💎 <b>AKTIV OBUNACHILAR</b> ({len(rows)} ta)\n"
     txt += "<i>Tugash sanasi bo'yicha (yaqin → uzoq)</i>\n━━━━━━━━━━━━━\n\n"
-    for i, r in enumerate(rows[:80], 1):
+    for i, r in enumerate(rows, 1):
         uid, uname, sub_until, paket = r[0], r[1], r[2], r[3]
         who = f"@{uname}" if uname else f"ID {uid}"
         pnom = paket_nom.get(paket, paket or "—")
@@ -5151,23 +5151,18 @@ async def tolovchilar_command(update, context):
             kun = (d - datetime.now()).days
             qolgan = f" ({kun} kun qoldi)" if kun >= 0 else ""
         txt += f"{i}. {who} (ID {uid})\n   📦 {pnom}\n   ⏳ Tugaydi: {sub_until}{qolgan}\n\n"
-    if len(rows) > 80:
-        txt += f"... va yana {len(rows)-80} ta"
     # Telegram xabar limiti 4096 - bo'lib yuboramiz
-    if len(txt) <= 4000:
-        await update.message.reply_text(txt, parse_mode="HTML")
-    else:
-        # Bo'laklab yuboramiz
-        bosh = txt[:200]
-        qism = ""
-        await update.message.reply_text(bosh, parse_mode="HTML")
-        for line in txt[200:].split("\n\n"):
-            if len(qism) + len(line) > 3500:
+    # Telegram limiti 4096 - xavfsiz bo'laklab yuboramiz (har bo'lak to'liq userlar)
+    bloklar = txt.split("\n\n")
+    qism = ""
+    for blok in bloklar:
+        if len(qism) + len(blok) + 2 > 3500:
+            if qism:
                 await update.message.reply_text(qism, parse_mode="HTML")
-                qism = ""
-            qism += line + "\n\n"
-        if qism:
-            await update.message.reply_text(qism, parse_mode="HTML")
+            qism = ""
+        qism += blok + "\n\n"
+    if qism.strip():
+        await update.message.reply_text(qism, parse_mode="HTML")
 
 
 async def sotuv_natija_command(update, context):
