@@ -274,6 +274,8 @@ def init_db():
                                  ("sotuv4_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sotuv5_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sotuv_bepul_olindi", "TEXT"),
+                                 ("premium_balance", "INTEGER DEFAULT 0"),
+                                 ("bloklangan", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -328,6 +330,39 @@ def use_balance(user_id):
     _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
 
 
+def get_premium_balance(user_id):
+    """Premium balans - 1 tahlillik TO'LIQ premium (hook, ovoz bilan)."""
+    if is_admin(user_id):
+        return 999999
+    row = _db_execute("SELECT premium_balance FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    return (row[0] or 0) if row else 0
+
+
+def is_blocked(user_id):
+    """Foydalanuvchi bloklanganmi?"""
+    if is_admin(user_id):
+        return False
+    row = _db_execute("SELECT bloklangan FROM users WHERE user_id = %s", (user_id,), fetch='one')
+    return bool(row and row[0])
+
+
+def add_premium_balance(user_id, amount):
+    _db_execute(
+        "INSERT INTO users (user_id, username, first_name, joined, balance) "
+        "VALUES (%s, '', '', %s, 0) ON CONFLICT (user_id) DO NOTHING",
+        (user_id, datetime.now().strftime("%Y-%m-%d %H:%M"))
+    )
+    _db_execute("UPDATE users SET premium_balance = COALESCE(premium_balance,0) + %s WHERE user_id = %s",
+                (amount, user_id))
+
+
+def use_premium_balance(user_id):
+    if is_admin(user_id):
+        return
+    _db_execute("UPDATE users SET premium_balance = premium_balance - 1 "
+                "WHERE user_id = %s AND premium_balance > 0", (user_id,))
+
+
 def _parse_dt(s):
     """sub_until ni turli formatlarda o'qiydi (DB'da format har xil bo'lishi mumkin)."""
     if not s:
@@ -380,6 +415,8 @@ def has_access(user_id):
         return 'admin'
     if sub_active(user_id):
         return 'sub'
+    if get_premium_balance(user_id) > 0:
+        return 'sub'   # premium balans = to'liq premium (hook, ovoz ochiq)
     if get_balance(user_id) > 0:
         return 'credit'
     if get_juma_balance(user_id) > 0:
@@ -552,8 +589,11 @@ def consume_access(user_id):
     if is_admin(user_id):
         return None
     if not sub_active(user_id):
-        # Avval JUMA balansidan yechamiz (u kuyadi, shuning uchun birinchi ishlatilsin)
-        if get_juma_balance(user_id) > 0:
+        # Avval PREMIUM balansdan (sotuv bepul) - u to'liq premium edi
+        if get_premium_balance(user_id) > 0:
+            _db_execute("UPDATE users SET premium_balance = premium_balance - 1 WHERE user_id = %s AND premium_balance > 0", (user_id,))
+        # Keyin JUMA balansidan yechamiz (u kuyadi, shuning uchun birinchi ishlatilsin)
+        elif get_juma_balance(user_id) > 0:
             _db_execute("UPDATE users SET juma_balance = juma_balance - 1 WHERE user_id = %s AND juma_balance > 0", (user_id,))
         else:
             _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
@@ -1643,6 +1683,8 @@ def package_keyboard(context):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    if is_blocked(user.id):
+        return
     was_new = not user_exists(user.id)
     save_user(user.id, user.username, user.first_name)
     context.user_data['is_new'] = was_new  # yangi user uchun sovg'a xabari ko'rsatamiz
@@ -1904,19 +1946,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "javobingiz uchun darhol 1 ta BEPUL PREMIUM tahlil qo'shiladi!)"
         )
     elif data == 'sotuv3_bepul':
-        # 2-4 marta ishlatganga bepul premium (premium kuchini sinash)
         uid = update.effective_user.id
-        add_balance(uid, 1)
+        _chk = _db_execute("SELECT sotuv_bepul_olindi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _chk and _chk[0]:
+            await query.answer("Siz allaqachon bepul premium oldingiz! 🎁", show_alert=True)
+            return
+        add_premium_balance(uid, 1)
         _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
                     ("sotuv3: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
         uname = update.effective_user.username or update.effective_user.first_name or ""
         for aid in ADMIN_IDS:
             try:
                 who = f"@{uname}" if uname else f"ID {uid}"
-                await context.bot.send_message(aid, f"🎁 BEPUL PREMIUM berildi (sotuv3)\n👤 {who}")
+                await context.bot.send_message(aid, f"🎁 PREMIUM berildi (sotuv3)\n👤 {who}")
             except Exception:
                 pass
-        await query.answer("✅ Bepul premium qo'shildi!")
+        await query.answer("✅ Premium qo'shildi!")
         await query.message.reply_text(
             "🎁 Zo'r! Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
             "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
@@ -1924,19 +1969,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
     elif data == 'sotuv4_bepul':
-        # 1 marta ishlatganga bepul premium tahlil beramiz (sinab ko'rish)
         uid = update.effective_user.id
-        add_balance(uid, 1)
+        # HIMOYA: allaqachon olganmi? (qayta bosishni to'sish)
+        _chk = _db_execute("SELECT sotuv_bepul_olindi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _chk and _chk[0]:
+            await query.answer("Siz allaqachon bepul premium oldingiz! 🎁", show_alert=True)
+            return
+        add_premium_balance(uid, 1)
         _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
                     ("sotuv4: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
         uname = update.effective_user.username or update.effective_user.first_name or ""
         for aid in ADMIN_IDS:
             try:
                 who = f"@{uname}" if uname else f"ID {uid}"
-                await context.bot.send_message(aid, f"🎁 BEPUL PREMIUM berildi (sotuv4)\n👤 {who}")
+                await context.bot.send_message(aid, f"🎁 PREMIUM berildi (sotuv4)\n👤 {who}")
             except Exception:
                 pass
-        await query.answer("✅ Bepul premium qo'shildi!")
+        await query.answer("✅ Premium qo'shildi!")
         await query.message.reply_text(
             "🎁 Zo'r! Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
             "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
@@ -2780,6 +2829,10 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("⚠️ Bu video emas. Qaytadan /videoid bosib, video yuboring.")
         return
 
+    # Bloklangan foydalanuvchi - hech narsa qilmaymiz
+    if is_blocked(user_id):
+        return
+
     # Kirish tekshiruvi: admin / obuna faol / bepul tahlil bor bo'lsa - o'tadi
     if has_access(user_id) == 'none':
         await message.reply_text(t(context, 'no_balance'), reply_markup=package_keyboard(context), parse_mode="HTML")
@@ -3202,24 +3255,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(FIKR_GROUP_ID, grp_txt)
             except Exception as e:
                 logger.warning(f"sotuv1 fikrini guruhga yuborishda xato: {e}")
-        # +1 BEPUL PREMIUM tahlil (balance) beramiz - ovozli + hook bilan
-        add_balance(uid, 1)
-        _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
-                    ("sotuv1: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
-        # Adminlarga xabar (kim bepul premium oldi)
-        for aid in ADMIN_IDS:
-            try:
-                who = f"@{uname}" if uname else f"ID {uid}"
-                await context.bot.send_message(aid, f"🎁 BEPUL PREMIUM berildi (sotuv1 fikr)\n👤 {who}")
-            except Exception:
-                pass
-        await update.message.reply_text(
-            "Rahmat, fikringiz uchun juda minnatdorman! 🤍\n\n"
-            "✅ Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
-            "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
-            "Hoziroq videongizni yuboring — enjoy! 🎬",
-            parse_mode="HTML"
-        )
+        # PREMIUM tahlil beramiz (hook+ovoz), FAQAT 1 marta
+        _chk = _db_execute("SELECT sotuv_bepul_olindi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not (_chk and _chk[0]):
+            add_premium_balance(uid, 1)
+            _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s",
+                        ("sotuv1: " + datetime.now().strftime("%Y-%m-%d %H:%M"), uid))
+            for aid in ADMIN_IDS:
+                try:
+                    who = f"@{uname}" if uname else f"ID {uid}"
+                    await context.bot.send_message(aid, f"🎁 PREMIUM berildi (sotuv1 fikr)\n👤 {who}")
+                except Exception:
+                    pass
+            await update.message.reply_text(
+                "Rahmat, fikringiz uchun juda minnatdorman! 🤍\n\n"
+                "✅ Hisobingizga <b>1 ta BEPUL PREMIUM tahlil</b> qo'shildi!\n"
+                "🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq.\n\n"
+                "Hoziroq videongizni yuboring — enjoy! 🎬",
+                parse_mode="HTML"
+            )
+        else:
+            # Allaqachon premium olgan - faqat fikr uchun rahmat (qayta premium yo'q)
+            await update.message.reply_text(
+                "Rahmat, fikringiz uchun juda minnatdorman! 🤍", parse_mode="HTML")
         return
     if context.user_data.get('mode') == 'premium_fikr':
         context.user_data['mode'] = None
@@ -3452,6 +3510,142 @@ async def berbalans_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             target_id,
             f"🎁 Sizga {son} ta BEPUL tahlil qo'shildi! 🎬\n\nVideo yuboring va sinab ko'ring!"
         )
+    except Exception:
+        pass
+
+
+async def kop_balans_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: balansi KO'P (shubhali - qayta-qayta olgan) odamlarni ko'rsatadi."""
+    if not is_admin(update.effective_user.id):
+        return
+    # premium_balance yoki balance > 1 bo'lgan, obunachi bo'lmaganlar (shubhali)
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id, username, COALESCE(balance,0), COALESCE(premium_balance,0) "
+        "FROM users WHERE (COALESCE(balance,0) > 1 OR COALESCE(premium_balance,0) > 1) "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "ORDER BY (COALESCE(balance,0) + COALESCE(premium_balance,0)) DESC LIMIT 40",
+        (now_str,), fetch='all') or []
+    if not rows:
+        await update.message.reply_text("✅ Balansi ko'p (shubhali) odam yo'q.")
+        return
+    txt = f"⚠️ <b>BALANSI KO'P (shubhali)</b> — {len(rows)} ta\n\n"
+    for r in rows:
+        uid, uname, bal, pbal = r[0], r[1], r[2], r[3]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        txt += f"• {who} (ID {uid}) — oddiy: {bal}, premium: {pbal}\n"
+    txt += "\n🧹 Tozalash: /balans_0 &lt;ID&gt;\nHammasini: /sotuv_balans_0"
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
+async def sotuv_balans_0_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: sotuv orqali berilgan HAMMA ortiqcha balansni tozalaydi.
+    Obunachi bo'lmaganlarning balance/premium_balansini 0 qiladi. Tasdiq: /sotuv_balans_0 HA"""
+    if not is_admin(update.effective_user.id):
+        return
+    args = context.args
+    if not args or args[0].upper() != "HA":
+        # Avval nechta odam ta'sirlanishini ko'rsatamiz
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        cnt = _db_execute(
+            "SELECT COUNT(*) FROM users WHERE (COALESCE(balance,0) > 0 OR COALESCE(premium_balance,0) > 0) "
+            "AND (sub_until IS NULL OR sub_until <= %s)", (now_str,), fetch='one')
+        n = cnt[0] if cnt else 0
+        await update.message.reply_text(
+            f"⚠️ DIQQAT! Bu {n} ta obunachi BO'LMAGAN odamning HAMMA balansini (oddiy+premium) 0 qiladi.\n\n"
+            f"(Obunachilar/adminlar tegilmaydi)\n\n"
+            f"Tasdiqlash uchun: /sotuv_balans_0 HA")
+        return
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    _db_execute(
+        "UPDATE users SET balance = 0, premium_balance = 0 "
+        "WHERE (sub_until IS NULL OR sub_until <= %s)", (now_str,))
+    await update.message.reply_text(
+        "✅ Tozalandi! Obunachi bo'lmaganlarning balansi 0 qilindi.\n"
+        "Endi sotuv buyruqlarini toza qayta yuborishingiz mumkin.")
+
+
+async def balans_0_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID bo'yicha HAMMA balansni (oddiy+premium+juma) 0 qiladi. /balans_0 <ID>"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("✍️ Foydalanish: /balans_0 <ID>\nMasalan: /balans_0 8431988310")
+        return
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    _db_execute(
+        "UPDATE users SET balance = 0, premium_balance = 0, juma_balance = 0 WHERE user_id = %s",
+        (target_id,))
+    await update.message.reply_text(f"✅ {target_id} ning HAMMA balansi 0 qilindi (oddiy+premium+juma).")
+
+
+async def blok_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID bo'yicha foydalanuvchini bloklaydi. /blok <ID>"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("✍️ Foydalanish: /blok <ID>\nMasalan: /blok 8431988310")
+        return
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    _db_execute("UPDATE users SET bloklangan = TRUE WHERE user_id = %s", (target_id,))
+    await update.message.reply_text(f"🚫 {target_id} bloklandi. Endi bot bilan ishlatolmaydi.")
+
+
+async def blok_ochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID ni blokdan chiqaradi. /blok_ochir <ID>"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("✍️ Foydalanish: /blok_ochir <ID>")
+        return
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    _db_execute("UPDATE users SET bloklangan = FALSE WHERE user_id = %s", (target_id,))
+    await update.message.reply_text(f"✅ {target_id} blokdan chiqarildi.")
+
+
+async def berbalans_premium_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ID bo'yicha PREMIUM balans (to'liq premium: hook+ovoz) qo'shadi.
+    Foydalanish: /berbalans_premium <ID> <son>  (son yozilmasa - 1 ta)"""
+    if not is_admin(update.effective_user.id):
+        return
+    parts = (update.message.text or "").split()
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "✍️ Foydalanish: /berbalans_premium <ID> <son>\n\n"
+            "Masalan:\n/berbalans_premium 8431988310 1  (1 ta PREMIUM tahlil)\n\n"
+            "💎 Premium balans = to'liq premium (hook yaxshilash + ovoz ochiq)")
+        return
+    try:
+        target_id = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ ID raqam bo'lishi kerak.")
+        return
+    son = 1
+    if len(parts) >= 3:
+        try:
+            son = int(parts[2])
+        except ValueError:
+            son = 1
+    add_premium_balance(target_id, son)
+    await update.message.reply_text(f"✅ {target_id} ga {son} ta PREMIUM tahlil qo'shildi (hook+ovoz ochiq).")
+    try:
+        await context.bot.send_message(
+            target_id,
+            f"🎁 Sizga {son} ta BEPUL PREMIUM tahlil qo'shildi! 💎\n\n"
+            f"🔊 Ovozli eshitish va 🔥 Hook yaxshilash ham ochiq!\n\n"
+            f"Video yuboring va premium kuchini ko'ring! 🎬")
     except Exception:
         pass
 
@@ -3927,6 +4121,12 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/aksiya_tugadi — aksiya statistikasi\n\n"
         "🎁 <b>SOVG'A / OBUNA</b>\n"
         "/berbalans &lt;ID&gt; &lt;son&gt; — bepul tahlil berish\n"
+        "/berbalans_premium &lt;ID&gt; &lt;son&gt; — PREMIUM tahlil (hook+ovoz)\n"
+        "/balans_0 &lt;ID&gt; — hamma balansni 0 qilish\n"
+        "/kop_balans — balansi ko'p (shubhali) odamlar\n"
+        "/sotuv_balans_0 — hamma ortiqcha balansni tozalash\n"
+        "/blok &lt;ID&gt; — foydalanuvchini bloklash\n"
+        "/blok_ochir &lt;ID&gt; — blokdan chiqarish\n"
         "/berobuna &lt;ID&gt; &lt;kun&gt; — obuna berish\n"
         "/obunaochir &lt;ID&gt; — obunani bekor qilish\n"
         "/yoz &lt;ID&gt; &lt;xabar&gt; — xabar yuborish\n\n"
@@ -6032,6 +6232,12 @@ def main():
     app.add_handler(CommandHandler("kim", kim_command))
     app.add_handler(CommandHandler("berobuna", berobuna_command))
     app.add_handler(CommandHandler("berbalans", berbalans_command))
+    app.add_handler(CommandHandler("berbalans_premium", berbalans_premium_command))
+    app.add_handler(CommandHandler("balans_0", balans_0_command))
+    app.add_handler(CommandHandler("kop_balans", kop_balans_command))
+    app.add_handler(CommandHandler("sotuv_balans_0", sotuv_balans_0_command))
+    app.add_handler(CommandHandler("blok", blok_command))
+    app.add_handler(CommandHandler("blok_ochir", blok_ochir_command))
     app.add_handler(CommandHandler("yoz", yoz_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
