@@ -276,6 +276,7 @@ def init_db():
                                  ("sotuv_bepul_olindi", "TEXT"),
                                  ("premium_balance", "INTEGER DEFAULT 0"),
                                  ("bloklangan", "BOOLEAN DEFAULT FALSE"),
+                                 ("renewal_eslatma_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -441,7 +442,9 @@ def activate_subscription(user_id, days=SUB_DAYS):
         except Exception:
             pass
     new_until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
-    _db_execute("UPDATE users SET sub_until = %s WHERE user_id = %s", (new_until, user_id))
+    # Yangi obuna - renewal eslatma bayrog'ini tiklaymiz (keyingi tugashda yana eslatamiz)
+    _db_execute("UPDATE users SET sub_until = %s, renewal_eslatma_given = FALSE WHERE user_id = %s",
+                (new_until, user_id))
     return new_until
 
 
@@ -3349,11 +3352,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(context, 'profile_premium'), reply_markup=kb, parse_mode="HTML")
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
         uid = update.effective_user.id
-        access = has_access(uid)
-        if access == 'admin':
+        if is_admin(uid):
             await update.message.reply_text("👑 Admin — cheksiz tahlil.")
-        elif access == 'sub':
+        elif sub_active(uid):
             await update.message.reply_text(t(context, 'sub_active').format(until=sub_until_str(uid)))
+        elif get_premium_balance(uid) > 0:
+            await update.message.reply_text(
+                f"💎 Sizda {get_premium_balance(uid)} ta PREMIUM tahlil bor!\n"
+                f"🔊 Ovozli + 🔥 Hook ochiq. Video yuboring 🎬")
         else:
             bal = get_balance(uid)
             await update.message.reply_text(
@@ -3374,10 +3380,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t(context, 'fikr_ask'))
     elif text in (TEXTS['uz']['menu_premium'], TEXTS['ru']['menu_premium']):
         uid = update.effective_user.id
-        access = has_access(uid)
-        if access == 'admin':
+        if is_admin(uid):
             await update.message.reply_text("👑 Admin — cheksiz tahlil.")
-        elif access == 'sub':
+        elif sub_active(uid):
             await update.message.reply_text(t(context, 'sub_active').format(until=sub_until_str(uid)))
         else:
             # Premium taklifi + sotib olish tugmasi
@@ -4162,6 +4167,8 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sotuv_matn_tikla — sotuv matnini tiklash\n\n"
         "🚀 <b>SOTUV VORONKASI</b> (real vaqtda, takrorsiz)\n"
         "/sotuv_test — hammasini FAQAT o'zingizga (sinash)\n"
+        "/sotuv_natija — har sotuv natijasi (bosdi, to'ladi)\n"
+        "/renewal_hozir — obuna tugash eslatmasini sinash\n"
         "/sotuv_reset &lt;raqam&gt; — sotuv flagini tiklash (qayta yuborish)\n"
         "/bepul_royxat — kim bepul premium oldi\n"
         "/sotuv1 — 5+ ishlatgan, to'lamaganga SAVOL (+bepul)\n"
@@ -4169,7 +4176,8 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sotuv3 — 2-4 ishlatganga premium sinash (+bepul)\n"
         "/sotuv4 — 1 marta ishlatganga (+bepul premium)\n"
         "/sotuv5 — ishlatmaganlarga (video tugma)\n"
-        "/tahlil_faol — faol↔to'lovchi tahlili\n\n"
+        "/tahlil_faol — faol↔to'lovchi tahlili\n"
+        "/tolovchilar — aktiv obunachilar (ID, paket, tugash)\n\n"
         "🔧 <b>QO'SHIMCHA</b>\n"
         "/kim &lt;ID&gt; — ID dan username topish\n"
         "/drip_holat — drip statistikasi"
@@ -4318,49 +4326,113 @@ async def tahlil_faol_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def voronka_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin: konversiya voronkasi - kim qaysi bosqichda yo'qolyapti."""
+    """Admin: TO'LIQ dashboard - voronka + pul + vaqt + segment + to'lov usullari + xarajat."""
     if not is_admin(update.effective_user.id):
         return
-    jami = (_db_execute("SELECT COUNT(*) FROM users", fetch='one') or [0])[0]
-    tahlil_qilgan = (_db_execute(
-        "SELECT COUNT(DISTINCT user_id) FROM analyses", fetch='one') or [0])[0]
-    qaytgan = (_db_execute(
-        "SELECT COUNT(*) FROM (SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 2) t",
-        fetch='one') or [0])[0]
-    faol = (_db_execute(
-        "SELECT COUNT(*) FROM (SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 5) t",
-        fetch='one') or [0])[0]
-    tolagan = (_db_execute(
-        "SELECT COUNT(DISTINCT user_id) FROM payments WHERE status = 'approved'", fetch='one') or [0])[0]
-    aktiv_sub = (_db_execute(
-        "SELECT COUNT(*) FROM users WHERE sub_until IS NOT NULL AND sub_until > %s",
-        (datetime.now().strftime("%Y-%m-%d %H:%M"),), fetch='one') or [0])[0]
+    now = datetime.now()
+    now_str = now.strftime("%Y-%m-%d %H:%M")
+    bugun = now.strftime("%Y-%m-%d")
+    oy = now.strftime("%Y-%m")
+    hafta_boshi = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+
+    def one(q, p=None):
+        r = _db_execute(q, p, fetch='one') if p else _db_execute(q, fetch='one')
+        return (r[0] if r and r[0] is not None else 0)
 
     def pct(a, b):
         return f"{(a/b*100):.1f}%" if b else "0%"
 
-    txt = "📊 <b>KONVERSIYA VORONKASI</b>\n\n"
-    txt += f"👥 <b>Ro'yxatdan o'tgan:</b> {jami:,}\n   ↓\n"
-    txt += f"🎬 <b>Tahlil qilgan:</b> {tahlil_qilgan:,} ({pct(tahlil_qilgan, jami)})\n   ↓\n"
-    txt += f"🔁 <b>Qaytgan (2+):</b> {qaytgan:,} ({pct(qaytgan, jami)})\n   ↓\n"
-    txt += f"🔥 <b>Faol (5+):</b> {faol:,} ({pct(faol, jami)})\n   ↓\n"
-    txt += f"💰 <b>To'lagan:</b> {tolagan:,} ({pct(tolagan, jami)})\n   ↓\n"
-    txt += f"💎 <b>Hozir faol obuna:</b> {aktiv_sub:,}\n\n"
-    txt += "━━━━━━━━━━━━━\n📈 <b>Tahlil:</b>\n"
+    # ==== VORONKA ====
+    jami = one("SELECT COUNT(*) FROM users")
+    tahlil_qilgan = one("SELECT COUNT(DISTINCT user_id) FROM analyses")
+    qaytgan = one("SELECT COUNT(*) FROM (SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 2) t")
+    faol = one("SELECT COUNT(*) FROM (SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 5) t")
+    tolagan = one("SELECT COUNT(DISTINCT user_id) FROM payments WHERE status = 'approved'")
+    aktiv_sub = one("SELECT COUNT(*) FROM users WHERE sub_until IS NOT NULL AND sub_until > %s", (now_str,))
+
+    # ==== PUL ====
+    jami_daromad = one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved'")
+    oy_daromad = one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved' AND created LIKE %s", (oy + "%",))
+    bugun_daromad = one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status = 'approved' AND created LIKE %s", (bugun + "%",))
+    tolov_soni = one("SELECT COUNT(*) FROM payments WHERE status = 'approved'")
+    ort_tolov = (jami_daromad / tolov_soni) if tolov_soni else 0
+
+    # ==== XARAJAT (tannarx) ====
+    jami_xarajat = one("SELECT COALESCE(SUM(narx),0) FROM analyses")
+    oy_xarajat = one("SELECT COALESCE(SUM(narx),0) FROM analyses WHERE created LIKE %s", (oy + "%",))
+    foyda = jami_daromad - jami_xarajat
+
+    # ==== VAQT ====
+    bugun_yangi = one("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (bugun + "%",))
+    hafta_yangi = one("SELECT COUNT(*) FROM users WHERE joined >= %s", (hafta_boshi,))
+    oy_yangi = one("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (oy + "%",))
+    bugun_tahlil = one("SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (bugun + "%",))
+    hafta_tahlil = one("SELECT COUNT(*) FROM analyses WHERE created >= %s", (hafta_boshi,))
+    bugun_tolov = one("SELECT COUNT(*) FROM payments WHERE status='approved' AND created LIKE %s", (bugun + "%",))
+
+    # ==== SEGMENTLAR (sotuv uchun) ====
+    faol_set = set(r[0] for r in (_db_execute("SELECT user_id FROM analyses GROUP BY user_id HAVING COUNT(*) >= 5", fetch='all') or []))
+    paid_set = set(r[0] for r in (_db_execute("SELECT DISTINCT user_id FROM payments WHERE status='approved'", fetch='all') or []))
+    issiq = len(faol_set - paid_set)          # 5+ lekin to'lamagan
+    tolagan_5emas = len(paid_set - faol_set)  # to'lagan lekin 5+ emas
+    faol_tolagan = len(faol_set & paid_set)
+    ishlatmagan = one("SELECT COUNT(*) FROM users u LEFT JOIN (SELECT DISTINCT user_id FROM analyses) a ON a.user_id=u.user_id WHERE a.user_id IS NULL")
+
+    # ==== TO'LOV USULLARI ====
+    total_analiz = one("SELECT COUNT(*) FROM analyses")
+    ort_tahlil = (total_analiz / tahlil_qilgan) if tahlil_qilgan else 0
+
+    txt = "📊 <b>TO'LIQ DASHBOARD</b>\n"
+    txt += "━━━━━━━━━━━━━\n"
+    txt += "<b>🔻 VORONKA</b>\n"
+    txt += f"👥 Ro'yxat: {jami:,}\n"
+    txt += f"🎬 Tahlil qilgan: {tahlil_qilgan:,} ({pct(tahlil_qilgan, jami)})\n"
+    txt += f"🔁 Qaytgan (2+): {qaytgan:,} ({pct(qaytgan, jami)})\n"
+    txt += f"🔥 Faol (5+): {faol:,} ({pct(faol, jami)})\n"
+    txt += f"💰 To'lagan: {tolagan:,} ({pct(tolagan, jami)})\n"
+    txt += f"💎 Aktiv obuna: {aktiv_sub:,}\n\n"
+
+    txt += "<b>💰 PUL</b>\n"
+    txt += f"Jami daromad: {jami_daromad:,} so'm\n"
+    txt += f"Shu oy: {oy_daromad:,} so'm\n"
+    txt += f"Bugun: {bugun_daromad:,} so'm\n"
+    txt += f"To'lovlar soni: {tolov_soni:,}\n"
+    txt += f"O'rtacha to'lov: {ort_tolov:,.0f} so'm\n\n"
+
+    txt += "<b>📉 XARAJAT / FOYDA</b>\n"
+    txt += f"Jami xarajat (AI): {jami_xarajat:,} so'm\n"
+    txt += f"Shu oy xarajat: {oy_xarajat:,} so'm\n"
+    txt += f"💵 Sof foyda: {foyda:,} so'm\n\n"
+
+    txt += "<b>📅 VAQT (yangi/faollik)</b>\n"
+    txt += f"Bugun yangi: {bugun_yangi:,} | tahlil: {bugun_tahlil:,} | to'lov: {bugun_tolov:,}\n"
+    txt += f"Hafta yangi: {hafta_yangi:,} | tahlil: {hafta_tahlil:,}\n"
+    txt += f"Oy yangi: {oy_yangi:,}\n"
+    txt += f"O'rtacha tahlil/user: {ort_tahlil:.1f}\n\n"
+
+    txt += "<b>🎯 SEGMENTLAR (sotuv)</b>\n"
+    txt += f"🔥 5+ to'lamagan (issiq): {issiq}\n"
+    txt += f"💸 To'lagan, 5+ emas: {tolagan_5emas}\n"
+    txt += f"✅ 5+ va to'lagan: {faol_tolagan}\n"
+    txt += f"❄️ Umuman ishlatmagan: {ishlatmagan:,}\n\n"
+
+    txt += "━━━━━━━━━━━━━\n<b>📈 XULOSA</b>\n"
     if jami:
         r_tahlil = tahlil_qilgan / jami
         r_qaytish = qaytgan / tahlil_qilgan if tahlil_qilgan else 0
         r_tolov = tolagan / qaytgan if qaytgan else 0
         if r_tahlil < 0.5:
-            txt += "⚠️ Ko'p odam tahlil HAM qilmagan — boshlanish (onboarding) zaif.\n"
+            txt += "⚠️ Ko'p odam tahlil HAM qilmagan — onboarding zaif.\n"
         if r_qaytish < 0.3:
-            txt += "⚠️ Tahlil qilganlar QAYTMAYAPTI — qaytarish (retention) zaif.\n"
+            txt += "⚠️ Qaytish zaif (retention).\n"
         else:
-            txt += "✅ Qaytish yaxshi — odamlar qiziqyapti.\n"
+            txt += "✅ Qaytish yaxshi.\n"
         if r_tolov < 0.05:
-            txt += "⚠️ Qaytganlar TO'LAMAYAPTI — premium qiymati/narx/ishonch zaif.\n"
+            txt += "⚠️ To'lov past — qiymat/narx/ishonch.\n"
         else:
-            txt += "✅ To'lov darajasi yomon emas.\n"
+            txt += "✅ To'lov yomon emas.\n"
+        if issiq > 20:
+            txt += f"💡 {issiq} ta issiq (5+ to'lamagan) bor — /sotuv1 yubor!\n"
     await update.message.reply_text(txt, parse_mode="HTML")
 
 
@@ -5033,6 +5105,110 @@ async def sotuv5_command(update, context):
             await context.bot.send_message(aid, f"✅ sotuv5: {sent} yuborildi, {failed} xato.")
         except Exception:
             pass
+
+
+async def renewal_hozir_command(update, context):
+    """Admin: renewal eslatmasini HOZIR ishga tushiradi (kutmasdan sinash)."""
+    if not is_admin(update.effective_user.id):
+        return
+    await update.message.reply_text("🔄 Renewal eslatma hozir ishga tushirilmoqda...")
+    await obuna_tugash_eslatma(context)
+
+
+async def tolovchilar_command(update, context):
+    """Admin: TO'LOVCHILAR ro'yxati - ID, paket (29900/7kunlik), qachon tugashi."""
+    if not is_admin(update.effective_user.id):
+        return
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Aktiv obunachilar: eng oxirgi to'lovi bilan
+    rows = _db_execute(
+        "SELECT u.user_id, u.username, u.sub_until, "
+        "(SELECT package FROM payments p WHERE p.user_id = u.user_id AND p.status='approved' "
+        " ORDER BY p.created DESC LIMIT 1) AS son_paket "
+        "FROM users u WHERE u.sub_until IS NOT NULL AND u.sub_until > %s "
+        "ORDER BY u.sub_until ASC",
+        (now_str,), fetch='all') or []
+    if not rows:
+        await update.message.reply_text("📭 Hozir aktiv obunachi yo'q.")
+        return
+    # Paket nomlarini chiroyli qilamiz
+    paket_nom = {
+        "sub_1month": "1 oylik (29,900)",
+        "sub_1month_discount": "1 oylik chegirma (19,900)",
+        "test_7day": "7 kunlik (6,990)",
+        "one_1": "1 tahlil",
+    }
+    txt = f"💎 <b>AKTIV OBUNACHILAR</b> ({len(rows)} ta)\n"
+    txt += "<i>Tugash sanasi bo'yicha (yaqin → uzoq)</i>\n━━━━━━━━━━━━━\n\n"
+    for i, r in enumerate(rows[:80], 1):
+        uid, uname, sub_until, paket = r[0], r[1], r[2], r[3]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        pnom = paket_nom.get(paket, paket or "—")
+        # Tugashiga necha kun qolgan
+        qolgan = ""
+        d = _parse_dt(sub_until)
+        if d:
+            kun = (d - datetime.now()).days
+            qolgan = f" ({kun} kun qoldi)" if kun >= 0 else ""
+        txt += f"{i}. {who} (ID {uid})\n   📦 {pnom}\n   ⏳ Tugaydi: {sub_until}{qolgan}\n\n"
+    if len(rows) > 80:
+        txt += f"... va yana {len(rows)-80} ta"
+    # Telegram xabar limiti 4096 - bo'lib yuboramiz
+    if len(txt) <= 4000:
+        await update.message.reply_text(txt, parse_mode="HTML")
+    else:
+        # Bo'laklab yuboramiz
+        bosh = txt[:200]
+        qism = ""
+        await update.message.reply_text(bosh, parse_mode="HTML")
+        for line in txt[200:].split("\n\n"):
+            if len(qism) + len(line) > 3500:
+                await update.message.reply_text(qism, parse_mode="HTML")
+                qism = ""
+            qism += line + "\n\n"
+        if qism:
+            await update.message.reply_text(qism, parse_mode="HTML")
+
+
+async def sotuv_natija_command(update, context):
+    """Admin: har sotuv (1,1b,3,4,5) natijasi - yuborildi, bepul oldi, to'ladi."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    def cnt(q, p=None):
+        r = _db_execute(q, p, fetch='one') if p else _db_execute(q, fetch='one')
+        return (r[0] if r and r[0] is not None else 0)
+
+    # Har sotuv uchun: yuborildi (given=TRUE), bepul oldi (sotuv_bepul_olindi LIKE)
+    steps = [
+        ("1️⃣ sotuv1 (5+ savol)", "sotuv1_given", "sotuv1:"),
+        ("2️⃣ sotuv1b (taklif)", "sotuv1b_given", None),
+        ("3️⃣ sotuv3 (2-4 tatish)", "sotuv3_given", "sotuv3:"),
+        ("4️⃣ sotuv4 (1 marta)", "sotuv4_given", "sotuv4:"),
+        ("5️⃣ sotuv5 (ishlatmagan)", "sotuv5_given", None),
+    ]
+    txt = "📊 <b>SOTUV VORONKASI NATIJASI</b>\n━━━━━━━━━━━━━\n\n"
+    for nom, given_col, bepul_prefix in steps:
+        yuborildi = cnt(f"SELECT COUNT(*) FROM users WHERE {given_col} = TRUE")
+        txt += f"<b>{nom}</b>\n"
+        txt += f"  📤 Yuborildi: {yuborildi}\n"
+        if bepul_prefix:
+            oldi = cnt("SELECT COUNT(*) FROM users WHERE sotuv_bepul_olindi LIKE %s", (bepul_prefix + "%",))
+            txt += f"  🎁 Bepul premium oldi: {oldi}\n"
+            if yuborildi:
+                txt += f"  📈 Bosish darajasi: {(oldi/yuborildi*100):.1f}%\n"
+        # Bu guruhdan to'laganlar: given=TRUE VA keyin to'lagan
+        tolagan = cnt(
+            f"SELECT COUNT(DISTINCT u.user_id) FROM users u "
+            f"JOIN payments p ON p.user_id = u.user_id AND p.status='approved' "
+            f"WHERE u.{given_col} = TRUE")
+        txt += f"  💰 To'lagan: {tolagan}\n"
+        if yuborildi:
+            txt += f"  💵 Konversiya: {(tolagan/yuborildi*100):.1f}%\n"
+        txt += "\n"
+    txt += "━━━━━━━━━━━━━\n"
+    txt += "💡 Konversiya yuqori guruhga ko'proq kuch bering!"
+    await update.message.reply_text(txt, parse_mode="HTML")
 
 
 async def sotuv_test_command(update, context):
@@ -6058,6 +6234,48 @@ async def tarif7_ochirish(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+async def obuna_tugash_eslatma(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni: obunasi 1 kundan keyin tugaydigan foydalanuvchilarga
+    1 oylik taklif yuboradi (renewal). Har userga 1 marta (renewal_eslatma_given)."""
+    now = datetime.now()
+    ertaga_boshi = (now + timedelta(days=1)).strftime("%Y-%m-%d 00:00")
+    ertaga_oxiri = (now + timedelta(days=1)).strftime("%Y-%m-%d 23:59")
+    # Obunasi ertaga tugaydigan, hali eslatma olmagan userlar
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE sub_until IS NOT NULL "
+        "AND sub_until >= %s AND sub_until <= %s "
+        "AND (renewal_eslatma_given IS NULL OR renewal_eslatma_given = FALSE)",
+        (ertaga_boshi, ertaga_oxiri), fetch='all') or []
+    if not rows:
+        return
+    sent = 0
+    for r in rows:
+        uid = r[0]
+        if is_admin(uid):
+            continue
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💎 1 oylik Premium olish", callback_data="buy_sub")
+            ]])
+            await context.bot.send_message(
+                uid,
+                "⏳ <b>Premiumingiz ertaga tugaydi!</b>\n\n"
+                "Kontentingiz endigina o'sishni boshladi — to'xtatmang! 📈\n\n"
+                "💎 Hoziroq 1 oylik Premium oling va cheksiz tahlildan foydalaning.\n\n"
+                "👇 Bir tugma — davom eting!",
+                reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET renewal_eslatma_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.4)
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, f"🔄 Renewal eslatma: {sent} ta obunachiga yuborildi (ertaga tugaydi).")
+        except Exception:
+            pass
+
+
 async def drip_kunlik(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: yangi kirgan (deploy'dan keyin) foydalanuvchilarni izchil isitadi.
     1-kun: bepul (mavjud). 2-kun: jamoa videosi + empatiya +1 bepul. 3-kun: 7 kunlik aksiya.
@@ -6220,6 +6438,8 @@ def main():
             jq.run_daily(juma_kuydir, time=_dtime(hour=uz_to_utc(0), minute=30), days=(5,))
             # Drip (3 kunlik isitish) - har kuni 19:00 UZ (aktiv payt)
             jq.run_daily(drip_kunlik, time=_dtime(hour=uz_to_utc(19), minute=0))
+            # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
+            jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
             logger.info("Juma + Drip scheduler o'rnatildi")
         else:
             logger.warning("job_queue yo'q - juma aksiyasi ishlamaydi (requirements: job-queue kerak)")
@@ -6274,6 +6494,9 @@ def main():
     app.add_handler(CommandHandler("chegirma", chegirma_command))
     app.add_handler(CommandHandler("maxsus_2700", maxsus_2700_command))
     app.add_handler(CommandHandler("sotuv_test", sotuv_test_command))
+    app.add_handler(CommandHandler("sotuv_natija", sotuv_natija_command))
+    app.add_handler(CommandHandler("tolovchilar", tolovchilar_command))
+    app.add_handler(CommandHandler("renewal_hozir", renewal_hozir_command))
     app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
     app.add_handler(CommandHandler("bepul_royxat", bepul_royxat_command))
     app.add_handler(CommandHandler("sotuv1", sotuv1_command))
