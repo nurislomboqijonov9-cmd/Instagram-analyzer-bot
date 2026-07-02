@@ -280,6 +280,10 @@ def init_db():
                                  ("test_renewal_given", "BOOLEAN DEFAULT FALSE"),
                                  ("renewal_chegirma_sana", "TEXT"),
                                  ("tugash_xabar_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("marafon_kun", "INTEGER DEFAULT 0"),
+                                 ("marafon_start", "TEXT"),
+                                 ("marafon_kunlik_sana", "TEXT"),
+                                 ("marafon_tugadi", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -1710,6 +1714,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_menu(message, context):
     # Bitta toza xabar (welcome ichida sovg'a ham bor - 'Wall of Text' bo'lmasin)
     await message.reply_text(t(context, 'welcome'), reply_markup=main_keyboard(context), parse_mode="HTML")
+    # Marafon yoqilgan bo'lsa va bu yangi user bo'lsa - marafonni boshlaymiz
+    if context.user_data.get('is_new') and get_setting("marafon_aktiv", "off") == "on":
+        try:
+            uid = message.chat.id
+            _m = _db_execute("SELECT marafon_kun FROM users WHERE user_id = %s", (uid,), fetch='one')
+            if not _m or not _m[0]:  # hali marafonda emas
+                await asyncio.sleep(1)
+                await marafon_boshla(uid, context)
+        except Exception:
+            pass
     context.user_data['is_new'] = False
 
 
@@ -2058,6 +2072,54 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
         )
+    elif data == 'marafon_tahlil':
+        # Marafon kunlik tahlil - video so'raymiz (bepul balans allaqachon berilgan)
+        await query.answer()
+        await query.message.reply_text(
+            "🎬 Zo'r! Videongizni shu yerga yuboring — bugungi bepul tahlilingizni olaman 👇")
+    elif data == 'marafon_premium':
+        # 5-kun: PREMIUM sovg'a + 7 kunlik undov
+        uid = query.from_user.id
+        # Marafon tugagan deb belgilaymiz + premium balans (bir marta)
+        _tekshir = _db_execute("SELECT marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _tekshir and _tekshir[0]:
+            await query.answer("Siz allaqachon PREMIUM sovg'angizni oldingiz! 🎁", show_alert=True)
+        else:
+            add_premium_balance(uid, 1)
+            _db_execute("UPDATE users SET marafon_tugadi = TRUE WHERE user_id = %s", (uid,))
+            await query.answer("✅ PREMIUM tahlil qo'shildi!")
+            for aid in ADMIN_IDS:
+                try:
+                    uname = query.from_user.username or query.from_user.first_name or ""
+                    who = f"@{uname}" if uname else f"ID {uid}"
+                    await context.bot.send_message(aid, f"🏁 MARAFON TUGATDI (5-kun premium oldi)\n👤 {who}")
+                except Exception:
+                    pass
+        # Video so'raymiz
+        await query.message.reply_text(
+            "🎬 Zo'r! Videongizni yuboring — PREMIUM tahlil qilaman (hook + ovoz)! 👇")
+        # 7 kunlik undov (biroz keyin)
+        await asyncio.sleep(1)
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")
+        ]])
+        await query.message.reply_text(
+            "🎉 <b>Marafonni tugatdingiz — PREMIUM kuchini ko'rdingiz!</b>\n\n"
+            "Hook soniyama-soniya, ovozli maslahat, 3 tayyor variant — "
+            "bularning hammasi 1 hafta sizniki bo'lishi mumkin.\n\n"
+            "🎁 Faqat <b>6,990 so'm</b> — 7 kunlik to'liq Premium.\n\n"
+            "Kontentingizni keyingi bosqichga olib chiqing 👇",
+            reply_markup=kb, parse_mode="HTML")
+    elif data == 'marafon_7kun':
+        # 7 kunlik to'lov (faqat marafon oxirida) - to'lov turlarini ko'rsatamiz
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_test')],
+            [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_test')],
+            [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_test')],
+        ])
+        await query.message.reply_text(
+            "💎 <b>7 kunlik Premium — 6,990 so'm</b>\n\n👇 To'lov turini tanlang:",
+            reply_markup=kb, parse_mode="HTML")
     elif data == 'test_sorov_start':
         # Test so'rovi boshlanadi - so'rov xabarini O'CHIRAMIZ (chat toza qolsin)
         try:
@@ -5287,6 +5349,67 @@ async def renewal_royxat_command(update, context):
             await update.message.reply_text(qism, parse_mode="HTML")
 
 
+async def marafon_on_command(update, context):
+    """Admin: marafonni YOQADI (yangi kirganlar avtomatik marafonga tushadi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("marafon_aktiv", "on")
+    await update.message.reply_text(
+        "✅ MARAFON YOQILDI!\n\n"
+        "Endi yangi kirgan har bir foydalanuvchi 5 kunlik marafonga tushadi:\n"
+        "• Har kuni 11:00 - keyingi kun xabari + bepul tahlil\n"
+        "• 23:00 - ishlatilmagan kunlik bepul kuyadi\n"
+        "• 5-kun - PREMIUM sovg'a + 7 kunlik taklif\n\n"
+        "O'chirish: /marafon_off")
+
+
+async def marafon_off_command(update, context):
+    """Admin: marafonni O'CHIRADI (yangi kirganlar marafonsiz)."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("marafon_aktiv", "off")
+    await update.message.reply_text("🛑 Marafon o'chirildi. Yangi kirganlar marafonsiz (oddiy).")
+
+
+async def marafon_holat_command(update, context):
+    """Admin: marafon statistikasi."""
+    if not is_admin(update.effective_user.id):
+        return
+    aktiv = get_setting("marafon_aktiv", "off")
+    def cnt(q):
+        r = _db_execute(q, fetch='one')
+        return (r[0] if r and r[0] else 0)
+    jami = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun >= 1")
+    k1 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 1 AND marafon_tugadi = FALSE")
+    k2 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 2 AND marafon_tugadi = FALSE")
+    k3 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 3 AND marafon_tugadi = FALSE")
+    k4 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 4 AND marafon_tugadi = FALSE")
+    tugatgan = cnt("SELECT COUNT(*) FROM users WHERE marafon_tugadi = TRUE")
+    txt = f"🏃 <b>MARAFON HOLATI</b>\n━━━━━━━━━━━━━\n\n"
+    txt += f"Holat: {'✅ YOQILGAN' if aktiv == 'on' else '🛑 O`chirilgan'}\n\n"
+    txt += f"Jami marafonda bo'lgan: {jami}\n"
+    txt += f"1-kunda: {k1}\n2-kunda: {k2}\n3-kunda: {k3}\n4-kunda: {k4}\n"
+    txt += f"🏁 Tugatgan (5-kun): {tugatgan}\n"
+    if jami:
+        txt += f"\n📈 Tugatish darajasi: {(tugatgan/jami*100):.1f}%"
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
+async def marafon_test_command(update, context):
+    """Admin: 5 kun marafon xabarlarini FAQAT o'zingizga ketma-ket ko'rsatadi (sinash)."""
+    if not is_admin(update.effective_user.id):
+        return
+    aid = update.effective_user.id
+    await update.message.reply_text("🧪 Marafon test: 5 kun xabari sizga ketma-ket keladi...")
+    for kun in range(1, 6):
+        matn, tugma = marafon_kun_matni(kun)
+        cb = "marafon_premium" if kun == 5 else "marafon_tahlil"
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+        await context.bot.send_message(aid, f"[TEST {kun}-KUN]\n\n" + matn, reply_markup=kb, parse_mode="HTML")
+        await asyncio.sleep(0.5)
+    await update.message.reply_text("✅ 5 kun ko'rsatildi! Tugmalarni bosib sinang.")
+
+
 async def renewal_hozir_command(update, context):
     """Admin: renewal eslatmasini HOZIR ishga tushiradi (kutmasdan sinash)."""
     if not is_admin(update.effective_user.id):
@@ -6501,6 +6624,115 @@ async def obuna_tugash_eslatma(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+def marafon_progress(kun):
+    """Progress bar emoji: kun (1-5) -> ▓▓▓▓░░░░░░ 40%"""
+    foiz = int(kun / 5 * 100)
+    tuldi = int(kun * 2)  # 5 kun = 10 blok
+    bosh = "▓" * tuldi + "░" * (10 - tuldi)
+    return f"{bosh} {foiz}%"
+
+
+def marafon_kun_matni(kun):
+    """Har kun uchun (matn, tugma_matni) qaytaradi."""
+    progress = marafon_progress(kun)
+    if kun == 1:
+        return (
+            "🏃 <b>MARAFON BOSHLANDI — 1-KUN!</b>\n\n"
+            "Bir video sizni mashhur qilmaydi — algoritmga TIZIM kerak 💪\n\n"
+            "Bugun 1-tahlilingiz tayyor. Har kuni 1 video tashlang, "
+            "5-kuni <b>PREMIUM sovg'a</b> + shaxsiy strategiya olasiz!\n\n"
+            f"{progress} (1/5)\n\n"
+            "⚠️ Bepul tahlil FAQAT bugun — kechgача ishlating!",
+            "🎬 Bepul tahlilimni olish")
+    if kun == 2:
+        return (
+            "🔥 <b>2-KUN!</b>\n\n"
+            "Kecha zo'r boshladingiz! Davom etamiz 💪\n\n"
+            f"{progress} (2/5)\n\n"
+            "🎁 Bugungi bepul tahlilingiz tayyor — kechgача ishlating!",
+            "🎬 Bugungi tahlilimni olish")
+    if kun == 3:
+        return (
+            "💪 <b>3-KUN — YARIM YO'LDASIZ!</b>\n\n"
+            "Ko'p bloger shu yerda tashlab ketadi — lekin siz kuchlisiz! 🔥\n\n"
+            f"{progress} (3/5)\n\n"
+            "🎁 Bugungi tahlilingiz tayyor!",
+            "🎬 Davom etish — tahlil olish")
+    if kun == 4:
+        return (
+            "⚡️ <b>4-KUN!</b>\n\n"
+            "Yana 1 kun — <b>PREMIUM sovg'a</b> ochiladi! 🎁\n\n"
+            f"{progress} (4/5)\n\n"
+            "🎁 Bugungi oxirgi oddiy tahlilingiz — ertaga PREMIUM!",
+            "🎬 Oxirgi bepul (ertaga PREMIUM!)")
+    # 5-kun
+    return (
+        "🎉 <b>TABRIKLAYMIZ! 5-KUN — MARAFON TUGADI!</b>\n\n"
+        "Siz \"Продвинутый криэйтор\" darajasiga yetdingiz! 👑\n\n"
+        f"▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
+        "🎁 Sizga <b>PREMIUM tahlil</b> sovg'a: hook soniyama-soniya, "
+        "ovozli maslahat, 3 ta tayyor hook!\n\n"
+        "Pastdagi tugmani bosing 👇",
+        "💎 PREMIUM tahlilimni olish")
+
+
+async def marafon_boshla(uid, context):
+    """Foydalanuvchini marafonga qo'shadi (1-kun) va 1-xabar yuboradi."""
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    _db_execute(
+        "UPDATE users SET marafon_kun = 1, marafon_start = %s, marafon_kunlik_sana = %s, "
+        "marafon_tugadi = FALSE WHERE user_id = %s",
+        (bugun, bugun, uid))
+    add_balance(uid, 1)  # 1-kun bepul tahlil
+    matn, tugma = marafon_kun_matni(1)
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_tahlil")]])
+    try:
+        await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        pass
+
+
+async def marafon_kunlik(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni 11:00 - marafondagilarga keyingi kun xabari + yangi bepul tahlil.
+    Kunlik bepul o'sha kuni ishlatilmasa 23:00 da kuyadi (marafon_kuydir)."""
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    # Marafonda (kun 1-4), tugamagan, bugun hali kunlik olmagan
+    rows = _db_execute(
+        "SELECT user_id, marafon_kun FROM users "
+        "WHERE marafon_kun >= 1 AND marafon_kun < 5 AND marafon_tugadi = FALSE "
+        "AND (marafon_kunlik_sana IS NULL OR marafon_kunlik_sana <> %s)",
+        (bugun,), fetch='all') or []
+    for r in rows:
+        uid, kun = r[0], r[1]
+        yangi_kun = kun + 1
+        # Yangi kunlik bepul (eski kuygan bo'lsa ham yangi beramiz)
+        add_balance(uid, 1)
+        _db_execute(
+            "UPDATE users SET marafon_kun = %s, marafon_kunlik_sana = %s WHERE user_id = %s",
+            (yangi_kun, bugun, uid))
+        matn, tugma = marafon_kun_matni(yangi_kun)
+        cb = "marafon_premium" if yangi_kun == 5 else "marafon_tahlil"
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+
+
+async def marafon_kuydir(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni 23:00 - o'sha kuni ishlatilmagan kunlik bepul tahlilni kuydiradi.
+    Marafondagilarning oddiy balansini 0 qiladi (marafon davom etadi)."""
+    # Marafonda bo'lgan (kun 1-5), obunachi/premium bo'lmaganlarning oddiy balansi kuyadi
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    _db_execute(
+        "UPDATE users SET balance = 0 "
+        "WHERE marafon_kun >= 1 AND marafon_tugadi = FALSE "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(premium_balance,0) = 0",
+        (now_str,))
+
+
 async def drip_kunlik(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: yangi kirgan (deploy'dan keyin) foydalanuvchilarni izchil isitadi.
     1-kun: bepul (mavjud). 2-kun: jamoa videosi + empatiya +1 bepul. 3-kun: 7 kunlik aksiya.
@@ -6667,6 +6899,9 @@ def main():
             jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
             # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
             jq.run_daily(obuna_tugadi_xabar, time=_dtime(hour=uz_to_utc(11), minute=5))
+            # Marafon: har kuni 11:00 kunlik xabar+bepul, 23:00 kuydir
+            jq.run_daily(marafon_kunlik, time=_dtime(hour=uz_to_utc(11), minute=0))
+            jq.run_daily(marafon_kuydir, time=_dtime(hour=uz_to_utc(23), minute=0))
             logger.info("Juma + Drip scheduler o'rnatildi")
         else:
             logger.warning("job_queue yo'q - juma aksiyasi ishlamaydi (requirements: job-queue kerak)")
@@ -6724,6 +6959,10 @@ def main():
     app.add_handler(CommandHandler("sotuv_natija", sotuv_natija_command))
     app.add_handler(CommandHandler("tolovchilar", tolovchilar_command))
     app.add_handler(CommandHandler("renewal_hozir", renewal_hozir_command))
+    app.add_handler(CommandHandler("marafon_on", marafon_on_command))
+    app.add_handler(CommandHandler("marafon_off", marafon_off_command))
+    app.add_handler(CommandHandler("marafon_holat", marafon_holat_command))
+    app.add_handler(CommandHandler("marafon_test", marafon_test_command))
     app.add_handler(CommandHandler("renewal_royxat", renewal_royxat_command))
     app.add_handler(CommandHandler("test_tugaganlar", test_tugaganlar_command))
     app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
