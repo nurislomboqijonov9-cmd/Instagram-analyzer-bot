@@ -4228,6 +4228,7 @@ async def buyruqlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sotuv_test — hammasini FAQAT o'zingizga (sinash)\n"
         "/sotuv_natija — har sotuv natijasi (bosdi, to'ladi)\n"
         "/renewal_hozir — obuna tugash eslatmasini sinash\n"
+        "/renewal_royxat — kimga renewal/chegirma yuborilgan\n"
         "/test_tugaganlar — 7 kunligi tugaganlarga 20% taklif\n"
         "/sotuv_reset &lt;raqam&gt; — sotuv flagini tiklash (qayta yuborish)\n"
         "/bepul_royxat — kim bepul premium oldi\n"
@@ -5234,12 +5235,81 @@ async def test_tugaganlar_command(update, context):
     await update.message.reply_text(f"✅ Yuborildi: {sent}, xato: {failed}.")
 
 
+async def renewal_royxat_command(update, context):
+    """Admin: kimlarga renewal/chegirma taklifi yuborilganini ko'rsatadi."""
+    if not is_admin(update.effective_user.id):
+        return
+    # 1) Obuna tugashiga 1 kun eslatmasi olganlar (renewal_eslatma_given)
+    r1 = _db_execute(
+        "SELECT user_id, username, sub_until FROM users WHERE renewal_eslatma_given = TRUE "
+        "ORDER BY sub_until DESC", fetch='all') or []
+    # 2) 7 kunlik tugab, 20% (23,900) taklif olganlar (test_renewal_given + sana)
+    r2 = _db_execute(
+        "SELECT user_id, username, renewal_chegirma_sana FROM users WHERE test_renewal_given = TRUE "
+        "ORDER BY renewal_chegirma_sana DESC", fetch='all') or []
+    txt = "🔄 <b>RENEWAL / CHEGIRMA TAKLIFLARI</b>\n━━━━━━━━━━━━━\n\n"
+    txt += f"<b>⏳ 'Ertaga tugaydi' eslatmasi olganlar:</b> {len(r1)} ta\n"
+    for i, r in enumerate(r1[:30], 1):
+        uid, uname, su = r[0], r[1], r[2]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        txt += f"{i}. {who} (ID {uid}) — tugash: {su}\n"
+    if len(r1) > 30:
+        txt += f"... yana {len(r1)-30} ta\n"
+    txt += f"\n<b>🎁 20% (23,900) taklif olganlar:</b> {len(r2)} ta\n"
+    for i, r in enumerate(r2[:30], 1):
+        uid, uname, sana = r[0], r[1], r[2]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        # 24 soat holati
+        holat = ""
+        d = _parse_dt(sana) if sana else None
+        if d:
+            otdi = (datetime.now() - d).total_seconds()
+            holat = " (chegirma FAOL)" if otdi <= 24*3600 else " (chegirma tugagan)"
+        txt += f"{i}. {who} (ID {uid}) — yuborilgan: {sana or '—'}{holat}\n"
+    if len(r2) > 30:
+        txt += f"... yana {len(r2)-30} ta\n"
+    if not r1 and not r2:
+        txt += "\n📭 Hali hech kimga renewal taklifi yuborilmagan.\n"
+        txt += "(Avtomatik: har kuni 11:00 'ertaga tugaydi'ganlarga boradi.\n"
+        txt += "Qo'lda: /renewal_hozir yoki /test_tugaganlar YUBOR)"
+    # Bo'laklab yuborish (uzun bo'lsa)
+    if len(txt) <= 4000:
+        await update.message.reply_text(txt, parse_mode="HTML")
+    else:
+        bloklar = txt.split("\n")
+        qism = ""
+        for blok in bloklar:
+            if len(qism) + len(blok) + 1 > 3500:
+                await update.message.reply_text(qism, parse_mode="HTML")
+                qism = ""
+            qism += blok + "\n"
+        if qism.strip():
+            await update.message.reply_text(qism, parse_mode="HTML")
+
+
 async def renewal_hozir_command(update, context):
     """Admin: renewal eslatmasini HOZIR ishga tushiradi (kutmasdan sinash)."""
     if not is_admin(update.effective_user.id):
         return
-    await update.message.reply_text("🔄 Renewal eslatma hozir ishga tushirilmoqda...")
+    # Avval nechta odam "ertaga tugaydi" holatida ekanini ko'rsatamiz
+    now = datetime.now()
+    ertaga_boshi = (now + timedelta(days=1)).strftime("%Y-%m-%d 00:00")
+    ertaga_oxiri = (now + timedelta(days=1)).strftime("%Y-%m-%d 23:59")
+    rows = _db_execute(
+        "SELECT COUNT(*) FROM users WHERE sub_until IS NOT NULL "
+        "AND sub_until >= %s AND sub_until <= %s "
+        "AND (renewal_eslatma_given IS NULL OR renewal_eslatma_given = FALSE)",
+        (ertaga_boshi, ertaga_oxiri), fetch='one')
+    n = rows[0] if rows else 0
+    if n == 0:
+        await update.message.reply_text(
+            "📭 Hozir 'ertaga tugaydigan' (eslatma olmagan) obunachi YO'Q.\n\n"
+            "ℹ️ Renewal avtomatik har kuni 11:00 da ishlaydi.\n"
+            "Kimga yuborilganini ko'rish: /renewal_royxat")
+        return
+    await update.message.reply_text(f"🔄 {n} ta obunachiga (ertaga tugaydi) eslatma yuborilmoqda...")
     await obuna_tugash_eslatma(context)
+    await update.message.reply_text("✅ Tayyor! Natija: /renewal_royxat")
 
 
 async def tolovchilar_command(update, context):
@@ -6654,6 +6724,7 @@ def main():
     app.add_handler(CommandHandler("sotuv_natija", sotuv_natija_command))
     app.add_handler(CommandHandler("tolovchilar", tolovchilar_command))
     app.add_handler(CommandHandler("renewal_hozir", renewal_hozir_command))
+    app.add_handler(CommandHandler("renewal_royxat", renewal_royxat_command))
     app.add_handler(CommandHandler("test_tugaganlar", test_tugaganlar_command))
     app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
     app.add_handler(CommandHandler("bepul_royxat", bepul_royxat_command))
