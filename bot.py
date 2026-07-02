@@ -49,6 +49,8 @@ CARD_NUMBER = os.getenv("CARD_NUMBER", "6262 7300 6521 3151")
 CARD_HOLDER = os.getenv("CARD_HOLDER", "Boqijonov Nurislom")
 # Ishonch videosi (jamoa haqida) + fikr bildirib 1 bepul olish
 VIDEO_FILE_ID = os.getenv("VIDEO_FILE_ID", "BAACAgIAAxkBAAEDdblqO1vKqmm-sO5EpO4ithiAdFI0ogACdaEAAh442EmljRTrS2sTqjwE")
+# Marafon 3-kun uchun kanal (admin o'z kanalini qo'yadi: @username yoki link)
+MARAFON_KANAL = os.getenv("MARAFON_KANAL", "@instadoctor_uz")
 
 
 def is_admin(user_id):
@@ -2072,6 +2074,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "🎬 Zo'r! Videongizni shu yerga yuboring — men uni to'liq tahlil qilaman 👇"
         )
+    elif data == 'marafon_kanal':
+        # 3-kun: kanalga obuna tekshiriladi, obuna bo'lsa bepul tahlil beriladi
+        uid = query.from_user.id
+        try:
+            member = await context.bot.get_chat_member(MARAFON_KANAL, uid)
+            obuna = member.status in ("member", "administrator", "creator")
+        except Exception:
+            obuna = False
+        if obuna:
+            # Bugun kanal bepulini bergunmi tekshiramiz (takror bermaslik)
+            bugun = datetime.now().strftime("%Y-%m-%d")
+            _ch = _db_execute("SELECT marafon_kunlik_sana, marafon_kun FROM users WHERE user_id = %s", (uid,), fetch='one')
+            # 3-kun bepulini faqat bir marta beramiz - alohida belgi (marafon_start ishlatmaymiz)
+            already = _db_execute("SELECT sotuv_bepul_olindi FROM users WHERE user_id = %s", (uid,), fetch='one')
+            key = "marafon_kanal_bonus"
+            if already and already[0] == key:
+                await query.answer("✅ Siz allaqachon bugungi tahlilingizni oldingiz!", show_alert=True)
+                await query.message.reply_text("🎬 Videongizni yuboring — tahlil qilaman 👇")
+            else:
+                add_balance(uid, 1)
+                _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s", (key, uid))
+                await query.answer("✅ Rahmat! Bepul tahlilingiz ochildi! 🎉")
+                await query.message.reply_text(
+                    "🎉 Zo'r! Obuna uchun rahmat! 💙\n\n"
+                    "🎬 Endi videongizni yuboring — bugungi bepul tahlilingizni olaman 👇")
+        else:
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("📢 Kanalga o'tish", url=f"https://t.me/{MARAFON_KANAL.lstrip('@')}")],
+                [InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="marafon_kanal")],
+            ])
+            await query.answer("Avval kanalga obuna bo'ling 👆", show_alert=True)
+            await query.message.reply_text(
+                f"📢 Bepul tahlil uchun avval kanalimizga obuna bo'ling:\n{MARAFON_KANAL}\n\n"
+                "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
+                reply_markup=kb)
     elif data == 'marafon_tahlil':
         # Marafon kunlik tahlil - video so'raymiz (bepul balans allaqachon berilgan)
         await query.answer()
@@ -5400,13 +5437,24 @@ async def marafon_test_command(update, context):
     if not is_admin(update.effective_user.id):
         return
     aid = update.effective_user.id
-    await update.message.reply_text("🧪 Marafon test: 5 kun xabari sizga ketma-ket keladi...")
+    await update.message.reply_text("🧪 Marafon test: 5 kun xabari sizga ketma-ket keladi (video ham)...")
     for kun in range(1, 6):
         matn, tugma = marafon_kun_matni(kun)
-        cb = "marafon_premium" if kun == 5 else "marafon_tahlil"
+        if kun == 5:
+            cb = "marafon_premium"
+        elif kun == 3:
+            cb = "marafon_kanal"
+        else:
+            cb = "marafon_tahlil"
+        # 2-kun: jamoa videosi
+        if kun == 2:
+            try:
+                await context.bot.send_video(aid, VIDEO_FILE_ID)
+            except Exception:
+                await context.bot.send_message(aid, "⚠️ [Jamoa videosi bu yerda ko'rinadi]")
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
         await context.bot.send_message(aid, f"[TEST {kun}-KUN]\n\n" + matn, reply_markup=kb, parse_mode="HTML")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.6)
     await update.message.reply_text("✅ 5 kun ko'rsatildi! Tugmalarni bosib sinang.")
 
 
@@ -6637,42 +6685,65 @@ def marafon_kun_matni(kun):
     progress = marafon_progress(kun)
     if kun == 1:
         return (
-            "🏃 <b>MARAFON BOSHLANDI — 1-KUN!</b>\n\n"
-            "Bir video sizni mashhur qilmaydi — algoritmga TIZIM kerak 💪\n\n"
-            "Bugun 1-tahlilingiz tayyor. Har kuni 1 video tashlang, "
-            "5-kuni <b>PREMIUM sovg'a</b> + shaxsiy strategiya olasiz!\n\n"
-            f"{progress} (1/5)\n\n"
-            "⚠️ Bepul tahlil FAQAT bugun — kechgача ishlating!",
+            "🎬✨ <b>REELS MARAFONI BOSHLANDI!</b> ✨🎬\n"
+            "🏁 <b>1-KUN</b>\n\n"
+            "👋 Salom, kelajakdagi TOP bloger! 🌟\n\n"
+            "Rostini aytamanmi? 🤔 Hozircha siz — <b>boshlang'ich kreator</b>siz. "
+            "Lekin bu yomon emas! 💪 Har bir TOP bloger shundan boshlagan. 🚀\n\n"
+            "❗️ Bitta video sizni mashhur qilmaydi — algoritmga <b>TIZIM</b> kerak. 🧠\n\n"
+            "🎯 Shuning uchun men siz uchun <b>5 KUNLIK MARAFON</b> tayyorladim:\n"
+            "📆 Har kuni 1 ta video tahlil qilasiz\n"
+            "📈 Har kuni bir pog'ona o'sasiz\n"
+            "🎁 5-kuni — <b>PREMIUM sovg'a</b> + shaxsiy strategiya!\n\n"
+            f"📊 {progress} (1/5)\n\n"
+            "🔥 Keling, boshladik! Bugungi bepul tahlilingizni oling 👇\n"
+            "⏰ <i>Diqqat: bepul tahlil FAQAT bugun ishlaydi, kechga kuyadi!</i>",
             "🎬 Bepul tahlilimni olish")
     if kun == 2:
         return (
-            "🔥 <b>2-KUN!</b>\n\n"
-            "Kecha zo'r boshladingiz! Davom etamiz 💪\n\n"
-            f"{progress} (2/5)\n\n"
-            "🎁 Bugungi bepul tahlilingiz tayyor — kechgача ishlating!",
+            "🔥🔥 <b>2-KUN — ZO'R KETYAPSIZ!</b> 🔥🔥\n\n"
+            "👏 Kecha birinchi qadamni tashladingiz — bu allaqачon g'alaba! 🎉\n\n"
+            "🤝 Bugun sizni <b>InstaDoctor jamoasi</b> bilan tanishtirmoqchiman. "
+            "Bu bot ortida jonli odamlar turibdi — biz sizning o'sishingizni chin dildan xohlaymiz! 💙\n\n"
+            "🎥 Quyidagi videoni ko'ring — biz kimmiz, nega bu ishni qilyapmiz 👇\n\n"
+            f"📊 {progress} (2/5)\n\n"
+            "🎁 Videoni ko'rgach, bugungi bepul tahlilingizni oling! ⏰ <i>Faqat bugun!</i>",
             "🎬 Bugungi tahlilimni olish")
     if kun == 3:
         return (
-            "💪 <b>3-KUN — YARIM YO'LDASIZ!</b>\n\n"
-            "Ko'p bloger shu yerda tashlab ketadi — lekin siz kuchlisiz! 🔥\n\n"
-            f"{progress} (3/5)\n\n"
-            "🎁 Bugungi tahlilingiz tayyor!",
-            "🎬 Davom etish — tahlil olish")
+            "💪✨ <b>3-KUN — YARIM YO'LDASIZ!</b> ✨💪\n\n"
+            "🎊 Ko'pchilik shu yerda tashlab ketadi... lekin SIZ emas! 🦁 "
+            "Siz haqiqiy kreator ekaningizni isbotlayapsiz! 🔥\n\n"
+            "🎁 Bugun sizga maxsus sovg'a bor! Lekin bitta kichik shart: 👇\n\n"
+            "📢 <b>Kanalimizga obuna bo'ling</b> — u yerda har kuni "
+            "TOP bloglar sirlarini, viral hooklar va reels fokuslarini ulashamiz! 🤫🔥\n\n"
+            "✅ Obuna bo'lgach — bugungi <b>bepul tahlilingiz</b> ochiladi! 🎬\n\n"
+            f"📊 {progress} (3/5)",
+            "📢 Kanalga obuna bo'ldim ✅")
     if kun == 4:
         return (
-            "⚡️ <b>4-KUN!</b>\n\n"
-            "Yana 1 kun — <b>PREMIUM sovg'a</b> ochiladi! 🎁\n\n"
-            f"{progress} (4/5)\n\n"
-            "🎁 Bugungi oxirgi oddiy tahlilingiz — ertaga PREMIUM!",
-            "🎬 Oxirgi bepul (ertaga PREMIUM!)")
+            "⚡️🚀 <b>4-KUN — DEYARLI TAYYOR!</b> 🚀⚡️\n\n"
+            "🤩 Bilasizmi eng qizig'i nima? 👀\n\n"
+            "📈 Aynan shu marafondan o'tган bloglar PREMIUM bilan hooklarini "
+            "tuzatib, ko'rishlarini <b>3-5 barobar</b> oshirmoqda! 🔥📊\n\n"
+            "💎 Ertaga sizning navbatingiz — <b>PREMIUM sovg'a</b> kutmoqda:\n"
+            "🎯 Hook soniyama-soniya ochiladi\n"
+            "🔊 Ovozli maslahat\n"
+            "✍️ 3 ta tayyor hook variant!\n\n"
+            f"📊 {progress} (4/5)\n\n"
+            "🎁 Bugungi tahlilingizni oling — ertaga eng zo'ri kutmoqda! 👇",
+            "🎬 Bugungi tahlilimni olish")
     # 5-kun
     return (
-        "🎉 <b>TABRIKLAYMIZ! 5-KUN — MARAFON TUGADI!</b>\n\n"
-        "Siz \"Продвинутый криэйтор\" darajasiga yetdingiz! 👑\n\n"
-        f"▓▓▓▓▓▓▓▓▓▓ 100% ✅\n\n"
-        "🎁 Sizga <b>PREMIUM tahlil</b> sovg'a: hook soniyama-soniya, "
-        "ovozli maslahat, 3 ta tayyor hook!\n\n"
-        "Pastdagi tugmani bosing 👇",
+        "🎉🎊 <b>TABRIKLAYMIZ! MARAFON TUGADI!</b> 🎊🎉\n\n"
+        "👑✨ Siz <b>\"Ilg'or Kreator\"</b> darajasiga yetdingiz! ✨👑\n\n"
+        "▓▓▓▓▓▓▓▓▓▓ 💯% ✅\n\n"
+        "🔥 5 kun davomida siz o'zingizni isbotlaingiz — endi sovg'a vaqti! 🎁\n\n"
+        "💎 Sizga <b>PREMIUM TAHLIL</b> sovg'a qilaman:\n"
+        "🎯 Hook soniyama-soniya\n"
+        "🔊 Ovozli maslahat\n"
+        "✍️ 3 ta tayyor hook!\n\n"
+        "🎬 Pastdagi tugmani bosing va PREMIUM kuchini his qiling! 👇",
         "💎 PREMIUM tahlilimni olish")
 
 
@@ -6706,14 +6777,28 @@ async def marafon_kunlik(context: ContextTypes.DEFAULT_TYPE):
         uid, kun = r[0], r[1]
         yangi_kun = kun + 1
         # Yangi kunlik bepul (eski kuygan bo'lsa ham yangi beramiz)
-        add_balance(uid, 1)
+        # 3-kun: bepul FAQAT kanalga obuna bosgach beriladi (hozir bermaymiz)
+        if yangi_kun != 3:
+            add_balance(uid, 1)
         _db_execute(
             "UPDATE users SET marafon_kun = %s, marafon_kunlik_sana = %s WHERE user_id = %s",
             (yangi_kun, bugun, uid))
         matn, tugma = marafon_kun_matni(yangi_kun)
-        cb = "marafon_premium" if yangi_kun == 5 else "marafon_tahlil"
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+        # Tugma callback: 3-kun kanal, 5-kun premium, qolgani tahlil
+        if yangi_kun == 5:
+            cb = "marafon_premium"
+        elif yangi_kun == 3:
+            cb = "marafon_kanal"
+        else:
+            cb = "marafon_tahlil"
         try:
+            # 2-kun: jamoa videosini yuboramiz + keyin xabar
+            if yangi_kun == 2:
+                try:
+                    await context.bot.send_video(uid, VIDEO_FILE_ID)
+                except Exception:
+                    pass
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
             await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
         except Exception:
             pass
