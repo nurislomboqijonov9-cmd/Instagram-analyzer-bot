@@ -5458,6 +5458,60 @@ async def marafon_off_command(update, context):
     await update.message.reply_text("🛑 Marafon o'chirildi. Yangi kirganlar marafonsiz (oddiy).")
 
 
+async def avto_on_command(update, context):
+    """Admin: avtomatik sotuv + 3 mahal hisobotni YOQADI."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("avto_sotuv_aktiv", "on")
+    set_setting("hisobot_aktiv", "on")
+    await update.message.reply_text(
+        "✅ AVTOMATLASHTIRISH YOQILDI!\n\n"
+        "🤖 Avto-sotuv (har kuni 12:00):\n"
+        "• Yangi 5+ larga → sotuv1\n"
+        "• Yangi 2-4 larga → sotuv3\n"
+        "• Yangi 1 martalik → sotuv4\n"
+        "• Spam himoyasi: kuniga max 150 ta\n\n"
+        "📊 Hisobot (kuniga 3 marta):\n"
+        "• 09:00 — kechagi yakun\n"
+        "• 14:00 — bugun hozircha\n"
+        "• 21:00 — bugun yakuni\n\n"
+        "O'chirish: /avto_off")
+
+
+async def avto_off_command(update, context):
+    """Admin: avtomatik sotuv + hisobotni O'CHIRADI."""
+    if not is_admin(update.effective_user.id):
+        return
+    set_setting("avto_sotuv_aktiv", "off")
+    set_setting("hisobot_aktiv", "off")
+    await update.message.reply_text("🛑 Avtomatlashtirish o'chirildi (sotuv + hisobot qo'lda).")
+
+
+async def avto_test_command(update, context):
+    """Admin: hisobotni HOZIR ko'rsatadi (sinash)."""
+    if not is_admin(update.effective_user.id):
+        return
+    for davr in ["kecha", "bugun_yarim", "bugun_yakun"]:
+        matn = await _hisobot_matni(davr)
+        await update.message.reply_text(matn, parse_mode="HTML")
+        await asyncio.sleep(0.3)
+    await update.message.reply_text(
+        "☝️ 3 mahal hisobot namunasi.\n\n"
+        "Avto-sotuvni sinash uchun: /avto_sotuv_hozir")
+
+
+async def avto_sotuv_hozir_command(update, context):
+    """Admin: avto-sotuvni HOZIR ishga tushiradi (sinash)."""
+    if not is_admin(update.effective_user.id):
+        return
+    if get_setting("avto_sotuv_aktiv", "off") != "on":
+        await update.message.reply_text("⚠️ Avval /avto_on bosing (avto-sotuv o'chiq).")
+        return
+    await update.message.reply_text("🤖 Avto-sotuv hozir ishga tushmoqda...")
+    await avto_sotuv(context)
+    await update.message.reply_text("✅ Tayyor!")
+
+
 async def marafon_holat_command(update, context):
     """Admin: marafon statistikasi."""
     if not is_admin(update.effective_user.id):
@@ -6867,6 +6921,150 @@ async def marafon_kunlik(context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(0.3)
 
 
+async def avto_sotuv(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni 12:00 - avtomatik sotuv (sotuv1, sotuv3, sotuv4).
+    Yangi mos bo'lganlarga o'zi yuboradi. Spam himoyasi: kuniga max 150 ta."""
+    if get_setting("avto_sotuv_aktiv", "off") != "on":
+        return
+    MAX_KUN = 150  # kuniga maksimal xabar (spam himoyasi)
+    yuborildi_jami = 0
+    hisobot = {"sotuv1": 0, "sotuv3": 0, "sotuv4": 0}
+
+    async def _yubor(uid, msg_key, flag_col, tugma_matni, cb):
+        nonlocal yuborildi_jami
+        if yuborildi_jami >= MAX_KUN:
+            return False
+        if is_blocked(uid):
+            return False
+        # Marafonda bo'lgan (tugatmagan) odamlarga avto-sotuv YUBORMAYMIZ
+        # (ular allaqachon marafon orqali bepul olyapti - chalkashmasin)
+        _mar = _db_execute("SELECT marafon_kun, marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _mar and _mar[0] and _mar[0] >= 1 and not _mar[1]:
+            return False  # marafonda - o'tkazib yuboramiz
+        try:
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma_matni, callback_data=cb)]])
+            await context.bot.send_message(uid, TEXTS['uz'][msg_key], reply_markup=kb, parse_mode="HTML")
+            _db_execute(f"UPDATE users SET {flag_col} = TRUE WHERE user_id = %s", (uid,))
+            yuborildi_jami += 1
+            return True
+        except Exception:
+            return False
+
+    # sotuv1 - 5+ ishlatgan, to'lamagan
+    for uid in _kup_tahlil_uids(5, "sotuv1_given"):
+        if await _yubor(uid, "sotuv1_msg", "sotuv1_given",
+                        "💬 Fikr bildirish (va bepul tahlil oling!)", "sotuv1_fikr"):
+            hisobot["sotuv1"] += 1
+        await asyncio.sleep(0.4)
+    # sotuv3 - 2-4 tahlil
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT u.user_id FROM users u "
+        "JOIN (SELECT user_id FROM analyses WHERE kind='video' "
+        "GROUP BY user_id HAVING COUNT(*) >= 2 AND COUNT(*) < 5) a ON a.user_id = u.user_id "
+        "WHERE (u.sub_until IS NULL OR u.sub_until <= %s) "
+        "AND (u.sotuv3_given IS NULL OR u.sotuv3_given = FALSE)", (now_str,), fetch='all') or []
+    for r in rows:
+        if is_admin(r[0]):
+            continue
+        if await _yubor(r[0], "sotuv3_msg", "sotuv3_given",
+                        "🔥 Premium kuchini sinab ko'rish", "sotuv3_bepul"):
+            hisobot["sotuv3"] += 1
+        await asyncio.sleep(0.4)
+    # sotuv4 - aynan 1 marta
+    for uid in _aniq_tahlil_uids(1, "sotuv4_given"):
+        if await _yubor(uid, "sotuv4_msg", "sotuv4_given",
+                        "🎁 Bepul premium olish", "sotuv4_bepul"):
+            hisobot["sotuv4"] += 1
+        await asyncio.sleep(0.4)
+    # Adminlarga qisqa xabar
+    if yuborildi_jami > 0:
+        for aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    aid, f"🤖 Avto-sotuv: sotuv1={hisobot['sotuv1']}, "
+                    f"sotuv3={hisobot['sotuv3']}, sotuv4={hisobot['sotuv4']} (jami {yuborildi_jami})")
+            except Exception:
+                pass
+
+
+async def _hisobot_matni(davr):
+    """Hisobot matnini tayyorlaydi. davr: 'kecha', 'bugun_yarim', 'bugun_yakun'."""
+    now = datetime.now()
+    bugun = now.strftime("%Y-%m-%d")
+    kecha = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    def cnt(q, p=None):
+        r = _db_execute(q, p, fetch='one') if p else _db_execute(q, fetch='one')
+        return (r[0] if r and r[0] is not None else 0)
+
+    if davr == "kecha":
+        yangi = cnt("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (kecha + "%",))
+        tahlil = cnt("SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (kecha + "%",))
+        sotuv = cnt("SELECT COUNT(*) FROM payments WHERE status='approved' AND created LIKE %s", (kecha + "%",))
+        pul = cnt("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='approved' AND created LIKE %s", (kecha + "%",))
+        marafon = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun >= 1 AND marafon_tugadi = FALSE")
+        issiq = cnt("SELECT COUNT(*) FROM (SELECT u.user_id FROM users u JOIN (SELECT user_id FROM analyses WHERE kind='video' GROUP BY user_id HAVING COUNT(*)>=5) a ON a.user_id=u.user_id LEFT JOIN payments p ON p.user_id=u.user_id AND p.status='approved' WHERE p.user_id IS NULL) t")
+        return (f"🌅 <b>KECHAGI HISOBOT</b> ({kecha})\n━━━━━━━━━━━\n"
+                f"👥 Yangi user: {yangi}\n🎬 Tahlil: {tahlil}\n"
+                f"💰 Sotuv: {sotuv} ta ({pul:,} so'm)\n"
+                f"🏃 Marafonda: {marafon}\n🔥 Issiq (5+ to'lamagan): {issiq}")
+    if davr == "bugun_yarim":
+        sotuv = cnt("SELECT COUNT(*) FROM payments WHERE status='approved' AND created LIKE %s", (bugun + "%",))
+        pul = cnt("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='approved' AND created LIKE %s", (bugun + "%",))
+        tahlil = cnt("SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (bugun + "%",))
+        yangi = cnt("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (bugun + "%",))
+        return (f"☀️ <b>BUGUN (hozircha)</b> ({bugun})\n━━━━━━━━━━━\n"
+                f"👥 Yangi: {yangi}\n🎬 Tahlil: {tahlil}\n"
+                f"💰 Sotuv: {sotuv} ta ({pul:,} so'm)")
+    # bugun_yakun
+    sotuv = cnt("SELECT COUNT(*) FROM payments WHERE status='approved' AND created LIKE %s", (bugun + "%",))
+    pul = cnt("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='approved' AND created LIKE %s", (bugun + "%",))
+    tahlil = cnt("SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (bugun + "%",))
+    yangi = cnt("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (bugun + "%",))
+    marafon = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun >= 1 AND marafon_tugadi = FALSE")
+    tugatgan = cnt("SELECT COUNT(*) FROM users WHERE marafon_tugadi = TRUE")
+    xul = f"🌙 <b>BUGUN YAKUNI</b> ({bugun})\n━━━━━━━━━━━\n"
+    xul += f"👥 Yangi: {yangi}\n🎬 Tahlil: {tahlil}\n💰 Sotuv: {sotuv} ta ({pul:,} so'm)\n"
+    xul += f"🏃 Marafonda: {marafon} | 🏁 Tugatgan: {tugatgan}\n"
+    if sotuv == 0:
+        xul += "\n⚠️ Bugun sotuv yo'q — sotuv voronkasini tekshiring!"
+    return xul
+
+
+async def hisobot_ertalab(context: ContextTypes.DEFAULT_TYPE):
+    if get_setting("hisobot_aktiv", "off") != "on":
+        return
+    matn = await _hisobot_matni("kecha")
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, matn, parse_mode="HTML")
+        except Exception:
+            pass
+
+
+async def hisobot_tushlik(context: ContextTypes.DEFAULT_TYPE):
+    if get_setting("hisobot_aktiv", "off") != "on":
+        return
+    matn = await _hisobot_matni("bugun_yarim")
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, matn, parse_mode="HTML")
+        except Exception:
+            pass
+
+
+async def hisobot_kech(context: ContextTypes.DEFAULT_TYPE):
+    if get_setting("hisobot_aktiv", "off") != "on":
+        return
+    matn = await _hisobot_matni("bugun_yakun")
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(aid, matn, parse_mode="HTML")
+        except Exception:
+            pass
+
+
 async def marafon_kuydir(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni 23:00 - o'sha kuni ishlatilmagan kunlik bepul tahlilni kuydiradi.
     Marafondagilarning oddiy balansini 0 qiladi (marafon davom etadi)."""
@@ -6883,7 +7081,10 @@ async def marafon_kuydir(context: ContextTypes.DEFAULT_TYPE):
 async def drip_kunlik(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: yangi kirgan (deploy'dan keyin) foydalanuvchilarni izchil isitadi.
     1-kun: bepul (mavjud). 2-kun: jamoa videosi + empatiya +1 bepul. 3-kun: 7 kunlik aksiya.
-    FAQAT yangi kirganlarga (drip_start sanadan keyin) - eski 10000 ga emas."""
+    FAQAT yangi kirganlarga (drip_start sanadan keyin) - eski 10000 ga emas.
+    MUHIM: marafon yoqilgan bo'lsa - drip ISHLAMAYDI (ustma-ust tushmasin)."""
+    if get_setting("marafon_aktiv", "off") == "on":
+        return  # Marafon yoqilgan - drip kerak emas
     drip_start = get_setting("drip_start", "")
     if not drip_start:
         return  # drip hali yoqilmagan
@@ -7049,6 +7250,11 @@ def main():
             # Marafon: har kuni 11:00 kunlik xabar+bepul, 23:00 kuydir
             jq.run_daily(marafon_kunlik, time=_dtime(hour=uz_to_utc(11), minute=0))
             jq.run_daily(marafon_kuydir, time=_dtime(hour=uz_to_utc(23), minute=0))
+            # Avto-sotuv (12:00) + 3 mahal hisobot (09:00, 14:00, 21:00)
+            jq.run_daily(avto_sotuv, time=_dtime(hour=uz_to_utc(12), minute=0))
+            jq.run_daily(hisobot_ertalab, time=_dtime(hour=uz_to_utc(9), minute=0))
+            jq.run_daily(hisobot_tushlik, time=_dtime(hour=uz_to_utc(14), minute=0))
+            jq.run_daily(hisobot_kech, time=_dtime(hour=uz_to_utc(21), minute=0))
             logger.info("Juma + Drip scheduler o'rnatildi")
         else:
             logger.warning("job_queue yo'q - juma aksiyasi ishlamaydi (requirements: job-queue kerak)")
@@ -7110,6 +7316,10 @@ def main():
     app.add_handler(CommandHandler("marafon_off", marafon_off_command))
     app.add_handler(CommandHandler("marafon_holat", marafon_holat_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
+    app.add_handler(CommandHandler("avto_on", avto_on_command))
+    app.add_handler(CommandHandler("avto_off", avto_off_command))
+    app.add_handler(CommandHandler("avto_test", avto_test_command))
+    app.add_handler(CommandHandler("avto_sotuv_hozir", avto_sotuv_hozir_command))
     app.add_handler(CommandHandler("renewal_royxat", renewal_royxat_command))
     app.add_handler(CommandHandler("test_tugaganlar", test_tugaganlar_command))
     app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
