@@ -5552,6 +5552,59 @@ async def avto_sotuv_hozir_command(update, context):
     await update.message.reply_text("✅ Tayyor!")
 
 
+async def marafon_kim_command(update, context):
+    """Admin: aynan KIMLAR marafonda va qaysi kunda - to'liq ro'yxat."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT user_id, username, marafon_kun, COALESCE(marafon_bajarilgan,0), marafon_tugadi "
+        "FROM users WHERE marafon_kun >= 1 "
+        "ORDER BY marafon_tugadi ASC, marafon_kun DESC", fetch='all') or []
+    if not rows:
+        await update.message.reply_text("📭 Marafonda hech kim yo'q.")
+        return
+    # Kun bo'yicha guruhlaymiz
+    kunlar = {1: [], 2: [], 3: [], 4: [], 5: []}
+    tugatgan = []
+    for r in rows:
+        uid, uname, kun, bajarilgan, tugadi = r[0], r[1], r[2], r[3], r[4]
+        who = f"@{uname}" if uname else f"ID {uid}"
+        if tugadi:
+            tugatgan.append(f"{who} (ID {uid})")
+        elif kun in kunlar:
+            kunlar[kun].append(f"{who} — {bajarilgan}/5 bajardi")
+    txt = "🏃 <b>MARAFON — KIM QAYSI KUNDA</b>\n━━━━━━━━━━━\n\n"
+    for kun in range(1, 6):
+        odamlar = kunlar[kun]
+        txt += f"<b>📆 {kun}-KUN</b> ({len(odamlar)} ta)\n"
+        if odamlar:
+            for o in odamlar[:20]:
+                txt += f"  • {o}\n"
+            if len(odamlar) > 20:
+                txt += f"  ... yana {len(odamlar)-20} ta\n"
+        else:
+            txt += "  —\n"
+        txt += "\n"
+    txt += f"<b>🏁 TUGATGAN</b> ({len(tugatgan)} ta)\n"
+    for o in tugatgan[:20]:
+        txt += f"  • {o}\n"
+    if len(tugatgan) > 20:
+        txt += f"  ... yana {len(tugatgan)-20} ta\n"
+    # Uzun bo'lsa bo'laklab yuboramiz
+    if len(txt) <= 4000:
+        await update.message.reply_text(txt, parse_mode="HTML")
+    else:
+        bloklar = txt.split("\n\n")
+        qism = ""
+        for blok in bloklar:
+            if len(qism) + len(blok) + 2 > 3500:
+                await update.message.reply_text(qism, parse_mode="HTML")
+                qism = ""
+            qism += blok + "\n\n"
+        if qism.strip():
+            await update.message.reply_text(qism, parse_mode="HTML")
+
+
 async def marafon_holat_command(update, context):
     """Admin: marafon statistikasi."""
     if not is_admin(update.effective_user.id):
@@ -7104,6 +7157,38 @@ async def hisobot_kech(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+async def marafon_eslatma(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni 18:00 - marafondagilar bugungi bepulni HALI ishlatmagan bo'lsa,
+    kuyishдан oldin 'disiplina' eslatmasi (yumshoq turtki)."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Marafonda (tugamagan), bugungi bepul HALI turibdi (balance > 0, ishlatmagan)
+    rows = _db_execute(
+        "SELECT user_id FROM users "
+        "WHERE marafon_kun >= 1 AND marafon_tugadi = FALSE "
+        "AND COALESCE(balance,0) > 0 "
+        "AND (sub_until IS NULL OR sub_until <= %s) "
+        "AND COALESCE(premium_balance,0) = 0",
+        (now_str,), fetch='all') or []
+    for r in rows:
+        uid = r[0]
+        if is_admin(uid) or is_blocked(uid):
+            continue
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🎬 Tahlilimni olish", callback_data="marafon_tahlil")
+            ]])
+            await context.bot.send_message(
+                uid,
+                "⏳ <b>Marafon kuningiz kuyib ketyapti!</b>\n\n"
+                "O'zingizga so'z bergandingiz-ku — muntazam blog yuritib, o'sishga? 💪\n\n"
+                "Bugungi bepul tahlilingiz yana bir necha soat faol (yarim tunda kuyadi). "
+                "Istaган videoni yoki g'oyani yuboring — marafon progressingizni yo'qotmang! 🔥",
+                reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+
+
 async def marafon_kuydir(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni 23:00 - o'sha kuni ishlatilmagan kunlik bepul tahlilni kuydiradi.
     Marafondagilarning oddiy balansini 0 qiladi (marafon davom etadi)."""
@@ -7288,7 +7373,9 @@ def main():
             jq.run_daily(obuna_tugadi_xabar, time=_dtime(hour=uz_to_utc(11), minute=5))
             # Marafon: har kuni 11:00 kunlik xabar+bepul, 23:00 kuydir
             jq.run_daily(marafon_kunlik, time=_dtime(hour=uz_to_utc(11), minute=0))
-            jq.run_daily(marafon_kuydir, time=_dtime(hour=uz_to_utc(23), minute=0))
+            # Marafon eslatma (18:00) - ishlatmaganlarga kuyishдан oldin
+            jq.run_daily(marafon_eslatma, time=_dtime(hour=uz_to_utc(18), minute=0))
+            jq.run_daily(marafon_kuydir, time=_dtime(hour=uz_to_utc(23), minute=59))
             # Avto-sotuv (12:00) + 3 mahal hisobot (09:00, 14:00, 21:00)
             jq.run_daily(avto_sotuv, time=_dtime(hour=uz_to_utc(12), minute=0))
             jq.run_daily(hisobot_ertalab, time=_dtime(hour=uz_to_utc(9), minute=0))
@@ -7354,6 +7441,7 @@ def main():
     app.add_handler(CommandHandler("marafon_on", marafon_on_command))
     app.add_handler(CommandHandler("marafon_off", marafon_off_command))
     app.add_handler(CommandHandler("marafon_holat", marafon_holat_command))
+    app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
     app.add_handler(CommandHandler("avto_on", avto_on_command))
     app.add_handler(CommandHandler("avto_off", avto_off_command))
