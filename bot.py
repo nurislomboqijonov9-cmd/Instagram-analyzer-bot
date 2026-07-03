@@ -2162,7 +2162,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = InlineKeyboardMarkup([[
                 InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")]])
             await query.message.reply_text(
-                "💎 7 kunlik Premium — hook, ovoz, cheksiz tahlil. Faqat 6,990 so'm!",
+                "🔥 <b>Premium'ning KUCHINI 1 HAFTA sinab ko'ring!</b>\n\n"
+                "Tasavvur qiling: har bir videongiz uchun 👇\n"
+                "🎯 Hook nega ishlamayotgani — aniq sabab\n"
+                "🔊 Ovozli professional maslahat\n"
+                "✍️ 3 ta TAYYOR hook — ko'chirib ishlatasiz!\n"
+                "♾ Cheksiz tahlil — xohlagancha!\n\n"
+                "📈 Marafondan o'tган bloglar aynan shu bilan ko'rishini 3-5 barobar oshirmoqda.\n\n"
+                "💎 Atigi <b>6,990 so'm</b> — bir chashka kofe puliga 1 hafta Premium!",
                 reply_markup=kb, parse_mode="HTML")
             return
         else:
@@ -6687,15 +6694,21 @@ async def obuna_tugash_eslatma(context: ContextTypes.DEFAULT_TYPE):
         if is_admin(uid):
             continue
         try:
+            # Chegirma yoqamiz (24 soat) - shu userga 19,900
+            set_setting("chegirma_until", (datetime.now() + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S"))
             kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("💎 1 oylik Premium olish", callback_data="buy_sub")
+                InlineKeyboardButton("🔥 19,900 ga 1 oylik olish", callback_data="buy_sub_19")
             ]])
             await context.bot.send_message(
                 uid,
-                "⏳ <b>Premiumingiz ertaga tugaydi!</b>\n\n"
-                "Kontentingiz endigina o'sishni boshladi — to'xtatmang! 📈\n\n"
-                "💎 Hoziroq 1 oylik Premium oling va cheksiz tahlildan foydalaning.\n\n"
-                "👇 Bir tugma — davom eting!",
+                "⏳ <b>Premiumingiz ertaga tugaydi!</b> 😱\n\n"
+                "Endigina qizigan edi... Kontentingiz o'sishni boshladi 📈 — "
+                "aynan hozir to'xtash — eng katta xato!\n\n"
+                "🎁 <b>Biz sizning rivojlanishingizni xohlaymiz</b>, shuning uchun maxsus taklif:\n\n"
+                "💎 1 oylik Premium\n"
+                "<s>29,900</s> → <b>19,900 so'm</b> 🔥\n\n"
+                "♾ Cheksiz tahlil, hook, ovoz — hammasi 1 oy davomida!\n\n"
+                "⏰ Bu narx faqat 24 soat! Davom eting 👇",
                 reply_markup=kb, parse_mode="HTML")
             _db_execute("UPDATE users SET renewal_eslatma_given = TRUE WHERE user_id = %s", (uid,))
             sent += 1
