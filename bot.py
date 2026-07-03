@@ -530,8 +530,9 @@ def discount_active():
 
 
 def current_sub_price():
-    """Obunaning joriy narxi (chegirma faol bo'lsa - chegirma narxi)."""
-    return SUB_PRICE_DISCOUNT if discount_active() else SUB_PRICE
+    """Oddiy menyu narxi - DOIM to'liq (29,900).
+    Chegirma (19,900/23,900) faqat maxsus tugmalarda (buy_sub_19, buy_sub_20)."""
+    return SUB_PRICE
 
 
 def sub_btn_label(context):
@@ -2117,6 +2118,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📢 Bepul tahlil uchun avval kanalimizga obuna bo'ling:\n{MARAFON_KANAL}\n\n"
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
+    elif data == 'marafon_fikr':
+        # 4-kun: fikr so'raymiz (majburiy - fikr yozsa 4-kun bajariladi)
+        uid = query.from_user.id
+        await query.answer()
+        bugun = datetime.now().strftime("%Y-%m-%d")
+        _ox = _db_execute("SELECT marafon_oxirgi_bajarilgan FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _ox and _ox[0] == bugun:
+            await query.message.reply_text("✅ Bugungi fikringizni oldik, rahmat! Videongizni yuboring 👇")
+        else:
+            context.user_data['mode'] = 'marafon_fikr'
+            await query.message.reply_text(
+                "✍️ <b>Fikringizni yozing:</b>\n\n"
+                "Bot sizga qanday yordam berdi? Nima yoqdi? Nima yaxshilash kerak?\n\n"
+                "(Fikringizni yozsangiz — bugungi bepul tahlilingiz ochiladi va 4-kun bajariladi! 🎁)",
+                parse_mode="HTML")
     elif data == 'marafon_tahlil':
         # Marafon kunlik tahlil - balans bor-yo'qligini tekshiramiz
         uid = query.from_user.id
@@ -3453,6 +3469,32 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(t(context, 'sorov_thanks'))
         return
     # Video "Fikr bildirish" rejimi - fikr guruhga boradi (bepul YO'Q, sovg'a alohida tugmada)
+    if context.user_data.get('mode') == 'marafon_fikr':
+        context.user_data['mode'] = None
+        uid = update.effective_user.id
+        fikr = (text or "").strip()
+        uname = update.effective_user.username or update.effective_user.first_name or ""
+        # Fikrni FIKR_GROUP ga yuboramiz
+        if FIKR_GROUP_ID:
+            try:
+                who = f"@{uname}" if uname else f"ID {uid}"
+                await context.bot.send_message(FIKR_GROUP_ID, f"🏃 MARAFON FIKRI (4-kun)\n👤 {who}\n\n{fikr}")
+            except Exception:
+                pass
+        # Bepul tahlil + 4-kun bajarilgan deb sanaymiz
+        add_balance(uid, 1)
+        bugun = datetime.now().strftime("%Y-%m-%d")
+        _ox = _db_execute("SELECT marafon_oxirgi_bajarilgan, marafon_kun, marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _ox and _ox[1] and _ox[1] >= 1 and not _ox[2] and _ox[0] != bugun:
+            _db_execute(
+                "UPDATE users SET marafon_bajarilgan = COALESCE(marafon_bajarilgan,0) + 1, "
+                "marafon_oxirgi_bajarilgan = %s WHERE user_id = %s", (bugun, uid))
+        await update.message.reply_text(
+            "🙏 Rahmat, fikringiz biz uchun juda qimmatli! 💙\n\n"
+            "🎁 Bugungi bepul tahlilingiz ochildi! Videongizni yuboring 👇\n\n"
+            "💎 Ertaga — PREMIUM sovg'a kutmoqda!",
+            parse_mode="HTML")
+        return
     if context.user_data.get('mode') == 'sotuv1_fikr':
         context.user_data['mode'] = None
         uid = update.effective_user.id
@@ -6830,16 +6872,13 @@ def marafon_kun_matni(kun):
     if kun == 4:
         return (
             "⚡️🚀 <b>4-KUN — DEYARLI TAYYOR!</b> 🚀⚡️\n\n"
-            "🤩 Bilasizmi eng qizig'i nima? 👀\n\n"
-            "📈 Aynan shu marafondan o'tган bloglar PREMIUM bilan hooklarini "
-            "tuzatib, ko'rishlarini <b>3-5 barobar</b> oshirmoqda! 🔥📊\n\n"
-            "💎 Ertaga sizning navbatingiz — <b>PREMIUM sovg'a</b> kutmoqda:\n"
-            "🎯 Hook soniyama-soniya ochiladi\n"
-            "🔊 Ovozli maslahat\n"
-            "✍️ 3 ta tayyor hook variant!\n\n"
+            "🎉 4 kundan beri InstaDoctor bilan birgasiz — bu ajoyib! 💙\n\n"
+            "🙏 Bugun sizdan bitta iltimos: <b>fikringizni yozing!</b>\n"
+            "Bot sizga yordam berdimi? Nima yoqdi, nima yaxshilash kerak? 🤔\n\n"
+            "✍️ Fikringizni yozganingizdan so'ng — bugungi bepul tahlilingizni olasiz!\n\n"
             f"📊 {progress} (4/5)\n\n"
-            "🎁 Bugungi tahlilingizni oling — ertaga eng zo'ri kutmoqda! 👇",
-            "🎬 Bugungi tahlilimni olish")
+            "💎 Ertaga esa — PREMIUM sovg'a kutmoqda! Pastdagi tugmani bosing 👇",
+            "✍️ Fikr bildirish")
     # 5-kun
     return (
         "🎉🎊 <b>TABRIKLAYMIZ! MARAFON TUGADI!</b> 🎊🎉\n\n"
@@ -6883,6 +6922,8 @@ def marafon_kb(kun, tugma):
         ])
     if kun == 5:
         return InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_premium")]])
+    if kun == 4:
+        return InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_fikr")]])
     return InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_tahlil")]])
 
 
