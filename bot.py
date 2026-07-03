@@ -1110,14 +1110,12 @@ TEXTS = {
                       "⚡ <b>Maksimal tezlik</b> — navbatsiz, soniyalarda tahlil\n"
                       "♾ <b>Cheksiz tahlil</b> — kuniga xohlagancha video\n"
                       "🗣 <b>Audio</b> — tahlilni ovozli eshitish\n"
+                      "🎯 <b>Hook tahlili</b> — soniyama-soniya + 3 ta tayyor variant\n"
                       "📈 <b>Yashirin trendlar</b> — algoritm yangiliklari birinchi sizga\n\n"
-                      "🔥 FAQAT BUGUN — MAXSUS CHEGIRMA!\n"
-                      "Hozirgi narx: <s>29 900 so'm</s>\n"
-                      "Faqat bugun: <b>19 900 so'm/oy</b> 🎉\n"
-                      "(Kuniga atigi 650 so'm! ☕️ bir choydan ham arzon)\n\n"
-                      "⏳ Shoshiling — bu narx faqat BUGUN SOAT 22:00 gacha! Keyin yana ko'tariladi.\n\n"
+                      "💰 Narx: <b>29 900 so'm/oy</b>\n"
+                      "(Kuniga atigi 1000 so'm — bir choydan ham arzon! ☕️)\n\n"
                       "Bitta REKka chiqqan video bu pulni qoplaydi! 🚀\n\n"
-                      "👇 Hoziroq faollashtiring — imkoniyatni boy bermang!"),
+                      "👇 Hoziroq faollashtiring — kontentingizni TOPga chiqaring!"),
         'fikr_ask': ("💬 Fikr yoki taklifingizni yozib qoldiring 👇\n"
                      "Biz uchun har bir fikr muhim! 🙏\n\n"
                      "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nurislom_admin"),
