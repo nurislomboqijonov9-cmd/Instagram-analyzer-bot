@@ -286,6 +286,8 @@ def init_db():
                                  ("marafon_start", "TEXT"),
                                  ("marafon_kunlik_sana", "TEXT"),
                                  ("marafon_tugadi", "BOOLEAN DEFAULT FALSE"),
+                                 ("marafon_bajarilgan", "INTEGER DEFAULT 0"),
+                                 ("marafon_oxirgi_bajarilgan", "TEXT"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -2095,6 +2097,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 add_balance(uid, 1)
                 _db_execute("UPDATE users SET sotuv_bepul_olindi = %s WHERE user_id = %s", (key, uid))
+                # 3-kun "o'tgan" deb sanaymiz (kanal obuna + bepul oldi)
+                _oxk = _db_execute("SELECT marafon_oxirgi_bajarilgan, marafon_kun, marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
+                if _oxk and _oxk[1] and _oxk[1] >= 1 and not _oxk[2] and _oxk[0] != bugun:
+                    _db_execute(
+                        "UPDATE users SET marafon_bajarilgan = COALESCE(marafon_bajarilgan,0) + 1, "
+                        "marafon_oxirgi_bajarilgan = %s WHERE user_id = %s", (bugun, uid))
                 await query.answer("✅ Rahmat! Bepul tahlilingiz ochildi! 🎉")
                 await query.message.reply_text(
                     "🎉 Zo'r! Obuna uchun rahmat! 💙\n\n"
@@ -2110,18 +2118,55 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
     elif data == 'marafon_tahlil':
-        # Marafon kunlik tahlil - video so'raymiz (bepul balans allaqachon berilgan)
-        await query.answer()
-        await query.message.reply_text(
-            "🎬 Zo'r! Videongizni shu yerga yuboring — bugungi bepul tahlilingizni olaman 👇")
-    elif data == 'marafon_premium':
-        # 5-kun: PREMIUM sovg'a + 7 kunlik undov
+        # Marafon kunlik tahlil - balans bor-yo'qligini tekshiramiz
         uid = query.from_user.id
-        # Marafon tugagan deb belgilaymiz + premium balans (bir marta)
-        _tekshir = _db_execute("SELECT marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
-        if _tekshir and _tekshir[0]:
-            await query.answer("Siz allaqachon PREMIUM sovg'angizni oldingiz! 🎁", show_alert=True)
+        await query.answer()
+        if get_balance(uid) > 0 or get_premium_balance(uid) > 0 or sub_active(uid) or is_admin(uid):
+            # Bepulni oldi (tugma bosdi) - bu kunni "o'tgan" deb sanaymiz (kuniga 1 marta)
+            bugun = datetime.now().strftime("%Y-%m-%d")
+            _ox = _db_execute("SELECT marafon_oxirgi_bajarilgan, marafon_kun, marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
+            if _ox and _ox[1] and _ox[1] >= 1 and not _ox[2] and _ox[0] != bugun:
+                _db_execute(
+                    "UPDATE users SET marafon_bajarilgan = COALESCE(marafon_bajarilgan,0) + 1, "
+                    "marafon_oxirgi_bajarilgan = %s WHERE user_id = %s", (bugun, uid))
+            await query.message.reply_text(
+                "🎬 Zo'r! Videongizni shu yerga yuboring — bugungi bepul tahlilingizni olaman 👇")
         else:
+            # Balans kuygan (23:00 o'tgan) - halol tushuntiramiz
+            await query.message.reply_text(
+                "⏰ <b>Bugungi bepul tahlil vaqti tugadi!</b>\n\n"
+                "Kunlik bepul tahlil faqat o'sha kuni ishlaydi 🌙\n\n"
+                "🌅 Ertaga soat 11:00 da yangi bepul tahlilingiz keladi — kuting!\n\n"
+                "💡 Yoki hoziroq davom etmoqchi bo'lsangiz — Premium oling 💎",
+                parse_mode="HTML")
+    elif data == 'marafon_premium':
+        # 5-kun: PREMIUM sovg'a - FAQAT 5 kunni to'liq o'tganga
+        uid = query.from_user.id
+        _tekshir = _db_execute("SELECT marafon_tugadi, COALESCE(marafon_bajarilgan,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        allaqachon = _tekshir and _tekshir[0]
+        bajarilgan = _tekshir[1] if _tekshir else 0
+        if allaqachon:
+            await query.answer("Siz allaqachon PREMIUM sovg'angizni oldingiz! 🎁", show_alert=True)
+            await query.message.reply_text("🎬 Videongizni yuboring — PREMIUM tahlil qilaman! 👇")
+        elif bajarilgan < 5:
+            # 5 kunni to'liq o'tmagan - premium berilmaydi
+            await query.answer("Marafon to'liq bajarilmagan 😔", show_alert=True)
+            await query.message.reply_text(
+                f"😔 <b>Afsuski, PREMIUM sovg'a berilmaydi.</b>\n\n"
+                f"Siz {bajarilgan}/5 kunni bajardingiz. PREMIUM sovg'a uchun "
+                f"HAR 5 kunni ham to'liq o'tish kerak edi (biz buni boshida ogohlantirgandik).\n\n"
+                f"Lekin xafa bo'lmang! 💙 Siz baribir ko'p narsa o'rgandingiz. "
+                f"Premium'ni sinab ko'rish uchun 7 kunlik tarifdan foydalanishingiz mumkin 👇",
+                parse_mode="HTML")
+            await asyncio.sleep(1)
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")]])
+            await query.message.reply_text(
+                "💎 7 kunlik Premium — hook, ovoz, cheksiz tahlil. Faqat 6,990 so'm!",
+                reply_markup=kb, parse_mode="HTML")
+            return
+        else:
+            # 5 kun TO'LIQ bajarildi - premium beriladi!
             add_premium_balance(uid, 1)
             _db_execute("UPDATE users SET marafon_tugadi = TRUE WHERE user_id = %s", (uid,))
             await query.answer("✅ PREMIUM tahlil qo'shildi!")
@@ -2129,24 +2174,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     uname = query.from_user.username or query.from_user.first_name or ""
                     who = f"@{uname}" if uname else f"ID {uid}"
-                    await context.bot.send_message(aid, f"🏁 MARAFON TUGATDI (5-kun premium oldi)\n👤 {who}")
+                    await context.bot.send_message(aid, f"🏁 MARAFON TUGATDI (5/5, premium oldi)\n👤 {who}")
                 except Exception:
                     pass
-        # Video so'raymiz
-        await query.message.reply_text(
-            "🎬 Zo'r! Videongizni yuboring — bu 1 ta PREMIUM tahlil (hook + ovoz)! 👇")
-        # 7 kunlik undov (biroz keyin)
-        await asyncio.sleep(1)
-        kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")
-        ]])
-        await query.message.reply_text(
-            "🎉 <b>Marafonni tugatdingiz — PREMIUM kuchini ko'rdingiz!</b>\n\n"
-            "Hook soniyama-soniya, ovozli maslahat, 3 tayyor variant — "
-            "bularning hammasi 1 hafta sizniki bo'lishi mumkin.\n\n"
-            "🎁 Faqat <b>6,990 so'm</b> — 7 kunlik to'liq Premium.\n\n"
-            "Kontentingizni keyingi bosqichga olib chiqing 👇",
-            reply_markup=kb, parse_mode="HTML")
+            await query.message.reply_text(
+                "🎬 Zo'r! Videongizni yuboring — bu 1 ta PREMIUM tahlil (hook + ovoz)! 👇")
+            await asyncio.sleep(1)
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")
+            ]])
+            await query.message.reply_text(
+                "🎉 <b>Marafonni tugatdingiz — PREMIUM kuchini ko'rdingiz!</b>\n\n"
+                "Hook soniyama-soniya, ovozli maslahat, 3 tayyor variant — "
+                "bularning hammasi 1 hafta sizniki bo'lishi mumkin.\n\n"
+                "🎁 Faqat <b>6,990 so'm</b> — 7 kunlik to'liq Premium.\n\n"
+                "Kontentingizni keyingi bosqichga olib chiqing 👇",
+                reply_markup=kb, parse_mode="HTML")
     elif data == 'marafon_7kun':
         # 7 kunlik to'lov (faqat marafon oxirida) - to'lov turlarini ko'rsatamiz
         kb = InlineKeyboardMarkup([
@@ -6691,7 +6734,10 @@ def marafon_kun_matni(kun):
             "🎁 5-kuni — <b>PREMIUM sovg'a</b> + shaxsiy strategiya!\n\n"
             f"📊 {progress} (1/5)\n\n"
             "🔥 Keling, boshladik! Bugungi bepul tahlilingizni oling 👇\n"
-            "⏰ <i>Diqqat: bepul tahlil FAQAT bugun ishlaydi, kechga kuyadi!</i>",
+            "⏰ <i>Diqqat: bepul tahlil FAQAT bugun ishlaydi, kechga kuyadi!</i>\n\n"
+            "⚠️ <b>MUHIM:</b> PREMIUM sovg'ani olish uchun HAR 5 KUNI ham "
+            "kirib bepul tahlilingizni olishingiz shart! Bir kun o'tkazib yuborsangiz — "
+            "5-kun sovg'asi berilmaydi. 💪",
             "🎬 Bepul tahlilimni olish")
     if kun == 2:
         return (
@@ -6749,6 +6795,9 @@ async def marafon_boshla(uid, context):
         "marafon_tugadi = FALSE WHERE user_id = %s",
         (bugun, bugun, uid))
     add_balance(uid, 1)  # 1-kun bepul tahlil
+    # 1-kun avtomatik "o'tgan" deb sanaladi (kirdi + bepul oldi)
+    _db_execute("UPDATE users SET marafon_bajarilgan = 1, marafon_oxirgi_bajarilgan = %s WHERE user_id = %s",
+                (bugun, uid))
     matn, tugma = marafon_kun_matni(1)
     kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_tahlil")]])
     try:
