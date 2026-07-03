@@ -50,7 +50,7 @@ CARD_HOLDER = os.getenv("CARD_HOLDER", "Boqijonov Nurislom")
 # Ishonch videosi (jamoa haqida) + fikr bildirib 1 bepul olish
 VIDEO_FILE_ID = os.getenv("VIDEO_FILE_ID", "BAACAgIAAxkBAAEDdblqO1vKqmm-sO5EpO4ithiAdFI0ogACdaEAAh442EmljRTrS2sTqjwE")
 # Marafon 3-kun uchun kanal (admin o'z kanalini qo'yadi: @username yoki link)
-MARAFON_KANAL = os.getenv("MARAFON_KANAL", "@instadoctor_uz")
+MARAFON_KANAL = os.getenv("MARAFON_KANAL", "@InstadoctorAI")
 
 
 def is_admin(user_id):
@@ -2134,7 +2134,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
         # Video so'raymiz
         await query.message.reply_text(
-            "🎬 Zo'r! Videongizni yuboring — PREMIUM tahlil qilaman (hook + ovoz)! 👇")
+            "🎬 Zo'r! Videongizni yuboring — bu 1 ta PREMIUM tahlil (hook + ovoz)! 👇")
         # 7 kunlik undov (biroz keyin)
         await asyncio.sleep(1)
         kb = InlineKeyboardMarkup([[
@@ -5440,19 +5440,13 @@ async def marafon_test_command(update, context):
     await update.message.reply_text("🧪 Marafon test: 5 kun xabari sizga ketma-ket keladi (video ham)...")
     for kun in range(1, 6):
         matn, tugma = marafon_kun_matni(kun)
-        if kun == 5:
-            cb = "marafon_premium"
-        elif kun == 3:
-            cb = "marafon_kanal"
-        else:
-            cb = "marafon_tahlil"
         # 2-kun: jamoa videosi
         if kun == 2:
             try:
                 await context.bot.send_video(aid, VIDEO_FILE_ID)
             except Exception:
                 await context.bot.send_message(aid, "⚠️ [Jamoa videosi bu yerda ko'rinadi]")
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+        kb = marafon_kb(kun, tugma)
         await context.bot.send_message(aid, f"[TEST {kun}-KUN]\n\n" + matn, reply_markup=kb, parse_mode="HTML")
         await asyncio.sleep(0.6)
     await update.message.reply_text("✅ 5 kun ko'rsatildi! Tugmalarni bosib sinang.")
@@ -6705,7 +6699,7 @@ def marafon_kun_matni(kun):
             "👏 Kecha birinchi qadamni tashladingiz — bu allaqачon g'alaba! 🎉\n\n"
             "🤝 Bugun sizni <b>InstaDoctor jamoasi</b> bilan tanishtirmoqchiman. "
             "Bu bot ortida jonli odamlar turibdi — biz sizning o'sishingizni chin dildan xohlaymiz! 💙\n\n"
-            "🎥 Quyidagi videoni ko'ring — biz kimmiz, nega bu ishni qilyapmiz 👇\n\n"
+            "🎥 Yuqoridagi videoni ko'ring — biz kimmiz, nega bu ishni qilyapmiz 👆\n\n"
             f"📊 {progress} (2/5)\n\n"
             "🎁 Videoni ko'rgach, bugungi bepul tahlilingizni oling! ⏰ <i>Faqat bugun!</i>",
             "🎬 Bugungi tahlilimni olish")
@@ -6738,8 +6732,8 @@ def marafon_kun_matni(kun):
         "🎉🎊 <b>TABRIKLAYMIZ! MARAFON TUGADI!</b> 🎊🎉\n\n"
         "👑✨ Siz <b>\"Ilg'or Kreator\"</b> darajasiga yetdingiz! ✨👑\n\n"
         "▓▓▓▓▓▓▓▓▓▓ 💯% ✅\n\n"
-        "🔥 5 kun davomida siz o'zingizni isbotlaingiz — endi sovg'a vaqti! 🎁\n\n"
-        "💎 Sizga <b>PREMIUM TAHLIL</b> sovg'a qilaman:\n"
+        "🔥 5 kun davomida siz o'zingizni isbotladingiz — endi sovg'a vaqti! 🎁\n\n"
+        "💎 Sizga <b>1 ta PREMIUM tahlil</b> sovg'a qilaman (bir martalik sinov):\n"
         "🎯 Hook soniyama-soniya\n"
         "🔊 Ovozli maslahat\n"
         "✍️ 3 ta tayyor hook!\n\n"
@@ -6763,6 +6757,19 @@ async def marafon_boshla(uid, context):
         pass
 
 
+def marafon_kb(kun, tugma):
+    """Marafon kuni uchun tugma(lar). 3-kun: kanalga o'tish + obuna bo'ldim (2 tugma)."""
+    if kun == 3:
+        kanal_url = f"https://t.me/{MARAFON_KANAL.lstrip('@')}"
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 Kanalga o'tish", url=kanal_url)],
+            [InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="marafon_kanal")],
+        ])
+    if kun == 5:
+        return InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_premium")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data="marafon_tahlil")]])
+
+
 async def marafon_kunlik(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni 11:00 - marafondagilarga keyingi kun xabari + yangi bepul tahlil.
     Kunlik bepul o'sha kuni ishlatilmasa 23:00 da kuyadi (marafon_kuydir)."""
@@ -6784,13 +6791,6 @@ async def marafon_kunlik(context: ContextTypes.DEFAULT_TYPE):
             "UPDATE users SET marafon_kun = %s, marafon_kunlik_sana = %s WHERE user_id = %s",
             (yangi_kun, bugun, uid))
         matn, tugma = marafon_kun_matni(yangi_kun)
-        # Tugma callback: 3-kun kanal, 5-kun premium, qolgani tahlil
-        if yangi_kun == 5:
-            cb = "marafon_premium"
-        elif yangi_kun == 3:
-            cb = "marafon_kanal"
-        else:
-            cb = "marafon_tahlil"
         try:
             # 2-kun: jamoa videosini yuboramiz + keyin xabar
             if yangi_kun == 2:
@@ -6798,7 +6798,7 @@ async def marafon_kunlik(context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_video(uid, VIDEO_FILE_ID)
                 except Exception:
                     pass
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+            kb = marafon_kb(yangi_kun, tugma)
             await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
         except Exception:
             pass
