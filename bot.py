@@ -421,6 +421,36 @@ def get_juma_balance(user_id):
     return 0
 
 
+def kreator_status(tahlil_soni):
+    """Tahlil soniga qarab (emoji, nom, keyingi_daraja_uchun_kerak, keyingi_nom) qaytaradi."""
+    if tahlil_soni == 0:
+        return ("🆕", "Yangi boshlovchi", 1, "O'suvchi bloger")
+    if tahlil_soni <= 4:
+        return ("📈", "O'suvchi bloger", 5 - tahlil_soni, "Reels-meyker")
+    if tahlil_soni <= 9:
+        return ("🚀", "Reels-meyker", 10 - tahlil_soni, "Kontent Profi")
+    if tahlil_soni <= 15:
+        return ("🔥", "Kontent Profi", 16 - tahlil_soni, "Algoritmlar Bossi")
+    return ("👑", "Algoritmlar Bossi", 0, None)
+
+
+def kreator_progress_bar(tahlil_soni):
+    """Daraja ichidagi progressni bar qilib qaytaradi."""
+    # Har daraja chegarasi
+    if tahlil_soni == 0:
+        foiz = 0
+    elif tahlil_soni <= 4:
+        foiz = int(tahlil_soni / 5 * 100)
+    elif tahlil_soni <= 9:
+        foiz = int((tahlil_soni - 5) / 5 * 100)
+    elif tahlil_soni <= 15:
+        foiz = int((tahlil_soni - 10) / 6 * 100)
+    else:
+        foiz = 100
+    tuldi = int(foiz / 10)
+    return "█" * tuldi + "░" * (10 - tuldi), foiz
+
+
 def has_access(user_id):
     """'admin' | 'sub' (obuna faol) | 'credit' (bepul tahlil bor) | 'juma' | 'none'"""
     if is_admin(user_id):
@@ -986,6 +1016,7 @@ TEXTS = {
         'sorov_thanks': "Katta rahmat fikringiz uchun! ❤️🙏",
         'menu_balance': "💰 Balansim",
         'menu_lang': "🌐 Til",
+        'menu_status': "🏆 Statusim",
         'menu_help': "ℹ️ Yordam",
         'menu_fikr': "💬 Fikr va takliflar",
         'menu_premium': "💎 Premiumga o'tish",
@@ -1429,6 +1460,7 @@ TEXTS = {
         'sorov_thanks': "Большое спасибо за отзыв! ❤️🙏",
         'menu_balance': "💰 Мой баланс",
         'menu_lang': "🌐 Язык",
+        'menu_status': "🏆 Мой статус",
         'menu_help': "ℹ️ Помощь",
         'menu_fikr': "💬 Отзывы и предложения",
         'menu_premium': "💎 Перейти на Premium",
@@ -1673,8 +1705,8 @@ def main_keyboard(context):
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
-            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_premium'))],
-            [KeyboardButton(t(context, 'menu_ref')), KeyboardButton(t(context, 'menu_lang'))],
+            [KeyboardButton(t(context, 'menu_status')), KeyboardButton(t(context, 'menu_premium'))],
+            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_ref'))],
             [KeyboardButton(t(context, 'menu_help')), KeyboardButton(t(context, 'menu_fikr'))],
         ],
         resize_keyboard=True
@@ -2116,6 +2148,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📢 Bepul tahlil uchun avval kanalimizga obuna bo'ling:\n{MARAFON_KANAL}\n\n"
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
+    elif data == 'menyu_yangila':
+        # Eski userlar menyuni yangilaydi
+        await query.answer("✅ Menyu yangilandi!")
+        await query.message.reply_text(
+            "✅ <b>Menyu yangilandi!</b>\n\n"
+            "Endi pastdagi yangi tugmalardan foydalaning:\n"
+            "🏆 <b>Statusim</b> — kreator darajangiz va progressingiz\n"
+            "💰 Balansim, tahlil va boshqalar!",
+            reply_markup=main_keyboard(context), parse_mode="HTML")
     elif data == 'marafon_fikr':
         # 4-kun: fikr so'raymiz (majburiy - fikr yozsa 4-kun bajariladi)
         uid = query.from_user.id
@@ -3374,7 +3415,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # (Aks holda fikr/so'rov rejimida menu tugmasi "fikr" deb qabul qilinardi - bu bug edi.)
     _menu_tugmalar = set()
     for _lng in ('uz', 'ru'):
-        for _k in ('menu_video', 'menu_profile', 'menu_balance', 'menu_premium',
+        for _k in ('menu_video', 'menu_profile', 'menu_status', 'menu_premium',
                    'menu_ref', 'menu_lang', 'menu_help', 'menu_fikr'):
             _v = TEXTS.get(_lng, {}).get(_k)
             if _v:
@@ -3598,6 +3639,34 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
             ]])
             await update.message.reply_text(t(context, 'profile_premium'), reply_markup=kb, parse_mode="HTML")
+    elif text in (TEXTS['uz']['menu_status'], TEXTS['ru']['menu_status']):
+        uid = update.effective_user.id
+        row = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s AND kind='video'", (uid,), fetch='one')
+        tahlil = (row[0] if row and row[0] else 0)
+        emoji, nom, kerak, keyingi = kreator_status(tahlil)
+        bar, foiz = kreator_progress_bar(tahlil)
+        premium = is_admin(uid) or sub_active(uid)
+        txt = "👤 <b>KREATOR PROFILINGIZ</b>\n━━━━━━━━━━━\n\n"
+        txt += f"🎯 Status: {emoji} <b>{nom}</b>\n"
+        txt += f"📊 Progress: [{bar}] {foiz}%\n"
+        txt += f"🎬 Jami tahlil: {tahlil} ta\n\n"
+        if keyingi and kerak > 0:
+            txt += f"🔥 Keyingi <b>\"{keyingi}\"</b> darajasiga yana {kerak} ta tahlil kerak!\n\n"
+        elif not keyingi:
+            txt += "🏆 Siz eng yuqori darajaga yetdingiz — zo'rsiz! 👑\n\n"
+        # Balans/premium holati
+        if premium:
+            txt += f"💎 Premium: <b>Faol ✅</b> ({sub_until_str(uid)} gacha)\nCheksiz tahlil, hook, ovoz ochiq!"
+            await update.message.reply_text(txt, parse_mode="HTML")
+        elif get_premium_balance(uid) > 0:
+            txt += f"💎 Sizda <b>{get_premium_balance(uid)} ta PREMIUM tahlil</b> bor!\nVideo yuboring 🎬"
+            await update.message.reply_text(txt, parse_mode="HTML")
+        else:
+            bal = get_balance(uid)
+            txt += f"🎫 Bepul tahlil balansi: <b>{bal} ta</b>\n\n"
+            txt += "💎 Premium: <b>Faol emas</b>\nPremiumga o'tib hamma imkoniyatni oching!"
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
+            await update.message.reply_text(txt, reply_markup=kb, parse_mode="HTML")
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
         uid = update.effective_user.id
         if is_admin(uid):
@@ -3619,8 +3688,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = context.bot_data.get('bot_username') or (await context.bot.get_me()).username
         link = f"https://t.me/{bot_username}?start=ref_{uid}"
         await update.message.reply_text(t(context, 'ref_info').format(link=link))
-    elif text in (TEXTS['uz']['menu_lang'], TEXTS['ru']['menu_lang']):
-        await update.message.reply_text("🌐 Tilni tanlang / Выберите язык:", reply_markup=lang_keyboard())
     elif text in (TEXTS['uz']['menu_help'], TEXTS['ru']['menu_help']):
         await update.message.reply_text(t(context, 'help_text'))
     elif text in (TEXTS['uz']['menu_fikr'], TEXTS['ru']['menu_fikr']):
@@ -5552,6 +5619,73 @@ async def avto_sotuv_hozir_command(update, context):
     await update.message.reply_text("✅ Tayyor!")
 
 
+async def yangilik_xabar_command(update, context):
+    """Admin: eski userlarga 'yangilik bor' xabari + menyu yangilash tugmasi.
+    Ishlatish: /yangilik_xabar (test - o'zingizga) yoki /yangilik_xabar YUBOR (hammaga)."""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    matn = (
+        "🎉 <b>InstaDoctor'da YANGILIKLAR!</b>\n\n"
+        "Biz botni yanada kuchli qildik:\n"
+        "🏆 <b>Statusim</b> — kreator darajangizni kuzating va rivojlaning\n"
+        "📊 Yangilangan tahlil va ko'proq imkoniyatlar!\n"
+        "💎 Premium funksiyalar yanada kuchaydi\n\n"
+        "👇 Yangi menyuni ochish uchun tugmani bosing:")
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")]])
+    if arg != "YUBOR":
+        # Test - faqat adminga
+        await update.message.reply_text(matn, reply_markup=kb, parse_mode="HTML")
+        await update.message.reply_text(
+            "☝️ Test namunasi. Hammaga yuborish uchun: /yangilik_xabar YUBOR\n"
+            "⚠️ Diqqat: bu barcha foydalanuvchilarga xabar yuboradi!")
+        return
+    # Hammaga yuborish
+    rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
+    await update.message.reply_text(f"📤 {len(rows)} ta userga yuborilmoqda... (biroz vaqt oladi)")
+    yuborildi = 0
+    for r in rows:
+        uid = r[0]
+        if is_blocked(uid):
+            continue
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            yuborildi += 1
+            if yuborildi % 100 == 0:
+                await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(0.05)
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ Tayyor! {yuborildi} ta userga yuborildi.")
+
+
+async def profile_command(update, context):
+    """Foydalanuvchi: kreator profili - status, progress, tahlil soni, premium."""
+    uid = update.effective_user.id
+    row = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s AND kind='video'", (uid,), fetch='one')
+    tahlil = (row[0] if row and row[0] else 0)
+    emoji, nom, kerak, keyingi = kreator_status(tahlil)
+    bar, foiz = kreator_progress_bar(tahlil)
+    premium = is_admin(uid) or sub_active(uid)
+
+    txt = "👤 <b>KREATOR PROFILINGIZ</b>\n━━━━━━━━━━━\n\n"
+    txt += f"🎯 Status: {emoji} <b>{nom}</b>\n"
+    txt += f"📊 Progress: [{bar}] {foiz}%\n"
+    txt += f"🎬 Jami tahlil: {tahlil} ta\n\n"
+    if keyingi and kerak > 0:
+        txt += f"🔥 Keyingi <b>\"{keyingi}\"</b> darajasiga yana {kerak} ta tahlil kerak!\n\n"
+    elif not keyingi:
+        txt += "🏆 Siz eng yuqori darajaga yetdingiz — zo'rsiz! 👑\n\n"
+    if premium:
+        txt += "💎 Premium: <b>Faol ✅</b>\nCheksiz tahlil, hook, ovoz — hammasi ochiq!"
+        await update.message.reply_text(txt, parse_mode="HTML")
+    else:
+        txt += "💎 Premium: <b>Faol emas</b>\nPremiumga o'tib, hamma imkoniyatni oching!"
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
+        await update.message.reply_text(txt, reply_markup=kb, parse_mode="HTML")
+
+
 async def marafon_kim_command(update, context):
     """Admin: aynan KIMLAR marafonda va qaysi kunda - to'liq ro'yxat."""
     if not is_admin(update.effective_user.id):
@@ -7441,6 +7575,8 @@ def main():
     app.add_handler(CommandHandler("marafon_on", marafon_on_command))
     app.add_handler(CommandHandler("marafon_off", marafon_off_command))
     app.add_handler(CommandHandler("marafon_holat", marafon_holat_command))
+    app.add_handler(CommandHandler("profile", profile_command))
+    app.add_handler(CommandHandler("yangilik_xabar", yangilik_xabar_command))
     app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
     app.add_handler(CommandHandler("avto_on", avto_on_command))
