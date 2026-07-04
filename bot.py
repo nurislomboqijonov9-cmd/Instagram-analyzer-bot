@@ -5619,6 +5619,80 @@ async def avto_sotuv_hozir_command(update, context):
     await update.message.reply_text("✅ Tayyor!")
 
 
+async def marafon_eski_tiq_command(update, context):
+    """Admin: 1-2 tahlil qilgan ESKI userlarni marafonga tiqadi (o'rtadan).
+    1 tahlil -> 2-kundan, 2 tahlil -> 3-kundan. Balans 0 (premium olmaganlar).
+    /marafon_eski_tiq (test - hisoblab ko'rsatadi) yoki /marafon_eski_tiq YUBOR (haqiqiy)."""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # 1-2 video tahlil qilgan, premium EMAS, marafonda EMAS, obuna EMAS
+    rows = _db_execute(
+        "SELECT u.user_id, a.c FROM users u "
+        "JOIN (SELECT user_id, COUNT(*) c FROM analyses WHERE kind='video' "
+        "GROUP BY user_id HAVING COUNT(*) IN (1,2)) a ON a.user_id = u.user_id "
+        "WHERE (u.marafon_kun IS NULL OR u.marafon_kun = 0) "
+        "AND (u.sub_until IS NULL OR u.sub_until <= %s) "
+        "AND COALESCE(u.premium_balance,0) = 0",
+        (now_str,), fetch='all') or []
+    rows = [r for r in rows if not is_admin(r[0])]
+    if arg != "YUBOR":
+        bir = sum(1 for r in rows if r[1] == 1)
+        ikki = sum(1 for r in rows if r[1] == 2)
+        await update.message.reply_text(
+            f"🧪 <b>MARAFON ESKI BAZA (test)</b>\n━━━━━━━━━━━\n\n"
+            f"Jami mos: {len(rows)} ta\n"
+            f"• 1 tahlil qilgan: {bir} ta → 2-kundan boshlanadi\n"
+            f"• 2 tahlil qilgan: {ikki} ta → 3-kundan boshlanadi\n\n"
+            f"Ular marafonga tiqiladi (o'rtadan), balansi 0 qilinadi.\n"
+            f"Avto-sotuv ularga bormaydi (marafonda).\n\n"
+            f"⚠️ Haqiqiy yuborish: /marafon_eski_tiq YUBOR\n"
+            f"(Diqqat: {len(rows)} ta userga xabar boradi!)",
+            parse_mode="HTML")
+        return
+    await update.message.reply_text(f"📤 {len(rows)} ta eski user marafonga tiqilmoqda...")
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    tiqildi = 0
+    for r in rows:
+        uid, tahlil = r[0], r[1]
+        if is_blocked(uid):
+            continue
+        # 1 tahlil -> kun=2, bajarilgan=1 | 2 tahlil -> kun=3, bajarilgan=2
+        bosh_kun = tahlil + 1
+        try:
+            # Balansni 0 qilamiz + marafonga tiqamiz
+            _db_execute(
+                "UPDATE users SET balance = 0, marafon_kun = %s, marafon_start = %s, "
+                "marafon_kunlik_sana = %s, marafon_tugadi = FALSE, "
+                "marafon_bajarilgan = %s, marafon_oxirgi_bajarilgan = NULL WHERE user_id = %s",
+                (bosh_kun, bugun, bugun, tahlil, uid))
+            # Bugungi bepul beramiz (o'sha kun uchun)
+            add_balance(uid, 1)
+            # Xabar (o'sha kun matni)
+            matn, tugma = marafon_kun_matni(bosh_kun)
+            kb = marafon_kb(bosh_kun, tugma)
+            # Eski userga moslashtirilgan kirish
+            kirish = (f"🎉 <b>Xush kelibsiz qaytganingiz bilan!</b>\n\n"
+                      f"Siz allaqachon {tahlil} ta tahlil qilgansiz — zo'r boshlangan! 💪\n"
+                      f"Sizni to'g'ridan-to'g'ri <b>{bosh_kun}-kunga</b> qo'shdik. "
+                      f"Marafonni tugatib, PREMIUM sovg'ani oling! 🎁\n\n")
+            if bosh_kun == 2:
+                try:
+                    await context.bot.send_video(uid, VIDEO_FILE_ID)
+                except Exception:
+                    pass
+            await context.bot.send_message(uid, kirish + matn, reply_markup=kb, parse_mode="HTML")
+            tiqildi += 1
+            if tiqildi % 100 == 0:
+                await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(0.1)
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ Tayyor! {tiqildi} ta eski user marafonga tiqildi.")
+
+
 async def yangilik_xabar_command(update, context):
     """Admin: eski userlarga 'yangilik bor' xabari + menyu yangilash tugmasi.
     Ishlatish: /yangilik_xabar (test - o'zingizga) yoki /yangilik_xabar YUBOR (hammaga)."""
@@ -7577,6 +7651,7 @@ def main():
     app.add_handler(CommandHandler("marafon_holat", marafon_holat_command))
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("yangilik_xabar", yangilik_xabar_command))
+    app.add_handler(CommandHandler("marafon_eski_tiq", marafon_eski_tiq_command))
     app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
     app.add_handler(CommandHandler("avto_on", avto_on_command))
