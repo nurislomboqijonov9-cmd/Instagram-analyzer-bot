@@ -288,6 +288,8 @@ def init_db():
                                  ("marafon_tugadi", "BOOLEAN DEFAULT FALSE"),
                                  ("marafon_bajarilgan", "INTEGER DEFAULT 0"),
                                  ("marafon_oxirgi_bajarilgan", "TEXT"),
+                                 ("marafon_19900_sana", "TEXT"),
+                                 ("marafon_6990_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_given", "BOOLEAN DEFAULT FALSE"),
                                  ("sorov_reward", "BOOLEAN DEFAULT FALSE"),
                                  ("chegirma_kun", "TEXT")]:
@@ -2230,7 +2232,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # 5 kun TO'LIQ bajarildi - premium beriladi!
             add_premium_balance(uid, 1)
-            _db_execute("UPDATE users SET marafon_tugadi = TRUE WHERE user_id = %s", (uid,))
+            # 19,900 chegirma yoqamiz (24 soat) + sanani belgilaymiz (48 soat keyin 6,990 uchun)
+            hozir = datetime.now()
+            _db_execute("UPDATE users SET marafon_tugadi = TRUE, marafon_19900_sana = %s WHERE user_id = %s",
+                        (hozir.strftime("%Y-%m-%d %H:%M:%S"), uid))
+            set_setting("chegirma_until", (hozir + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S"))
             await query.answer("✅ PREMIUM tahlil qo'shildi!")
             for aid in ADMIN_IDS:
                 try:
@@ -2243,14 +2249,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🎬 Zo'r! Videongizni yuboring — bu 1 ta PREMIUM tahlil (hook + ovoz)! 👇")
             await asyncio.sleep(1)
             kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")
+                InlineKeyboardButton("💎 19,900 ga 1 oylik olish", callback_data="buy_sub_19")
             ]])
             await query.message.reply_text(
-                "🎉 <b>Marafonni tugatdingiz — PREMIUM kuchini ko'rdingiz!</b>\n\n"
-                "Hook soniyama-soniya, ovozli maslahat, 3 tayyor variant — "
-                "bularning hammasi 1 hafta sizniki bo'lishi mumkin.\n\n"
-                "🎁 Faqat <b>6,990 so'm</b> — 7 kunlik to'liq Premium.\n\n"
-                "Kontentingizni keyingi bosqichga olib chiqing 👇",
+                "🔥 <b>Marafonni tugatdingiz — PREMIUM kuchini his qildingiz!</b> 🎉\n\n"
+                "Endi to'liq imkoniyatni oching:\n"
+                "♾ Cheksiz tahlil — kuniga xohlagancha! 🎬\n"
+                "🎯 Har video uchun hook + ovoz + 3 tayyor variant! 🔊\n"
+                "📈 Marafonchilar ko'rishini 3-5 barobar oshirmoqda! 🚀\n\n"
+                "🎁 <b>MAXSUS MARAFON SOVG'ASI:</b>\n"
+                "1 oylik Premium\n"
+                "❌ <s>29,900</s> → ✅ <b>19,900 so'm</b> 🔥\n\n"
+                "⏰ Bu chegirma faqat 24 soat — marafonni tugatganingiz uchun! 💪\n"
+                "Pastdagi tugmani bosing 👇",
                 reply_markup=kb, parse_mode="HTML")
     elif data == 'marafon_7kun':
         # 7 kunlik to'lov (faqat marafon oxirida) - to'lov turlarini ko'rsatamiz
@@ -5619,6 +5630,37 @@ async def avto_sotuv_hozir_command(update, context):
     await update.message.reply_text("✅ Tayyor!")
 
 
+async def chegirma_test_command(update, context):
+    """Admin: chegirma (24 soat) sinash.
+    /chegirma_test yoq - chegirmani YOQADI (24 soat, 19,900 ko'rasiz)
+    /chegirma_test tugat - chegirmani TUGATADI (29,900 ko'rasiz, 24 soat o'tgandek)
+    /chegirma_test holat - hozirgi holatni ko'rsatadi"""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "holat").lower()
+    if arg == "yoq":
+        set_setting("chegirma_until", (datetime.now() + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S"))
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 19,900 ga olish (sinov)", callback_data="buy_sub_19")]])
+        await update.message.reply_text(
+            "✅ Chegirma YOQILDI (24 soat).\n\n"
+            "Endi pastdagi tugmani bosing — 19,900 chiqishi kerak 👇", reply_markup=kb)
+    elif arg == "tugat":
+        # Chegirmani o'tgan qilib qo'yamiz (24 soatdan oldin)
+        set_setting("chegirma_until", (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"))
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 19,900 ga olish (sinov)", callback_data="buy_sub_19")]])
+        await update.message.reply_text(
+            "⏰ Chegirma TUGATILDI (24 soat o'tgandek).\n\n"
+            "Endi pastdagi tugmani bosing — '29,900, chegirma tugadi' chiqishi kerak 👇", reply_markup=kb)
+    else:
+        faol = discount_active()
+        until = get_setting("chegirma_until", "yo'q")
+        await update.message.reply_text(
+            f"📊 Chegirma holati:\n"
+            f"• Faol: {'✅ HA (19,900)' if faol else '❌ YO`Q (29,900)'}\n"
+            f"• Tugash vaqti: {until}\n\n"
+            f"Sinash:\n/chegirma_test yoq — yoqish\n/chegirma_test tugat — tugatish")
+
+
 async def marafon_eski_tiq_command(update, context):
     """Admin: 1-2 tahlil qilgan ESKI userlarni marafonga tiqadi (o'rtadan).
     1 tahlil -> 2-kundan, 2 tahlil -> 3-kundan. Balans 0 (premium olmaganlar).
@@ -7365,6 +7407,51 @@ async def hisobot_kech(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+async def marafon_6990_taklif(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni tekshiradi: marafon 5/5 tugatgan, 19,900 taklifdan 48 soat o'tgan,
+    obuna OLMAGAN, 6,990 hali olmagan -> 6,990 (7 kunlik) taklifi yuboradi."""
+    now = datetime.now()
+    now_str = now.strftime("%Y-%m-%d %H:%M")
+    rows = _db_execute(
+        "SELECT user_id, marafon_19900_sana FROM users "
+        "WHERE marafon_tugadi = TRUE AND marafon_19900_sana IS NOT NULL "
+        "AND COALESCE(marafon_6990_given, FALSE) = FALSE "
+        "AND (sub_until IS NULL OR sub_until <= %s)",
+        (now_str,), fetch='all') or []
+    for r in rows:
+        uid, sana = r[0], r[1]
+        if is_admin(uid) or is_blocked(uid):
+            continue
+        # 48 soat o'tganmi?
+        try:
+            sana_dt = datetime.strptime(sana, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+        if (now - sana_dt).total_seconds() < 48 * 3600:
+            continue  # hali 48 soat o'tmagan
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("⚡ 7 kunlik Premium — 6,990", callback_data="marafon_7kun")
+            ]])
+            await context.bot.send_message(
+                uid,
+                "🤔💭 1 oylik Premiumga hali shoshilmayapsiz — tushunaman! 🙂\n\n"
+                "Balki katta qadamdan oldin sinab ko'rmoqchidirsiz? 👀\n"
+                "To'g'ri fikr! 💡 Shuning uchun sizga eng arzon yo'l:\n\n"
+                "⚡️🔥 <b>7 KUNLIK PREMIUM — atigi 6,990 so'm!</b> 🔥⚡️\n"
+                "☕️ (Bir chashka kofe puliga — 1 hafta to'liq Premium!)\n\n"
+                "✅ ♾ Cheksiz tahlil — kuniga xohlagancha! 🎬\n"
+                "✅ 🎯 Hook soniyama-soniya + ovoz + 3 tayyor variant! 🔊\n"
+                "✅ 🚀 Marafonchilar buni 3-5 barobar o'sish uchun ishlatmoqda! 📈\n"
+                "✅ 🆓 Hech qanday majburiyat — yoqmasa to'xtatasiz! 👌\n\n"
+                "💎 Premium'ni to'liq sinab ko'ring — keyin o'zingiz qaror qilasiz! 😎👇",
+                reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET marafon_6990_given = TRUE WHERE user_id = %s", (uid,))
+        except Exception:
+            pass
+        await asyncio.sleep(0.3)
+
+
 async def marafon_eslatma(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni 18:00 - marafondagilar bugungi bepulni HALI ishlatmagan bo'lsa,
     kuyishдан oldin 'disiplina' eslatmasi (yumshoq turtki)."""
@@ -7583,6 +7670,8 @@ def main():
             jq.run_daily(marafon_kunlik, time=_dtime(hour=uz_to_utc(11), minute=0))
             # Marafon eslatma (18:00) - ishlatmaganlarga kuyishдан oldin
             jq.run_daily(marafon_eslatma, time=_dtime(hour=uz_to_utc(18), minute=0))
+            # Marafon 6,990 taklif (5/5 tugatib 19,900 olmaganlarga 48 soat keyin) - kuniga 12:30
+            jq.run_daily(marafon_6990_taklif, time=_dtime(hour=uz_to_utc(12), minute=30))
             jq.run_daily(marafon_kuydir, time=_dtime(hour=uz_to_utc(23), minute=59))
             # Avto-sotuv (12:00) + 3 mahal hisobot (09:00, 14:00, 21:00)
             jq.run_daily(avto_sotuv, time=_dtime(hour=uz_to_utc(12), minute=0))
@@ -7652,6 +7741,7 @@ def main():
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("yangilik_xabar", yangilik_xabar_command))
     app.add_handler(CommandHandler("marafon_eski_tiq", marafon_eski_tiq_command))
+    app.add_handler(CommandHandler("chegirma_test", chegirma_test_command))
     app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
     app.add_handler(CommandHandler("avto_on", avto_on_command))
