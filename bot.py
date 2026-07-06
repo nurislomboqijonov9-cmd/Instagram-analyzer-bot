@@ -5704,11 +5704,12 @@ async def marafon_eski_tiq_command(update, context):
         bosh_kun = tahlil + 1
         try:
             # Balansni 0 qilamiz + marafonga tiqamiz
+            # bajarilgan = bosh_kun (tiqilgan kun ham sanaladi, 5-kunda 5/5 bo'lishi uchun)
             _db_execute(
                 "UPDATE users SET balance = 0, marafon_kun = %s, marafon_start = %s, "
                 "marafon_kunlik_sana = %s, marafon_tugadi = FALSE, "
-                "marafon_bajarilgan = %s, marafon_oxirgi_bajarilgan = NULL WHERE user_id = %s",
-                (bosh_kun, bugun, bugun, tahlil, uid))
+                "marafon_bajarilgan = %s, marafon_oxirgi_bajarilgan = %s WHERE user_id = %s",
+                (bosh_kun, bugun, bugun, bosh_kun, bugun, uid))
             # Bugungi bepul beramiz (o'sha kun uchun)
             add_balance(uid, 1)
             # Xabar (o'sha kun matni)
@@ -5800,6 +5801,90 @@ async def profile_command(update, context):
         txt += "💎 Premium: <b>Faol emas</b>\nPremiumga o'tib, hamma imkoniyatni oching!"
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
         await update.message.reply_text(txt, reply_markup=kb, parse_mode="HTML")
+
+
+async def marafon_tuzat_command(update, context):
+    """Admin: marafonga TIQILGAN eski userlarni tuzatadi (2-3 kundan boshlaganlar).
+    Faqat video tahlili BOR (eski, tiqilgan) userlar. Tiqilgan kun sanalmagan -> bajarilgan = kun.
+    /marafon_tuzat (test) yoki /marafon_tuzat HA (tuzatadi)."""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    # Marafonda, tugamagan, bajarilgan < kun, VA video tahlili bor (eski tiqilgan)
+    rows = _db_execute(
+        "SELECT u.user_id, u.username, u.marafon_kun, COALESCE(u.marafon_bajarilgan,0), a.c "
+        "FROM users u "
+        "JOIN (SELECT user_id, COUNT(*) c FROM analyses WHERE kind='video' GROUP BY user_id) a "
+        "ON a.user_id = u.user_id "
+        "WHERE u.marafon_kun >= 2 AND u.marafon_tugadi = FALSE "
+        "AND COALESCE(u.marafon_bajarilgan,0) < u.marafon_kun",
+        fetch='all') or []
+    if not rows:
+        await update.message.reply_text("✅ Tuzatish kerak bo'lgan tiqilgan marafonchi yo'q.")
+        return
+    if arg != "HA":
+        txt = f"🔧 <b>MARAFON TUZATISH (test)</b>\n━━━━━━━━━━━\n\n"
+        txt += f"Tiqilgan eski marafonchilar: {len(rows)} ta\n\n"
+        for r in rows[:20]:
+            uid, uname, kun, baj, tahlil = r[0], r[1], r[2], r[3], r[4]
+            who = f"@{uname}" if uname else f"ID {uid}"
+            txt += f"• {who}: {tahlil} tahlil, {kun}-kun, hozir {baj}/5 → {kun}/5\n"
+        if len(rows) > 20:
+            txt += f"... yana {len(rows)-20} ta\n"
+        txt += f"\n⚠️ Tuzatish: /marafon_tuzat HA"
+        await update.message.reply_text(txt, parse_mode="HTML")
+        return
+    # Tuzatamiz: bajarilgan = marafon_kun (tiqilgan kunlar ham sanaladi)
+    tuzatildi = 0
+    for r in rows:
+        uid, kun = r[0], r[2]
+        _db_execute("UPDATE users SET marafon_bajarilgan = %s WHERE user_id = %s", (kun, uid))
+        tuzatildi += 1
+    await update.message.reply_text(
+        f"✅ Tayyor! {tuzatildi} ta tiqilgan marafonchi tuzatildi.\n"
+        f"Endi ular 5-kunga yetganda 5/5 bo'ladi (premium oladi).")
+
+
+async def sodiq_command(update, context):
+    """Admin: 10+ tahlil ishlatgan PREMIUM a'zolar (eng sodiq mijozlar).
+    Har birining fikrini bilish uchun ro'yxat + ID (yozish uchun)."""
+    if not is_admin(update.effective_user.id):
+        return
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # 10+ video tahlil qilgan VA obuna faol (premium)
+    rows = _db_execute(
+        "SELECT u.user_id, u.username, a.c FROM users u "
+        "JOIN (SELECT user_id, COUNT(*) c FROM analyses WHERE kind='video' "
+        "GROUP BY user_id HAVING COUNT(*) >= 10) a ON a.user_id = u.user_id "
+        "WHERE u.sub_until IS NOT NULL AND u.sub_until > %s "
+        "ORDER BY a.c DESC",
+        (now_str,), fetch='all') or []
+    rows = [r for r in rows if not is_admin(r[0])]
+    if not rows:
+        await update.message.reply_text("📭 10+ tahlil ishlatgan premium a'zo yo'q hozircha.")
+        return
+    txt = f"💎 <b>SODIQ MIJOZLAR</b> (10+ tahlil, premium)\n━━━━━━━━━━━\n"
+    txt += f"Jami: {len(rows)} ta\n\n"
+    for i, r in enumerate(rows, 1):
+        uid, uname, cnt = r[0], r[1], r[2]
+        who = f"@{uname}" if uname else "username yo'q"
+        txt += f"{i}. {who} — {cnt} ta tahlil\n   ID: <code>{uid}</code>\n"
+    txt += "\n💡 Fikr so'rash uchun: /yoz [ID] [xabar]"
+    # Uzun bo'lsa bo'laklab yuboramiz
+    if len(txt) <= 4000:
+        await update.message.reply_text(txt, parse_mode="HTML")
+    else:
+        qism = f"💎 <b>SODIQ MIJOZLAR</b> ({len(rows)} ta)\n\n"
+        for i, r in enumerate(rows, 1):
+            uid, uname, cnt = r[0], r[1], r[2]
+            who = f"@{uname}" if uname else "username yo'q"
+            qator = f"{i}. {who} — {cnt} ta\n   ID: <code>{uid}</code>\n"
+            if len(qism) + len(qator) > 3800:
+                await update.message.reply_text(qism, parse_mode="HTML")
+                qism = ""
+            qism += qator
+        if qism.strip():
+            await update.message.reply_text(qism + "\n💡 Fikr: /yoz [ID] [xabar]", parse_mode="HTML")
 
 
 async def marafon_kim_command(update, context):
@@ -7743,6 +7828,8 @@ def main():
     app.add_handler(CommandHandler("marafon_eski_tiq", marafon_eski_tiq_command))
     app.add_handler(CommandHandler("chegirma_test", chegirma_test_command))
     app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
+    app.add_handler(CommandHandler("sodiq", sodiq_command))
+    app.add_handler(CommandHandler("marafon_tuzat", marafon_tuzat_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
     app.add_handler(CommandHandler("avto_on", avto_on_command))
     app.add_handler(CommandHandler("avto_off", avto_off_command))
