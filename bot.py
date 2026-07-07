@@ -1714,6 +1714,25 @@ def t(context, key):
     return TEXTS[get_lang(context)][key]
 
 
+def tahlil_tugmalari(context, aid, uid, birinchi='full'):
+    """Tahlil natijasi tugmalari (ixcham). Admin uchun qo'shimcha (g'oya/eslatma/chat).
+    birinchi='full' -> To'liq tugma; birinchi='qisqa' -> Qisqaga qaytish tugma."""
+    if birinchi == 'qisqa':
+        birinchi_btn = InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")
+    else:
+        birinchi_btn = InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")
+    _btns = [
+        [birinchi_btn, InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
+        [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+    ]
+    if is_admin(uid):
+        _btns.append([
+            InlineKeyboardButton("💡 Reels g'oya", callback_data=f"goya_{aid}"),
+            InlineKeyboardButton("📅 Eslatma", callback_data=f"eslat_{aid}")])
+        _btns.append([InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}")])
+    return InlineKeyboardMarkup(_btns)
+
+
 def main_keyboard(context, uid=None):
     # ADMIN uchun TEST menyu (Statusim/Balansim + Arxiv)
     if uid and is_admin(uid):
@@ -2336,12 +2355,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         # Oxiriga bot havolasini qo'shamiz (ulashsa - reklama)
         toliq_text = toliq + t(context, 'analyzed_footer')
-        # Tugmalar: Qisqaga qaytish + audio
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")],
-            [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
-        ])
+        # Tugmalar: Qisqaga qaytish + audio (admin uchun qo'shimcha)
+        kb = tahlil_tugmalari(context, aid, query.from_user.id, birinchi='qisqa')
         # O'SHA xabarni to'liqqa o'zgartiramiz (yangi xabar emas, kasha bo'lmasin).
         # Agar juda uzun bo'lsa - 4000 belgiga kesamiz (bitta xabar, edit ishlaydi).
         if len(toliq_text) > 4000:
@@ -2501,11 +2516,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         qisqa = get_qisqa_analysis(aid)
         if not qisqa:
             return
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
-            [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
-        ])
+        kb = tahlil_tugmalari(context, aid, query.from_user.id, birinchi='full')
         if len(qisqa) <= 4000:
             try:
                 await query.edit_message_text(qisqa, reply_markup=kb)
@@ -3525,17 +3536,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Mijozga QISQA tahlil + tugmalar (soddalashtirilgan - chalkashlik bo'lmasin)
             kb = None
             if aid:
-                _btns = [
-                    [InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")],
-                    [InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-                    [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
-                ]
-                # ADMIN uchun TEST tugmalar (Reels g'oyalari + Eslatma + AI chat)
-                if is_admin(user_id):
-                    _btns.append([InlineKeyboardButton("💡 5 ta Reels g'oyasi", callback_data=f"goya_{aid}")])
-                    _btns.append([InlineKeyboardButton("📅 Eslatma qo'shish", callback_data=f"eslat_{aid}")])
-                    _btns.append([InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}")])
-                kb = InlineKeyboardMarkup(_btns)
+                kb = tahlil_tugmalari(context, aid, user_id, birinchi='full')
             if len(qisqa) <= 4000:
                 await message.reply_text(qisqa, reply_markup=kb)
             else:
