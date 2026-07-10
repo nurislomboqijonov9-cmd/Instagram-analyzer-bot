@@ -1832,17 +1832,21 @@ def tahlil_tugmalari(context, aid, uid, birinchi='full'):
         birinchi_btn = InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")
     else:
         birinchi_btn = InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")
-    _btns = [
-        [birinchi_btn, InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-        [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
-    ]
+    # ADMIN (test): Hookni yaxshilash YO'Q. Oddiy user: hozircha BOR (keyin hammadan ketadi).
     if is_admin(uid):
+        _btns = [
+            [birinchi_btn],
+            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+        ]
         _btns.append([
-            InlineKeyboardButton("💡 Reels g'oya", callback_data=f"goya_{aid}"),
+            InlineKeyboardButton("⭐️ Saqlash", callback_data=f"sev_{aid}"),
             InlineKeyboardButton("📅 Eslatma", callback_data=f"eslat_{aid}")])
-        _btns.append([
-            InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}"),
-            InlineKeyboardButton("⭐️ Saqlash", callback_data=f"sev_{aid}")])
+        _btns.append([InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}")])
+    else:
+        _btns = [
+            [birinchi_btn, InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
+            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+        ]
     return InlineKeyboardMarkup(_btns)
 
 
@@ -2135,13 +2139,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         package = '_'.join(parts[2:]) if len(parts) > 2 else 'sub_1month'
         admin_name = query.from_user.username or query.from_user.first_name or "admin"
         if package == 'one_1':
-            add_balance(target_user, 1)
+            add_premium_balance(target_user, 1)
             create_payment(target_user, 'one_1', ONE_PRICE)
             try:
                 await _send_celebration_uid(target_user, TEXTS['uz']['celebrate_one'])
             except Exception:
                 pass
-            natija = "1 ta tahlil qo'shildi"
+            natija = "1 ta PREMIUM tahlil qo'shildi"
         elif package == 'test_7day':
             until = activate_subscription(target_user, TEST_DAYS)
             create_payment(target_user, 'test_7day', TEST_PRICE)
@@ -2305,13 +2309,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
     elif data == 'menyu_yangila':
-        # Eski userlar menyuni yangilaydi
+        # Menyuni yangilaydi (start bosilgandek)
         await query.answer("✅ Menyu yangilandi!")
         await query.message.reply_text(
-            "✅ <b>Menyu yangilandi!</b>\n\n"
-            "Endi pastdagi yangi tugmalardan foydalaning:\n"
-            "🏆 <b>Statusim</b> — kreator darajangiz va progressingiz\n"
-            "💰 Balansim, tahlil va boshqalar!",
+            "✅ <b>Menyu yangilandi!</b> 🎉\n\n"
+            "Endi yangi imkoniyatlardan foydalaning:\n"
+            "👤 <b>Mening kabinetim</b> — o'sish, sevimlilar, yutuqlar, maqsad\n"
+            "📂 <b>Shaxsiy hisobotim</b> — AI chuqur tahlil\n\n"
+            "Pastdagi menyudan tanlang! 👇",
             reply_markup=main_keyboard(context, query.from_user.id), parse_mode="HTML")
     elif data == 'marafon_fikr':
         # 4-kun: fikr so'raymiz (majburiy - fikr yozsa 4-kun bajariladi)
@@ -2670,18 +2675,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Instagram/Reels bo'yicha savolingizni bering, AI mutaxassis javob beradi 🤖✨\n\n"
                 "Premium'ga o'ting! 🚀", reply_markup=kb, parse_mode="HTML")
             return
-        # Har VIDEO uchun 2 marta (aid bo'yicha)
+        # Kunda 2 marta (sana bo'yicha)
         try:
             aid = int(data.split('_', 1)[1])
         except Exception:
             aid = 0
-        # Shu video uchun nechta savol berilgan (context'da saqlanadi)
-        chat_hisob = context.user_data.get('chat_hisob', {})
-        berilgan = chat_hisob.get(str(aid), 0)
+        bugun = datetime.now().strftime("%Y-%m-%d")
+        _st = _db_execute("SELECT chat_oy, COALESCE(chat_marta,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        kun_saqlangan = _st[0] if _st else None
+        berilgan = _st[1] if _st and _st[0] == bugun else 0
         if berilgan >= 2 and not is_admin(uid):
             await query.message.reply_text(
-                "💬 <b>AI bilan suhbat</b>\n\nBu video uchun 2 marta savol berib bo'lgansiz. "
-                "Yangi video yuboring — yana suhbatlashamiz! 🎬", parse_mode="HTML")
+                "💬 <b>AI bilan suhbat</b>\n\nBugun 2 marta savol berib bo'lgansiz. "
+                "Ertaga yana suhbatlashamiz! 🌙", parse_mode="HTML")
             return
         # Chat rejimini yoqamiz
         context.user_data['chat_mode'] = True
@@ -2692,60 +2698,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "(Masalan: qanday hashtag ishlatay? Bu mavzu trendmi? Hook qanday kuchaytiraman?)\n\n"
             "✍️ Savolingizni yozing 👇", parse_mode="HTML")
     elif data.startswith('eslat_'):
-        # ADMIN TEST: Eslatma qo'shish (kalendar) - kun tanlash
+        # ADMIN TEST: Eslatma - odam ERKIN yozadi (masalan "10 iyul 11:00 da")
         try:
             aid = int(data.split('_', 1)[1])
         except Exception:
             return
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📅 Ertaga", callback_data=f"esk_1_{aid}"),
-             InlineKeyboardButton("📅 2 kun", callback_data=f"esk_2_{aid}")],
-            [InlineKeyboardButton("📅 3 kun", callback_data=f"esk_3_{aid}"),
-             InlineKeyboardButton("📅 1 hafta", callback_data=f"esk_7_{aid}")],
-        ])
+        context.user_data['eslatma_mode'] = True
+        context.user_data['eslatma_aid'] = aid
         await query.message.reply_text(
-            "📅 <b>Eslatma qo'shish</b>\n\nBu g'oyani qachon suratga olishni rejalashtiryapsiz? "
-            "Bot o'sha kuni eslatadi! 👇", reply_markup=kb, parse_mode="HTML")
-    elif data.startswith('esk_'):
-        # Eslatma kun tanlandi: esk_KUN_aid -> endi SOAT so'raymiz
-        try:
-            _, kun_s, aid_s = data.split('_', 2)
-            kun = int(kun_s)
-        except Exception:
-            return
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🌅 09:00", callback_data=f"eskh_{kun}_9"),
-             InlineKeyboardButton("☀️ 12:00", callback_data=f"eskh_{kun}_12")],
-            [InlineKeyboardButton("🌆 18:00", callback_data=f"eskh_{kun}_18"),
-             InlineKeyboardButton("🌙 21:00", callback_data=f"eskh_{kun}_21")],
-        ])
-        kun_matn = {1: "ertaga", 2: "2 kundan keyin", 3: "3 kundan keyin", 7: "1 haftadan keyin"}.get(kun, f"{kun} kundan keyin")
-        await query.message.reply_text(
-            f"📅 <b>{kun_matn.capitalize()}</b> — soat nechada eslatay? ⏰👇",
-            reply_markup=kb, parse_mode="HTML")
-    elif data.startswith('eskh_'):
-        # Eslatma kun + soat tanlandi: eskh_KUN_SOAT
-        uid = query.from_user.id
-        try:
-            _, kun_s, soat_s = data.split('_', 2)
-            kun = int(kun_s)
-            soat = int(soat_s)
-        except Exception:
-            return
-        maqsad = (datetime.now() + timedelta(days=kun)).replace(hour=soat, minute=0, second=0, microsecond=0)
-        eslatma_vaqt = maqsad.strftime("%Y-%m-%d %H:%M:%S")
-        _db_execute(
-            "INSERT INTO eslatmalar (user_id, matn, eslatma_vaqt, yuborildi, created) "
-            "VALUES (%s, %s, %s, FALSE, %s)",
-            (uid, "Reels g'oyasi", eslatma_vaqt,
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        kun_matn = {1: "ertaga", 2: "2 kundan keyin", 3: "3 kundan keyin", 7: "1 haftadan keyin"}.get(kun, f"{kun} kundan keyin")
-        await query.answer("✅ Eslatma qo'shildi!")
-        await query.message.reply_text(
-            f"✅ <b>Eslatma qo'shildi!</b> 📅\n\n"
-            f"Bot sizga <b>{kun_matn}, soat {soat:02d}:00</b> da eslatadi — "
-            f"Reels suratga olishni unutmang! 🎬🔥",
-            parse_mode="HTML")
+            "📅 <b>Eslatma qo'shish</b>\n\n"
+            "Qachon eslatay? O'zingiz yozing 👇\n\n"
+            "Masalan:\n"
+            "• <i>ertaga 11:00</i>\n"
+            "• <i>10 iyul 18:30</i>\n"
+            "• <i>3 kundan keyin 20:00</i>\n"
+            "• <i>2025-07-15 09:00</i>\n\n"
+            "✍️ Vaqtni yozing:", parse_mode="HTML")
     elif data.startswith('qisqa_'):
         # To'liqdan qisqaga qaytish - o'sha xabarni qisqa tahlilga o'zgartiramiz
         try:
@@ -2992,9 +2960,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user = int(parts[1])
         package = '_'.join(parts[2:]) if len(parts) > 2 else ''
         if package.startswith('one'):
-            # 1 martalik tahlil: hisobga +1 qo'shamiz
-            add_balance(target_user, 1)
-            new_bal = get_balance(target_user)
+            # 1 martalik tahlil: PREMIUM balans +1 (to'liq premium: hook+ovoz)
+            add_premium_balance(target_user, 1)
+            new_bal = get_premium_balance(target_user)
             try:
                 await context.bot.send_message(
                     target_user,
@@ -3440,7 +3408,7 @@ async def successful_payment_handler(update: Update, context: ContextTypes.DEFAU
             admin_txt = (f"💰 YANGI TO'LOV (Payme)\n👤 @{uname} (ID: {user.id})\n"
                          f"📦 7 kunlik test Premium\n💵 {paid_uzs:,} so'm\n✅ Obuna {new_until} gacha yoqildi")
         elif payload == "one_1":
-            add_balance(user.id, 1)
+            add_premium_balance(user.id, 1)
             await _send_celebration(context, update.effective_chat.id,
                                     t(context, 'celebrate_one'))
             try:
@@ -3883,14 +3851,61 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in _menu_tugmalar and context.user_data.get('mode'):
         context.user_data['mode'] = None  # rejimni bekor qilamiz, menu ishlaydi
 
+    # ESLATMA rejimi (admin test - odam erkin yozadi, AI vaqtni aniqlaydi)
+    if context.user_data.get('eslatma_mode') and text and text not in _menu_tugmalar:
+        uid = update.effective_user.id
+        context.user_data['eslatma_mode'] = False
+        hozir = datetime.now()
+        hozir_str = hozir.strftime("%Y-%m-%d %H:%M")
+        prompt = (
+            f"Hozirgi sana va vaqt: {hozir_str} (yil-oy-kun soat:minut). "
+            f"Foydalanuvchi eslatma vaqtini yozdi: \"{text}\"\n\n"
+            f"Bu matndan aniq sana va vaqtni hisoblab, FAQAT quyidagi formatda javob ber: YYYY-MM-DD HH:MM\n"
+            f"Boshqa hech narsa yozma, faqat sana-vaqt. Agar vaqt aniq bo'lmasa, mantiqan taxmin qil "
+            f"(masalan 'ertaga' = keyingi kun, soat aytilmasa 10:00). "
+            f"Oy nomlari o'zbekcha bo'lishi mumkin (yanvar, fevral, mart, aprel, may, iyun, iyul, avgust, sentabr, oktabr, noyabr, dekabr)."
+        )
+        try:
+            javob = _generate(prompt)
+            javob = (javob or "").strip()
+            # Sana-vaqtni ajratamiz
+            import re as _re
+            m = _re.search(r'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2})', javob)
+            if not m:
+                await update.message.reply_text(
+                    "😅 Vaqtni tushunolmadim. Iltimos, aniqroq yozing.\n"
+                    "Masalan: <i>ertaga 11:00</i> yoki <i>10 iyul 18:30</i>", parse_mode="HTML")
+                return
+            vaqt_str = m.group(1).replace('T', ' ')
+            maqsad = datetime.strptime(vaqt_str, "%Y-%m-%d %H:%M")
+            if maqsad <= hozir:
+                await update.message.reply_text(
+                    "😅 Bu vaqt allaqachon o'tgan. Kelajakdagi vaqtni yozing!")
+                return
+            aid = context.user_data.get('eslatma_aid', 0)
+            _db_execute(
+                "INSERT INTO eslatmalar (user_id, matn, eslatma_vaqt, yuborildi, created) "
+                "VALUES (%s, %s, %s, FALSE, %s)",
+                (uid, "Reels", maqsad.strftime("%Y-%m-%d %H:%M:%S"),
+                 hozir.strftime("%Y-%m-%d %H:%M:%S")))
+            # Chiroyli sana ko'rsatamiz
+            await update.message.reply_text(
+                f"✅ <b>Eslatma qo'shildi!</b> 📅\n\n"
+                f"🕐 <b>{maqsad.strftime('%Y-%m-%d, soat %H:%M')}</b> da eslatib qo'yaman — "
+                f"Reels suratga olishni unutmang! 🎬🔥", parse_mode="HTML")
+        except Exception:
+            await update.message.reply_text(
+                "⚠️ Xatolik. Iltimos, aniqroq yozing: <i>ertaga 11:00</i>", parse_mode="HTML")
+        return
+
     # AI CHAT rejimi (admin test - premium suhbat)
     if context.user_data.get('chat_mode') and text and text not in _menu_tugmalar:
         uid = update.effective_user.id
         context.user_data['chat_mode'] = False  # bir savol - bir javob
         aid = context.user_data.get('chat_aid', 0)
-        # Shu video uchun nechta savol berilgan (context'da)
-        chat_hisob = context.user_data.get('chat_hisob', {})
-        berilgan = chat_hisob.get(str(aid), 0)
+        bugun = datetime.now().strftime("%Y-%m-%d")
+        _st = _db_execute("SELECT chat_oy, COALESCE(chat_marta,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        berilgan = _st[1] if _st and _st[0] == bugun else 0
         await update.message.reply_text("🤖 O'ylayapman... ⏳")
         # Kontekst: user oxirgi tahlili
         kontekst = ""
@@ -3899,7 +3914,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if q:
                 kontekst = f"\n\nFoydalanuvchining oxirgi video tahlili (kontekst uchun):\n{q[:400]}"
         prompt = (
-            f"Sen InstaDoctor - Instagram va Reels bo'yicha do'stona ekspertsan. "
+            f"Sen InstaDoctor - Instagram va Reels bo'yicha do'stona ekspertsan (o'zingni InstaDoctor deb tanishtirasan). "
+            f"MUHIM: qaysi model yoki kim tomonidan yaratilganing so'ralsa, faqat 'Men InstaDoctor sun'iy intellektiman' deb javob ber. "
+            f"Hech qachon Gemini, Google, OpenAI kabi nomlarni aytma.\n\n"
             f"Foydalanuvchi savoli: \"{text}\"{kontekst}\n\n"
             f"Qisqa, aniq, foydali javob ber (o'zbek tilida, emoji bilan, do'stona). "
             f"Amaliy maslahat ber. 150-250 so'z.")
@@ -3908,13 +3925,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not javob or len(javob.strip()) < 10:
                 await update.message.reply_text("⚠️ Hozir javob berib bo'lmadi, biroz keyin urinib ko'ring.")
                 return
-            # Shu video uchun hisobni +1
+            # Kunlik hisobni +1 (sana bilan)
             berilgan += 1
-            chat_hisob[str(aid)] = berilgan
-            context.user_data['chat_hisob'] = chat_hisob
+            _db_execute("UPDATE users SET chat_oy = %s, chat_marta = %s WHERE user_id = %s",
+                        (bugun, berilgan, uid))
             qolgan = 2 - berilgan
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Yana savol berish", callback_data=f"chat_{aid}")]]) if qolgan > 0 else None
-            qolgan_txt = f"💡 Bu video uchun yana {qolgan} marta savol berishingiz mumkin." if qolgan > 0 else "💡 Yangi video yuboring — yana suhbatlashamiz! 🎬"
+            qolgan_txt = f"💡 Bugun yana {qolgan} marta savol berishingiz mumkin." if qolgan > 0 else "💡 Ertaga yana suhbatlashamiz! 🌙"
             await update.message.reply_text(
                 f"🤖 <b>InstaDoctor javobi:</b>\n\n{javob}\n\n"
                 f"━━━━━━━━━━━\n{qolgan_txt}",
@@ -4199,15 +4216,19 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Premium'ga o'tib, shaxsiy o'sish hisobotingizni oling! 🚀",
                 reply_markup=kb, parse_mode="HTML")
             return
-        # Kamida 5 tahlil kerak
+        # Umumiy tahlil SEVIMLILARDAN (odam saqlagan tahlillar asosida)
         rows = _db_execute(
-            "SELECT foiz, qisqa, created FROM analyses WHERE user_id = %s AND kind='video' "
-            "AND toliq IS NOT NULL ORDER BY id ASC", (uid,), fetch='all') or []
+            "SELECT a.foiz, a.qisqa, a.created FROM sevimlilar s "
+            "JOIN analyses a ON a.id = s.analiz_id "
+            "WHERE s.user_id = %s AND a.kind='video' AND a.toliq IS NOT NULL "
+            "ORDER BY a.id ASC", (uid,), fetch='all') or []
         if len(rows) < 5:
             await update.message.reply_text(
                 f"📂 <b>Shaxsiy hisobotim</b>\n\n"
-                f"Bu funksiya kamida 5 ta tahlildan keyin ishlaydi 📊\n"
-                f"Sizda hozir {len(rows)} ta tahlil bor. Yana {5-len(rows)} ta video yuboring! 🎬",
+                f"Bu hisobot siz <b>saqlagan (⭐️ sevimli)</b> tahlillar asosida tuziladi 📊\n"
+                f"Kamida 5 ta sevimli kerak. Sizda hozir {len(rows)} ta.\n\n"
+                f"Tahlildan keyin \"⭐️ Saqlash\" tugmasini bosing — eng yaxshi videolaringizni "
+                f"saqlang, keyin bu yerda chuqur tahlil oling! 🎬",
                 parse_mode="HTML")
             return
         # Oyda 2 marta cheklovi
@@ -6460,6 +6481,29 @@ async def tahlil_korish_command(update, context):
         parse_mode="HTML")
 
 
+async def yangiliklar_command(update, context):
+    """Admin: yangi funksiyalar ro'yxati + menyu yangilash tugma."""
+    if not is_admin(update.effective_user.id):
+        return
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Menyuni yangilash", callback_data="menyu_yangila")]])
+    await update.message.reply_text(
+        "🎉 <b>PREMIUM'GA YANGI QO'SHILGANLAR</b>\n"
+        "━━━━━━━━━━━\n\n"
+        "👤 <b>Mening kabinetim</b> — hammasi bir joyda:\n"
+        "   📈 O'sish grafigi (safaringiz)\n"
+        "   ⭐️ Sevimlilar (saqlangan tahlillar)\n"
+        "   🏆 Daraja va yutuqlar\n"
+        "   🎯 Oylik maqsad\n\n"
+        "🔥 <b>Streak</b> — har kuni kirsangiz oshadi!\n"
+        "⭐️ <b>Saqlash</b> — yoqqan tahlilni saqlang\n"
+        "📅 <b>Eslatma</b> — o'zingiz vaqt yozasiz, bot eslatadi\n"
+        "💬 <b>AI suhbat</b> — savol bering, javob oling (kunda 2 marta)\n"
+        "📂 <b>Shaxsiy hisobot</b> — sevimlilaringiz asosida AI tahlil\n\n"
+        "━━━━━━━━━━━\n"
+        "Pastdagi tugmani bosing — menyu yangilanadi 👇",
+        reply_markup=kb, parse_mode="HTML")
+
+
 async def sodiq_command(update, context):
     """Admin: 10+ tahlil ishlatgan PREMIUM a'zolar (eng sodiq mijozlar).
     Har birining fikrini bilish uchun ro'yxat + ID (yozish uchun)."""
@@ -7366,7 +7410,7 @@ def _payme_activate(uid, pkg, amount):
             create_payment(uid, pkg, amount // 100)
             celebrate_key = "celebrate_test"
         elif pkg == "one_1":
-            add_balance(uid, 1)
+            add_premium_balance(uid, 1)
             create_payment(uid, pkg, amount // 100)
             celebrate_key = "celebrate_one"
         logger.info(f"Payme to'lov faollashtirildi: uid={uid}, paket={pkg}")
@@ -8471,6 +8515,7 @@ def main():
     app.add_handler(CommandHandler("chegirma_test", chegirma_test_command))
     app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
     app.add_handler(CommandHandler("sodiq", sodiq_command))
+    app.add_handler(CommandHandler("yangiliklar", yangiliklar_command))
     app.add_handler(MessageHandler(filters.Regex(r'^/tahlil_\d+$'), tahlil_korish_command))
     app.add_handler(CommandHandler("marafon_tuzat", marafon_tuzat_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
