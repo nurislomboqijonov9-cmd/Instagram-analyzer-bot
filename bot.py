@@ -1832,41 +1832,24 @@ def tahlil_tugmalari(context, aid, uid, birinchi='full'):
         birinchi_btn = InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")
     else:
         birinchi_btn = InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")
-    # ADMIN (test): Hookni yaxshilash YO'Q. Oddiy user: hozircha BOR (keyin hammadan ketadi).
-    if is_admin(uid):
-        _btns = [
-            [birinchi_btn],
-            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
-        ]
-        _btns.append([
-            InlineKeyboardButton("⭐️ Saqlash", callback_data=f"sev_{aid}"),
-            InlineKeyboardButton("📅 Eslatma", callback_data=f"eslat_{aid}")])
-        _btns.append([InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}")])
-    else:
-        _btns = [
-            [birinchi_btn, InlineKeyboardButton(t(context, 'yaxshilash_btn'), callback_data=f"yax_{aid}")],
-            [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
-        ]
+    # HAMMAGA: To'liq + Ovoz + Saqlash + Eslatma + AI suhbat (Hook olib tashlandi)
+    _btns = [
+        [birinchi_btn],
+        [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+        [InlineKeyboardButton("⭐️ Saqlash", callback_data=f"sev_{aid}"),
+         InlineKeyboardButton("📅 Eslatma", callback_data=f"eslat_{aid}")],
+        [InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}")],
+    ]
     return InlineKeyboardMarkup(_btns)
 
 
 def main_keyboard(context, uid=None):
-    # ADMIN uchun TEST menyu (Kabinet + Shaxsiy hisobot)
-    if uid and is_admin(uid):
-        return ReplyKeyboardMarkup(
-            [
-                [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
-                [KeyboardButton(t(context, 'menu_kabinet')), KeyboardButton(t(context, 'menu_premium'))],
-                [KeyboardButton(t(context, 'menu_arxiv')), KeyboardButton(t(context, 'menu_ref'))],
-                [KeyboardButton(t(context, 'menu_help')), KeyboardButton(t(context, 'menu_fikr'))],
-            ],
-            resize_keyboard=True
-        )
+    # HAMMAGA: Kabinet + Shaxsiy hisobot
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
-            [KeyboardButton(t(context, 'menu_status')), KeyboardButton(t(context, 'menu_premium'))],
-            [KeyboardButton(t(context, 'menu_balance')), KeyboardButton(t(context, 'menu_ref'))],
+            [KeyboardButton(t(context, 'menu_kabinet')), KeyboardButton(t(context, 'menu_premium'))],
+            [KeyboardButton(t(context, 'menu_arxiv')), KeyboardButton(t(context, 'menu_ref'))],
             [KeyboardButton(t(context, 'menu_help')), KeyboardButton(t(context, 'menu_fikr'))],
         ],
         resize_keyboard=True
@@ -2698,7 +2681,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "(Masalan: qanday hashtag ishlatay? Bu mavzu trendmi? Hook qanday kuchaytiraman?)\n\n"
             "✍️ Savolingizni yozing 👇", parse_mode="HTML")
     elif data.startswith('eslat_'):
-        # ADMIN TEST: Eslatma - odam ERKIN yozadi (masalan "10 iyul 11:00 da")
+        # PREMIUM: Eslatma - odam ERKIN yozadi (masalan "10 iyul 11:00 da")
+        uid = query.from_user.id
+        if not (is_admin(uid) or sub_active(uid)):
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
+            await query.message.reply_text(
+                "📅 <b>Eslatma</b> — bu Premium funksiya! 💎\n\n"
+                "Reels suratga olishni rejalashtiring, bot sizga eslatib turadi 🎬\n\n"
+                "Premium'ga o'ting! 🚀", reply_markup=kb, parse_mode="HTML")
+            return
         try:
             aid = int(data.split('_', 1)[1])
         except Exception:
@@ -3768,8 +3759,8 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # BEPULGA: tugagandan keyingi reklama OLIB TASHLANDI (o'rtadagi reklama yetarli)
 
-            # ADMIN TEST: Streak + Yutuq + Maqsad (bog'lash tizimi)
-            if is_admin(user_id) and aid:
+            # HAMMAGA: Streak + Yutuq + Maqsad (bog'lash tizimi - bepul)
+            if aid:
                 try:
                     # Streak yangilaymiz
                     streak = streak_yangila(user_id)
@@ -6358,19 +6349,38 @@ async def yangilik_xabar_command(update, context):
         return
     arg = (context.args[0] if context.args else "").upper()
     matn = (
-        "🎉 <b>InstaDoctor'da YANGILIKLAR!</b>\n\n"
-        "Biz botni yanada kuchli qildik:\n"
-        "🏆 <b>Statusim</b> — kreator darajangizni kuzating va rivojlaning\n"
-        "📊 Yangilangan tahlil va ko'proq imkoniyatlar!\n"
-        "💎 Premium funksiyalar yanada kuchaydi\n\n"
-        "👇 Yangi menyuni ochish uchun tugmani bosing:")
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")]])
+        "🎉 <b>InstaDoctor'da KATTA YANGILIK!</b>\n\n"
+        "Botni siz uchun yanada kuchli qildik! Mana yangiliklar:\n\n"
+        "🆓 <b>BEPUL (hammaga):</b>\n"
+        "👤 <b>Mening kabinetim</b> — hammasi bir joyda\n"
+        "📈 O'sish grafigi — o'z rivojingizni ko'ring\n"
+        "🔥 Streak — har kuni kiring, ketma-ketlik yig'ing\n"
+        "⭐️ Sevimlilar — yoqqan tahlillarni saqlang\n"
+        "🏆 Yutuqlar va darajalar\n"
+        "🎯 Oylik maqsad\n\n"
+        "💎 <b>PREMIUM (obunachilarga):</b>\n"
+        "📅 Eslatma — reja tuzing, bot eslatadi\n"
+        "💬 AI suhbat — savol bering, javob oling\n"
+        "📂 Shaxsiy hisobot — AI chuqur tahlil\n\n"
+        "👇 Yangi menyuni ochish uchun bosing:")
+
+    def _xabar_kb(uid):
+        # Premium bor -> faqat menyu; yo'q -> menyu + premiumga o'tish
+        if is_admin(uid) or sub_active(uid):
+            return InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚀 Barcha o'zgarishlarni ko'rish", callback_data="menyu_yangila")],
+            ])
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Barcha o'zgarishlarni ko'rish", callback_data="menyu_yangila")],
+            [InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")],
+        ])
     if arg != "YUBOR":
-        # Test - faqat adminga
-        await update.message.reply_text(matn, reply_markup=kb, parse_mode="HTML")
+        # Test - faqat adminga (premium bo'lgani uchun premiumsiz tugma)
+        await update.message.reply_text(matn, reply_markup=_xabar_kb(update.effective_user.id), parse_mode="HTML")
         await update.message.reply_text(
             "☝️ Test namunasi. Hammaga yuborish uchun: /yangilik_xabar YUBOR\n"
-            "⚠️ Diqqat: bu barcha foydalanuvchilarga xabar yuboradi!")
+            "⚠️ Diqqat: bu barcha foydalanuvchilarga xabar yuboradi!\n"
+            "💡 Premium userlarga 'Premiumga o'tish' tugmasi ko'rinmaydi (faqat ma'lumot).")
         return
     # Hammaga yuborish
     rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
@@ -6381,7 +6391,7 @@ async def yangilik_xabar_command(update, context):
         if is_blocked(uid):
             continue
         try:
-            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            await context.bot.send_message(uid, matn, reply_markup=_xabar_kb(uid), parse_mode="HTML")
             yuborildi += 1
             if yuborildi % 100 == 0:
                 await asyncio.sleep(1)
