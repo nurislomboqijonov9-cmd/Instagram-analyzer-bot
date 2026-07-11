@@ -2292,14 +2292,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
     elif data == 'menyu_yangila':
-        # Menyuni yangilaydi (start bosilgandek)
+        # Menyuni yangilaydi (start bosilgandek - yangi menyu ochiladi)
         await query.answer("✅ Menyu yangilandi!")
         await query.message.reply_text(
-            "✅ <b>Menyu yangilandi!</b> 🎉\n\n"
-            "Endi yangi imkoniyatlardan foydalaning:\n"
-            "👤 <b>Mening kabinetim</b> — o'sish, sevimlilar, yutuqlar, maqsad\n"
-            "📂 <b>Shaxsiy hisobotim</b> — AI chuqur tahlil\n\n"
-            "Pastdagi menyudan tanlang! 👇",
+            "✨ <b>Yangi menyu ochildi!</b> 🎉\n\n"
+            "Pastdagi menyuda yangi tugmalar paydo bo'ldi 👇\n\n"
+            "👤 <b>Mening kabinetim</b> — o'sishingiz, sevimlilaringiz, "
+            "yutuqlaringiz va streak — hammasi bir joyda!\n"
+            "📂 <b>Shaxsiy hisobotim</b> — AI chuqur tahlil (Premium)\n\n"
+            "Kabinetingizga kiring va yangi imkoniyatlarni sinab ko'ring! 🚀",
             reply_markup=main_keyboard(context, query.from_user.id), parse_mode="HTML")
     elif data == 'marafon_fikr':
         # 4-kun: fikr so'raymiz (majburiy - fikr yozsa 4-kun bajariladi)
@@ -2521,8 +2522,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Keyingi daraja: {keyingi} ({kerak} ta qoldi)\n\n"
             f"<b>YUTUQLAR:</b>\n{yutuq_txt}", parse_mode="HTML")
     elif data == 'kab_maqsad':
-        # Maqsad
+        # Maqsad - PREMIUM funksiya
         uid = query.from_user.id
+        if not (is_admin(uid) or sub_active(uid)):
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
+            await query.message.reply_text(
+                "🎯 <b>Oylik maqsad</b> — bu Premium funksiya! 💎\n\n"
+                "O'zingizga oylik maqsad qo'ying, bot progressni kuzatib, sizni "
+                "maqsadga yetaklaydi! 🚀 Bu — professional creatorlar siri!\n\n"
+                "Premium'ga o'ting! 💪", reply_markup=kb, parse_mode="HTML")
+            return
         shu_oy = datetime.now().strftime("%Y-%m")
         row = _db_execute("SELECT COALESCE(maqsad_soni,0), maqsad_oy, COALESCE(maqsad_bajarilgan,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
         maqsad = row[0] if row else 0
@@ -2579,8 +2588,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💎 Premium tahlil: <b>{pbal} ta</b>\n\nPremiumga o'tib cheksiz tahlil oling!",
                 reply_markup=kb, parse_mode="HTML")
     elif data.startswith('sev_'):
-        # Tahlilni sevimlilarga saqlash
+        # Tahlilni sevimlilarga saqlash - PREMIUM funksiya
         uid = query.from_user.id
+        if not (is_admin(uid) or sub_active(uid)):
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
+            await query.message.reply_text(
+                "⭐️ <b>Saqlash</b> — bu Premium funksiya! 💎\n\n"
+                "Eng zo'r tahlillaringizni saqlang, video suratga olganingizda "
+                "ochib ishlating — shaxsiy kutubxonangiz! 📚\n\n"
+                "Premium'ga o'ting! 🚀", reply_markup=kb, parse_mode="HTML")
+            return
         try:
             aid = int(data.split('_', 1)[1])
         except Exception:
@@ -6348,39 +6365,56 @@ async def yangilik_xabar_command(update, context):
     if not is_admin(update.effective_user.id):
         return
     arg = (context.args[0] if context.args else "").upper()
-    matn = (
-        "🎉 <b>InstaDoctor'da KATTA YANGILIK!</b>\n\n"
-        "Botni siz uchun yanada kuchli qildik! Mana yangiliklar:\n\n"
-        "🆓 <b>BEPUL (hammaga):</b>\n"
-        "👤 <b>Mening kabinetim</b> — hammasi bir joyda\n"
-        "📈 O'sish grafigi — o'z rivojingizni ko'ring\n"
-        "🔥 Streak — har kuni kiring, ketma-ketlik yig'ing\n"
-        "⭐️ Sevimlilar — yoqqan tahlillarni saqlang\n"
-        "🏆 Yutuqlar va darajalar\n"
-        "🎯 Oylik maqsad\n\n"
-        "💎 <b>PREMIUM (obunachilarga):</b>\n"
-        "📅 Eslatma — reja tuzing, bot eslatadi\n"
-        "💬 AI suhbat — savol bering, javob oling\n"
-        "📂 Shaxsiy hisobot — AI chuqur tahlil\n\n"
-        "👇 Yangi menyuni ochish uchun bosing:")
+
+    # BEPUL userga: og'riq + vau + undash
+    matn_bepul = (
+        "🔥 Botga o'z savolingizni berolmayotganingiz alam qilardimi? "
+        "<b>Endi hammasi o'zgaradi!</b> 💥\n\n"
+        "InstaDoctor <b>PREMIUM</b> ochildi — bu shunchaki bot emas, "
+        "<b>shaxsiy growth jamoangiz:</b>\n\n"
+        "💬 <b>AI mutaxassis</b> — \"Qanday hook qilay?\" so'rang, zumda javob 🤖\n"
+        "📅 <b>Eslatma</b> — g'oyani unutyapsizmi? Bot eslatadi 🎬\n"
+        "🎯 <b>Maqsad</b> — o'zingizni majburlayolmayapsizmi? Bot yetaklaydi 💪\n"
+        "⭐️ <b>Sevimlilar</b> — zo'r tahlilni yo'qotyapsizmi? Saqlang 📚\n"
+        "📂 <b>Hisobot</b> — \"nega o'smayapman?\" — AI aniq aytadi 📊\n\n"
+        "━━━━━━━━━━━\n"
+        "✨ Minglab bloglar aynan shu bilan ko'rishini <b>3-5 barobar</b> oshirdi 🚀\n\n"
+        "Siz hali ham kutyapsizmi? <b>Bugun boshlang!</b> 💎 👇")
+
+    # PREMIUM userga: eslatma (undashsiz)
+    matn_premium = (
+        "🎉 Ajoyib yangilik — sizning <b>PREMIUM</b>'ingizga yangi imkoniyatlar qo'shildi!\n\n"
+        "Endi sizda bor:\n\n"
+        "💬 <b>AI mutaxassis</b> — istalgan savolingizga javob 🤖\n"
+        "📅 <b>Eslatma</b> — g'oyalaringizni bot eslatadi 🎬\n"
+        "🎯 <b>Maqsad</b> — botingiz sizni yetaklaydi 💪\n"
+        "⭐️ <b>Sevimlilar</b> — zo'r tahlillarni saqlang 📚\n"
+        "📂 <b>Hisobot</b> — AI o'sishingizni tahlil qiladi 📊\n\n"
+        "━━━━━━━━━━━\n"
+        "Bularning bari <b>sizniki</b> — hoziroq sinab ko'ring! 🚀\n\n"
+        "👇 Yangi menyuni oching")
+
+    def _xabar_matn(uid):
+        return matn_premium if (is_admin(uid) or sub_active(uid)) else matn_bepul
 
     def _xabar_kb(uid):
-        # Premium bor -> faqat menyu; yo'q -> menyu + premiumga o'tish
+        # Premium bor -> faqat menyu (undashsiz); yo'q -> premium undash + menyu
         if is_admin(uid) or sub_active(uid):
             return InlineKeyboardMarkup([
-                [InlineKeyboardButton("🚀 Barcha o'zgarishlarni ko'rish", callback_data="menyu_yangila")],
+                [InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")],
             ])
         return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Barcha o'zgarishlarni ko'rish", callback_data="menyu_yangila")],
-            [InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")],
+            [InlineKeyboardButton("💎 PREMIUM olish — 29,900 so'm", callback_data="buy_sub")],
+            [InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")],
         ])
     if arg != "YUBOR":
-        # Test - faqat adminga (premium bo'lgani uchun premiumsiz tugma)
-        await update.message.reply_text(matn, reply_markup=_xabar_kb(update.effective_user.id), parse_mode="HTML")
+        # Test - adminga (premium matn ko'rinadi, chunki admin premium)
+        _uid = update.effective_user.id
+        await update.message.reply_text(_xabar_matn(_uid), reply_markup=_xabar_kb(_uid), parse_mode="HTML")
         await update.message.reply_text(
-            "☝️ Test namunasi. Hammaga yuborish uchun: /yangilik_xabar YUBOR\n"
-            "⚠️ Diqqat: bu barcha foydalanuvchilarga xabar yuboradi!\n"
-            "💡 Premium userlarga 'Premiumga o'tish' tugmasi ko'rinmaydi (faqat ma'lumot).")
+            "☝️ Test namunasi (siz premium bo'lgani uchun PREMIUM matn ko'rindi).\n"
+            "Hammaga yuborish: /yangilik_xabar YUBOR\n"
+            "💡 Bepul userlar boshqa (undovchi) matn oladi, premiumlar — shu eslatmani.")
         return
     # Hammaga yuborish
     rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
@@ -6391,7 +6425,7 @@ async def yangilik_xabar_command(update, context):
         if is_blocked(uid):
             continue
         try:
-            await context.bot.send_message(uid, matn, reply_markup=_xabar_kb(uid), parse_mode="HTML")
+            await context.bot.send_message(uid, _xabar_matn(uid), reply_markup=_xabar_kb(uid), parse_mode="HTML")
             yuborildi += 1
             if yuborildi % 100 == 0:
                 await asyncio.sleep(1)
@@ -6488,6 +6522,59 @@ async def tahlil_korish_command(update, context):
         matn = matn[:4000]
     await update.message.reply_text(
         f"⭐️ <b>Saqlangan tahlil #{aid}</b> ({row[2]}%)\n━━━━━━━━━━━\n\n{matn}",
+        parse_mode="HTML")
+
+
+async def premium_stat_command(update, context):
+    """Admin: premium userlar qilgan tahlillar statistikasi."""
+    if not is_admin(update.effective_user.id):
+        return
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    shu_oy = datetime.now().strftime("%Y-%m")
+    # Premium userlar (obuna faol yoki premium balansi bo'lganlar)
+    # Analyses jadvalidan premium userlar tahlilini sanaymiz
+    # Obuna faol userlar ro'yxati
+    premium_users = _db_execute(
+        "SELECT user_id FROM users WHERE sub_until IS NOT NULL AND sub_until > %s",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),), fetch='all') or []
+    premium_ids = set(r[0] for r in premium_users)
+    premium_soni = len(premium_ids)
+
+    # Bugungi va oylik jami tahlillar
+    bugun_jami = _db_execute(
+        "SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (f"{bugun}%",), fetch='one')
+    bugun_jami = bugun_jami[0] if bugun_jami else 0
+    oy_jami = _db_execute(
+        "SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (f"{shu_oy}%",), fetch='one')
+    oy_jami = oy_jami[0] if oy_jami else 0
+
+    # Premium userlar tahlili (bugun/oy) - user_id premium ro'yxatida bo'lsa
+    bugun_prem = 0
+    oy_prem = 0
+    if premium_ids:
+        _ph = ",".join(["%s"] * len(premium_ids))
+        _pl = list(premium_ids)
+        _bp = _db_execute(
+            f"SELECT COUNT(*) FROM analyses WHERE created LIKE %s AND user_id IN ({_ph})",
+            tuple([f"{bugun}%"] + _pl), fetch='one')
+        bugun_prem = _bp[0] if _bp else 0
+        _op = _db_execute(
+            f"SELECT COUNT(*) FROM analyses WHERE created LIKE %s AND user_id IN ({_ph})",
+            tuple([f"{shu_oy}%"] + _pl), fetch='one')
+        oy_prem = _op[0] if _op else 0
+
+    await update.message.reply_text(
+        f"💎 <b>PREMIUM STATISTIKA</b>\n"
+        f"━━━━━━━━━━━\n\n"
+        f"👥 Faol premium a'zolar: <b>{premium_soni}</b>\n\n"
+        f"📊 <b>Bugun ({bugun}):</b>\n"
+        f"   Jami tahlil: {bugun_jami}\n"
+        f"   💎 Premiumlar: <b>{bugun_prem}</b>\n\n"
+        f"📅 <b>Shu oy:</b>\n"
+        f"   Jami tahlil: {oy_jami}\n"
+        f"   💎 Premiumlar: <b>{oy_prem}</b>\n\n"
+        f"💡 Premiumlar oyda o'rtacha "
+        f"{round(oy_prem/premium_soni, 1) if premium_soni else 0} ta tahlil qilishmoqda.",
         parse_mode="HTML")
 
 
@@ -8526,6 +8613,7 @@ def main():
     app.add_handler(CommandHandler("marafon_kim", marafon_kim_command))
     app.add_handler(CommandHandler("sodiq", sodiq_command))
     app.add_handler(CommandHandler("yangiliklar", yangiliklar_command))
+    app.add_handler(CommandHandler("premium_stat", premium_stat_command))
     app.add_handler(MessageHandler(filters.Regex(r'^/tahlil_\d+$'), tahlil_korish_command))
     app.add_handler(CommandHandler("marafon_tuzat", marafon_tuzat_command))
     app.add_handler(CommandHandler("marafon_test", marafon_test_command))
