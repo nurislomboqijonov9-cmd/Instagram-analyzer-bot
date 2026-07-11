@@ -6368,10 +6368,8 @@ async def yangilik_xabar_command(update, context):
 
     # BEPUL userga: og'riq + vau + undash
     matn_bepul = (
-        "🔥 Botga o'z savolingizni berolmayotganingiz alam qilardimi? "
-        "<b>Endi hammasi o'zgaradi!</b> 💥\n\n"
-        "InstaDoctor <b>PREMIUM</b> ochildi — bu shunchaki bot emas, "
-        "<b>shaxsiy growth jamoangiz:</b>\n\n"
+        "🔥 Botdan ko'proq foyda olishni xohlagandingizmi? Endi mumkin! 💥\n\n"
+        "Premium'ga yangi imkoniyatlar qo'shildi — <b>shaxsiy growth jamoangiz:</b>\n\n"
         "💬 <b>AI mutaxassis</b> — \"Qanday yaxshilay?\" so'rang, zumda javob 🤖\n"
         "📅 <b>Eslatma</b> — g'oyani unutyapsizmi? Bot eslatadi 🎬\n"
         "🎯 <b>Maqsad</b> — o'zingizni majburlayolmayapsizmi? Bot yetaklaydi 💪\n"
