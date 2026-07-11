@@ -972,6 +972,7 @@ TEXTS = {
         'cmp_down': "📉 Bu safar {now}% (oldingi videongiz {prev}% edi, {d}% ga pasaydi). Tavsiyalarga e'tibor bering! 💪",
         'cmp_same': "➡️ Bu video ham {now}% — oldingi darajada. Keyingi videoda yuqoriroq natijaga harakat qiling! 🚀",
         'menu_video': "🎬 Video tahlil",
+        'menu_tahlil': "🎬 Tahlil qilish",
         'aksiya_msg': ("📣 Algoritmlarni yangiladik va sizga yana 1 ta bepul tahlil sovg'a qilamiz!\n\n"
                        "Salom! Bitta video — bu shunchaki sinov. Haqiqiy natija va topga chiqish "
                        "masofada, xatolar ustida ishlaganda ko'rinadi.\n\n"
@@ -1421,6 +1422,7 @@ TEXTS = {
         'cmp_down': "📉 Сейчас {now}% (прошлое видео было {prev}%, на {d}% ниже). Обратите внимание на рекомендации! 💪",
         'cmp_same': "➡️ Это видео тоже {now}% — на прежнем уровне. В следующем постарайтесь выше! 🚀",
         'menu_video': "🎬 Анализ видео",
+        'menu_tahlil': "🎬 Сделать анализ",
         'aksiya_msg': ("📣 Мы обновили алгоритмы и дарим тебе ещё 1 анализ бесплатно!\n\n"
                        "Привет! Одно видео — это только тест. Настоящий результат и выход в топ "
                        "видны на дистанции, при работе над ошибками.\n\n"
@@ -1844,12 +1846,11 @@ def tahlil_tugmalari(context, aid, uid, birinchi='full'):
 
 
 def main_keyboard(context, uid=None):
-    # HAMMAGA: Kabinet + Shaxsiy hisobot
+    # 6 TUGMA (soddalashtirilgan): Tahlil qilish + Kabinet + Premium + Do'stlar + Yordam + Fikr
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(t(context, 'menu_video')), KeyboardButton(t(context, 'menu_profile'))],
-            [KeyboardButton(t(context, 'menu_kabinet')), KeyboardButton(t(context, 'menu_premium'))],
-            [KeyboardButton(t(context, 'menu_arxiv')), KeyboardButton(t(context, 'menu_ref'))],
+            [KeyboardButton(t(context, 'menu_tahlil')), KeyboardButton(t(context, 'menu_kabinet'))],
+            [KeyboardButton(t(context, 'menu_premium')), KeyboardButton(t(context, 'menu_ref'))],
             [KeyboardButton(t(context, 'menu_help')), KeyboardButton(t(context, 'menu_fikr'))],
         ],
         resize_keyboard=True
@@ -2587,6 +2588,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 <b>Balansim</b>\n\n🎫 Bepul tahlil: <b>{bal} ta</b>\n"
                 f"💎 Premium tahlil: <b>{pbal} ta</b>\n\nPremiumga o'tib cheksiz tahlil oling!",
                 reply_markup=kb, parse_mode="HTML")
+    elif data == 'kab_hisobot':
+        # Kabinetdan shaxsiy hisobot
+        await _shaxsiy_hisobot_ishga(query.message.reply_text, query.from_user.id, context)
+    elif data == 'tahlil_video':
+        # Video tahlil rejimi
+        context.user_data['mode'] = None
+        await query.message.reply_text(t(context, 'send_video'))
+    elif data == 'tahlil_profil':
+        # Profil tahlil rejimi (premium yoki balans kerak)
+        uid = query.from_user.id
+        if is_admin(uid) or has_access(uid) in ('admin', 'sub') or get_premium_balance(uid) > 0:
+            context.user_data['mode'] = 'profile'
+            context.user_data['profile_imgs'] = []
+            await query.message.reply_text(t(context, 'profile_instr'), parse_mode="HTML")
+        else:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
+            ]])
+            await query.message.reply_text(t(context, 'profile_premium'), reply_markup=kb, parse_mode="HTML")
     elif data.startswith('sev_'):
         # Tahlilni sevimlilarga saqlash - PREMIUM funksiya
         uid = query.from_user.id
@@ -3851,7 +3871,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # (Aks holda fikr/so'rov rejimida menu tugmasi "fikr" deb qabul qilinardi - bu bug edi.)
     _menu_tugmalar = set()
     for _lng in ('uz', 'ru'):
-        for _k in ('menu_video', 'menu_profile', 'menu_status', 'menu_premium', 'menu_arxiv', 'menu_kabinet',
+        for _k in ('menu_video', 'menu_profile', 'menu_tahlil', 'menu_status', 'menu_premium', 'menu_arxiv', 'menu_kabinet',
                    'menu_ref', 'menu_lang', 'menu_help', 'menu_fikr'):
             _v = TEXTS.get(_lng, {}).get(_k)
             if _v:
@@ -4148,6 +4168,16 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.warning(f"Menyu fikrini guruhga yuborishda xato: {e}")
         await update.message.reply_text(t(context, 'fikr_thanks'))
         return
+    if text in (TEXTS['uz']['menu_tahlil'], TEXTS['ru']['menu_tahlil']):
+        # Tahlil qilish - video yoki profil tanlash (inline)
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 Video tahlil", callback_data="tahlil_video")],
+            [InlineKeyboardButton("📊 Profil tahlil", callback_data="tahlil_profil")],
+        ])
+        await update.message.reply_text(
+            "🎬 <b>Tahlil qilish</b>\n\nNimani tahlil qilamiz? Tanlang 👇",
+            reply_markup=kb, parse_mode="HTML")
+        return
     if text in (TEXTS['uz']['menu_video'], TEXTS['ru']['menu_video']):
         context.user_data['mode'] = None
         await update.message.reply_text(t(context, 'send_video'))
@@ -4201,6 +4231,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🏆 Darajam va yutuqlarim", callback_data="kab_daraja")],
             [InlineKeyboardButton("🎯 Maqsadim", callback_data="kab_maqsad"),
              InlineKeyboardButton("💰 Balansim", callback_data="kab_balans")],
+            [InlineKeyboardButton("📂 Shaxsiy hisobotim", callback_data="kab_hisobot")],
         ])
         # Streak ko'rsatamiz (bor bo'lsa)
         srow = _db_execute("SELECT COALESCE(streak_kun,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
@@ -4212,95 +4243,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Bo'limni tanlang 👇",
             reply_markup=kb, parse_mode="HTML")
     elif text in (TEXTS['uz']['menu_arxiv'], TEXTS['ru']['menu_arxiv']):
-        # "Mening tahlillarim" - AI o'sish + kuchli/zaif tomonlar (premium, oyda 2 marta, 5+ tahlil)
-        uid = update.effective_user.id
-        premium = is_admin(uid) or sub_active(uid)
-        if not premium:
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
-            await update.message.reply_text(
-                "📂 <b>Shaxsiy hisobotim</b> — bu maxsus Premium funksiya! 💎\n\n"
-                "Bot barcha tahlillaringizni o'rganib, o'sishingizni va kuchli/zaif "
-                "tomonlaringizni chuqur tahlil qiladi 📊✨\n\n"
-                "Premium'ga o'tib, shaxsiy o'sish hisobotingizni oling! 🚀",
-                reply_markup=kb, parse_mode="HTML")
-            return
-        # Umumiy tahlil SEVIMLILARDAN (odam saqlagan tahlillar asosida)
-        rows = _db_execute(
-            "SELECT a.foiz, a.qisqa, a.created FROM sevimlilar s "
-            "JOIN analyses a ON a.id = s.analiz_id "
-            "WHERE s.user_id = %s AND a.kind='video' AND a.toliq IS NOT NULL "
-            "ORDER BY a.id ASC", (uid,), fetch='all') or []
-        if len(rows) < 5:
-            await update.message.reply_text(
-                f"📂 <b>Shaxsiy hisobotim</b>\n\n"
-                f"Bu hisobot siz <b>saqlagan (⭐️ sevimli)</b> tahlillar asosida tuziladi 📊\n"
-                f"Kamida 5 ta sevimli kerak. Sizda hozir {len(rows)} ta.\n\n"
-                f"Tahlildan keyin \"⭐️ Saqlash\" tugmasini bosing — eng yaxshi videolaringizni "
-                f"saqlang, keyin bu yerda chuqur tahlil oling! 🎬",
-                parse_mode="HTML")
-            return
-        # Oyda 2 marta cheklovi
-        shu_oy = datetime.now().strftime("%Y-%m")
-        _st = _db_execute("SELECT studiya_oy, COALESCE(studiya_marta,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
-        oy_saqlangan = _st[0] if _st else None
-        marta = _st[1] if _st else 0
-        if oy_saqlangan != shu_oy:
-            marta = 0  # yangi oy - reset
-        if marta >= 2 and not is_admin(uid):
-            await update.message.reply_text(
-                "📂 <b>Shaxsiy hisobotim</b>\n\n"
-                "Bu funksiyani oyiga 2 marta ishlatish mumkin 📊\n"
-                "Bu oy limitni ishlatib bo'lgansiz. Keyingi oy yana foydalaning! 🗓",
-                parse_mode="HTML")
-            return
-        await update.message.reply_text("📊 Tahlillaringizni o'rganyapman... biroz kuting ⏳")
-        # STATISTIKA hisoblaymiz (AI'siz - bepul)
-        son = len(rows)
-        foizlar = [r[0] for r in rows if r[0]]
-        birinchi_foiz = rows[0][0] if rows[0][0] else 0
-        oxirgi_foiz = rows[-1][0] if rows[-1][0] else 0
-        ortacha = round(sum(foizlar) / len(foizlar)) if foizlar else 0
-        eng_yaxshi = max(foizlar) if foizlar else 0
-        osish = oxirgi_foiz - birinchi_foiz
-        osish_emoji = "📈" if osish > 0 else ("📉" if osish < 0 else "➡️")
-        stat_blok = (
-            f"📊 <b>STATISTIKANGIZ</b>\n"
-            f"🎬 Jami tahlil: <b>{son} ta</b>\n"
-            f"⭐️ O'rtacha sifat: <b>{ortacha}%</b>\n"
-            f"🏆 Eng yaxshi: <b>{eng_yaxshi}%</b>\n"
-            f"{osish_emoji} O'sish: <b>{birinchi_foiz}% → {oxirgi_foiz}%</b> ({'+' if osish >= 0 else ''}{osish}%)\n"
-            f"━━━━━━━━━━━\n\n"
-        )
-        # Oxirgi 10 tahlilni AI'ga beramiz
-        tahlillar_matn = ""
-        for i, r in enumerate(rows[-10:], 1):
-            f = r[0] if r[0] else 0
-            q = (r[1] or "")[:300]
-            tahlillar_matn += f"\n{i}-tahlil (sifat {f}%): {q}\n"
-        prompt = (
-            f"Sen Instagram Reels bo'yicha mutaxassissan. Quyida bir bloger {son} ta videosining tahlillari bor "
-            f"(birinchi {birinchi_foiz}%, oxirgi {oxirgi_foiz}%).\n{tahlillar_matn}\n\n"
-            f"Blogerga SHAXSIY, ILIQ o'sish hisoboti yoz (o'zbek tilida, emoji bilan, 'siz' deb murojaat qil):\n"
-            f"1. O'sish: sifat qanday o'zgargan (raqamlar bilan, motivatsiya)\n"
-            f"2. Kuchli tomonlaringiz (2-3 ta)\n"
-            f"3. Yaxshilash kerak bo'lgan tomonlar (2-3 ta, aniq maslahat)\n"
-            f"4. Qisqa rag'batlantiruvchi xulosa\n"
-            f"Jami 250-350 so'z, do'stona, motivatsion.")
-        try:
-            javob = _generate(prompt)
-            if not javob or len(javob.strip()) < 20:
-                await update.message.reply_text("⚠️ Hozir tahlil qilib bo'lmadi, biroz keyin urinib ko'ring.")
-                return
-            # Cheklovni yangilaymiz
-            _db_execute("UPDATE users SET studiya_oy = %s, studiya_marta = %s WHERE user_id = %s",
-                        (shu_oy, marta + 1, uid))
-            qolgan = 2 - (marta + 1)
-            await update.message.reply_text(
-                f"📂 <b>SIZNING SHAXSIY HISOBOTINGIZ</b> 📈\n━━━━━━━━━━━\n\n{stat_blok}{javob}\n\n"
-                f"━━━━━━━━━━━\n💡 Bu oy yana {qolgan} marta ishlatishingiz mumkin.",
-                parse_mode="HTML")
-        except Exception:
-            await update.message.reply_text("⚠️ Xatolik yuz berdi, biroz keyin urinib ko'ring.")
+        # Shaxsiy hisobot (funksiya orqali)
+        await _shaxsiy_hisobot_ishga(update.message.reply_text, update.effective_user.id, context)
     elif text in (TEXTS['uz']['menu_balance'], TEXTS['ru']['menu_balance']):
         uid = update.effective_user.id
         if is_admin(uid):
@@ -6583,6 +6527,95 @@ async def premium_stat_command(update, context):
         f"💡 Premiumlar oyda o'rtacha "
         f"{round(oy_prem/premium_soni, 1) if premium_soni else 0} ta tahlil qilishmoqda.",
         parse_mode="HTML")
+
+
+async def _shaxsiy_hisobot_ishga(reply_func, uid, context):
+    """Shaxsiy hisobot logikasi (menu_arxiv va kab_hisobot ikkalasi chaqiradi).
+    reply_func - update.message.reply_text yoki query.message.reply_text."""
+    premium = is_admin(uid) or sub_active(uid)
+    if not premium:
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
+        await reply_func(
+            "📂 <b>Shaxsiy hisobotim</b> — bu maxsus Premium funksiya! 💎\n\n"
+            "Bot barcha tahlillaringizni o'rganib, o'sishingizni va kuchli/zaif "
+            "tomonlaringizni chuqur tahlil qiladi 📊✨\n\n"
+            "Premium'ga o'tib, shaxsiy o'sish hisobotingizni oling! 🚀",
+            reply_markup=kb, parse_mode="HTML")
+        return
+    rows = _db_execute(
+        "SELECT a.foiz, a.qisqa, a.created FROM sevimlilar s "
+        "JOIN analyses a ON a.id = s.analiz_id "
+        "WHERE s.user_id = %s AND a.kind='video' AND a.toliq IS NOT NULL "
+        "ORDER BY a.id ASC", (uid,), fetch='all') or []
+    if len(rows) < 5:
+        await reply_func(
+            f"📂 <b>Shaxsiy hisobotim</b>\n\n"
+            f"Bu hisobot siz <b>saqlagan (⭐️ sevimli)</b> tahlillar asosida tuziladi 📊\n"
+            f"Kamida 5 ta sevimli kerak. Sizda hozir {len(rows)} ta.\n\n"
+            f"💡 <b>Maslahat:</b> Mavzusi (tematikasi) bir-biriga yaqin videolarni saqlang — "
+            f"shunda AI o'sishingizni yanada aniqroq tahlil qiladi! 🎯\n\n"
+            f"Tahlildan keyin \"⭐️ Saqlash\" tugmasini bosing — eng yaxshi videolaringizni "
+            f"saqlang, keyin bu yerda chuqur tahlil oling! 🎬",
+            parse_mode="HTML")
+        return
+    shu_oy = datetime.now().strftime("%Y-%m")
+    _st = _db_execute("SELECT studiya_oy, COALESCE(studiya_marta,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+    oy_saqlangan = _st[0] if _st else None
+    marta = _st[1] if _st else 0
+    if oy_saqlangan != shu_oy:
+        marta = 0
+    if marta >= 2 and not is_admin(uid):
+        await reply_func(
+            "📂 <b>Shaxsiy hisobotim</b>\n\n"
+            "Bu funksiyani oyiga 2 marta ishlatish mumkin 📊\n"
+            "Bu oy limitni ishlatib bo'lgansiz. Keyingi oy yana foydalaning! 🗓",
+            parse_mode="HTML")
+        return
+    await reply_func("📊 Tahlillaringizni o'rganyapman... biroz kuting ⏳")
+    son = len(rows)
+    foizlar = [r[0] for r in rows if r[0]]
+    birinchi_foiz = rows[0][0] if rows[0][0] else 0
+    oxirgi_foiz = rows[-1][0] if rows[-1][0] else 0
+    ortacha = round(sum(foizlar) / len(foizlar)) if foizlar else 0
+    eng_yaxshi = max(foizlar) if foizlar else 0
+    osish = oxirgi_foiz - birinchi_foiz
+    osish_emoji = "📈" if osish > 0 else ("📉" if osish < 0 else "➡️")
+    stat_blok = (
+        f"📊 <b>STATISTIKANGIZ</b>\n"
+        f"🎬 Jami tahlil: <b>{son} ta</b>\n"
+        f"⭐️ O'rtacha sifat: <b>{ortacha}%</b>\n"
+        f"🏆 Eng yaxshi: <b>{eng_yaxshi}%</b>\n"
+        f"{osish_emoji} O'sish: <b>{birinchi_foiz}% → {oxirgi_foiz}%</b> ({'+' if osish >= 0 else ''}{osish}%)\n"
+        f"━━━━━━━━━━━\n\n"
+    )
+    tahlillar_matn = ""
+    for i, r in enumerate(rows[-10:], 1):
+        f = r[0] if r[0] else 0
+        q = (r[1] or "")[:300]
+        tahlillar_matn += f"\n{i}-tahlil (sifat {f}%): {q}\n"
+    prompt = (
+        f"Sen Instagram Reels bo'yicha mutaxassissan. Quyida bir bloger {son} ta videosining tahlillari bor "
+        f"(birinchi {birinchi_foiz}%, oxirgi {oxirgi_foiz}%).\n{tahlillar_matn}\n\n"
+        f"Blogerga SHAXSIY, ILIQ o'sish hisoboti yoz (o'zbek tilida, emoji bilan, 'siz' deb murojaat qil):\n"
+        f"1. O'sish: sifat qanday o'zgargan (raqamlar bilan, motivatsiya)\n"
+        f"2. Kuchli tomonlaringiz (2-3 ta)\n"
+        f"3. Yaxshilash kerak bo'lgan tomonlar (2-3 ta, aniq maslahat)\n"
+        f"4. Qisqa rag'batlantiruvchi xulosa\n"
+        f"Jami 250-350 so'z, do'stona, motivatsion.")
+    try:
+        javob = _generate(prompt)
+        if not javob or len(javob.strip()) < 20:
+            await reply_func("⚠️ Hozir tahlil qilib bo'lmadi, biroz keyin urinib ko'ring.")
+            return
+        _db_execute("UPDATE users SET studiya_oy = %s, studiya_marta = %s WHERE user_id = %s",
+                    (shu_oy, marta + 1, uid))
+        qolgan = 2 - (marta + 1)
+        await reply_func(
+            f"📂 <b>SIZNING SHAXSIY HISOBOTINGIZ</b> 📈\n━━━━━━━━━━━\n\n{stat_blok}{javob}\n\n"
+            f"━━━━━━━━━━━\n💡 Bu oy yana {qolgan} marta ishlatishingiz mumkin.",
+            parse_mode="HTML")
+    except Exception:
+        await reply_func("⚠️ Xatolik yuz berdi, biroz keyin urinib ko'ring.")
 
 
 async def yangiliklar_command(update, context):
