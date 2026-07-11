@@ -6372,7 +6372,7 @@ async def yangilik_xabar_command(update, context):
         "<b>Endi hammasi o'zgaradi!</b> 💥\n\n"
         "InstaDoctor <b>PREMIUM</b> ochildi — bu shunchaki bot emas, "
         "<b>shaxsiy growth jamoangiz:</b>\n\n"
-        "💬 <b>AI mutaxassis</b> — \"Qanday hook qilay?\" so'rang, zumda javob 🤖\n"
+        "💬 <b>AI mutaxassis</b> — \"Qanday yaxshilay?\" so'rang, zumda javob 🤖\n"
         "📅 <b>Eslatma</b> — g'oyani unutyapsizmi? Bot eslatadi 🎬\n"
         "🎯 <b>Maqsad</b> — o'zingizni majburlayolmayapsizmi? Bot yetaklaydi 💪\n"
         "⭐️ <b>Sevimlilar</b> — zo'r tahlilni yo'qotyapsizmi? Saqlang 📚\n"
@@ -6408,13 +6408,22 @@ async def yangilik_xabar_command(update, context):
             [InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")],
         ])
     if arg != "YUBOR":
-        # Test - adminga (premium matn ko'rinadi, chunki admin premium)
-        _uid = update.effective_user.id
-        await update.message.reply_text(_xabar_matn(_uid), reply_markup=_xabar_kb(_uid), parse_mode="HTML")
+        # Test - IKKALA matnni ko'rsatamiz (bepul + premium namuna)
         await update.message.reply_text(
-            "☝️ Test namunasi (siz premium bo'lgani uchun PREMIUM matn ko'rindi).\n"
-            "Hammaga yuborish: /yangilik_xabar YUBOR\n"
-            "💡 Bepul userlar boshqa (undovchi) matn oladi, premiumlar — shu eslatmani.")
+            "👇 <b>1) BEPUL userlar shu matnni oladi:</b>", parse_mode="HTML")
+        await update.message.reply_text(matn_bepul, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("💎 PREMIUM olish — 29,900 so'm", callback_data="buy_sub")],
+            [InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")],
+        ]), parse_mode="HTML")
+        await update.message.reply_text(
+            "👇 <b>2) PREMIUM userlar shu matnni oladi:</b>", parse_mode="HTML")
+        await update.message.reply_text(matn_premium, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚀 Yangi menyuni ochish", callback_data="menyu_yangila")],
+        ]), parse_mode="HTML")
+        await update.message.reply_text(
+            "☝️ Yuqorida 2 xil namuna. Hammaga yuborish: <b>/yangilik_xabar YUBOR</b>\n"
+            "💡 Bepullar undovchi matn + PREMIUM tugma, premiumlar eslatma oladi.",
+            parse_mode="HTML")
         return
     # Hammaga yuborish
     rows = _db_execute("SELECT user_id FROM users", fetch='all') or []
