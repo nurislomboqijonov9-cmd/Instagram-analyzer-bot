@@ -1971,6 +1971,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "<b>29,900 so'm</b> 💎",
                 reply_markup=kb, parse_mode="HTML")
     elif data == 'buy_sub':
+        # Menyu yangilanadi (yangi menyu) + to'lov turlari chiqadi
+        try:
+            await query.message.reply_text(
+                "✨ <b>Menyu yangilandi!</b> Pastda yangi imkoniyatlar 👇",
+                reply_markup=main_keyboard(context, query.from_user.id), parse_mode="HTML")
+        except Exception:
+            pass
         # To'lov turini tanlash: Payme yoki Karta
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_sub')],
