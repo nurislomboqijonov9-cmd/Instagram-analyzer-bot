@@ -239,6 +239,8 @@ def init_db():
                     eslatma_vaqt TEXT, yuborildi BOOLEAN DEFAULT FALSE, created TEXT)""")
                 cur.execute("""CREATE TABLE IF NOT EXISTS sevimlilar (
                     id SERIAL PRIMARY KEY, user_id BIGINT, analiz_id INTEGER, created TEXT)""")
+                cur.execute("""CREATE TABLE IF NOT EXISTS bloklangan_userlar (
+                    username TEXT PRIMARY KEY, created TEXT)""")
                 cur.execute("""CREATE TABLE IF NOT EXISTS sorov_javoblar (
                     id SERIAL PRIMARY KEY, user_id BIGINT, username TEXT,
                     javob1 TEXT, javob2 TEXT, created TEXT)""")
@@ -1239,13 +1241,14 @@ TEXTS = {
                        "Mutlaqo <b>bepul</b>. Hozir sinab ko'ring 👇"),
         'tts_btn': "🔊 Qisqa eshitish",
         'yaxshilash_btn': "🔥 Qanday yaxshilash?",
-        'yaxshilash_premium': ("🔒 <b>\"Qanday yaxshilash?\"</b> — bu PREMIUM funksiya!\n\n"
-                               "Premium'da videongiz uchun:\n"
-                               "✅ Hook nega kuchsiz — aniq sabab\n"
-                               "✅ Qanday kuchaytirish — amaliy yechim\n"
-                               "✅ <b>3 ta TAYYOR hook</b> — ko'chirib ishlatasiz!\n\n"
-                               "👇 Premium oling va kontentingizni TOPga chiqaring:"),
-        'yaxshilash_loading': "🔥 Hook tahlili tayyorlanmoqda... ⏳",
+        'yaxshilash_premium': ("🚀 <b>Kuchaytirib olish</b> — Premium imkoniyat! 💎\n\n"
+                               "AI sizning videongizga aynan mos tayyorlaydi:\n"
+                               "🎣 <b>3 ta tayyor HOOK</b> — nusxa oling, ishlating\n"
+                               "🎬 <b>Ta'sirli YAKUN</b> — odamni ushlab qoladi\n"
+                               "📝 <b>Aniq tuzatishlar</b> — nima o'zgartirish\n\n"
+                               "Bir marta yozilgan kuchli hook — minglab ko'rish farqi! 🔥\n\n"
+                               "👇 Premium oling:"),
+        'yaxshilash_loading': "🔥 Videongiz uchun tuzatish tayyorlanmoqda... ⏳",
         'tts_full_btn': "🔊 Ovozli eshitish",
         'inv_sub_title': "InstaDoctor — 1 oylik obuna",
         'inv_sub_desc': "1 oy davomida cheksiz video tahlil. 🔒 To'lov Payme orqali xavfsiz. To'lovdan so'ng obuna avtomatik faollashadi.",
@@ -1827,6 +1830,40 @@ def osish_grafigi(uid):
     return grafik
 
 
+def sotuv_undov(foiz):
+    """Foizga qarab sotuv undov matnini qaytaradi (past/o'rta/yuqori). Halol, kafolatsiz."""
+    try:
+        f = int(foiz) if foiz else 0
+    except Exception:
+        f = 0
+    if f < 50:
+        # Past - "yaxshi" demaymiz, lekin ruhlantiramiz
+        return (
+            "━━━━━━━━━━━\n"
+            "💡 Bu videoda yaxshilanadigan joylar bor — bu o'sish imkoniyati! 🌱\n\n"
+            "AI sizga aniq ko'rsatadi:\n"
+            "🎣 Kuchli HOOK qanday qilish\n"
+            "🎬 Videoni qiziqarli qilish yo'llari\n"
+            "📝 Aniq tuzatishlar\n")
+    elif f < 75:
+        # O'rta
+        return (
+            "━━━━━━━━━━━\n"
+            "💡 Yaxshi boshlagansiz! Videoni yanada kuchliroq qilish yo'llari bor 🎯\n\n"
+            "AI tayyorlab beradi:\n"
+            "🎣 Kuchli HOOK variantlari\n"
+            "🎬 Ta'sirli YAKUN\n"
+            "📝 Aniq yaxshilash maslahatlari\n")
+    else:
+        # Yuqori
+        return (
+            "━━━━━━━━━━━\n"
+            "💡 Zo'r natija! 🔥 Yanada mukammal qilish uchun AI yordam beradi:\n\n"
+            "🎣 Hookni yanada kuchaytirish\n"
+            "🎬 Yakunni sayqallash\n"
+            "📝 Nozik tuzatishlar\n")
+
+
 def tahlil_tugmalari(context, aid, uid, birinchi='full'):
     """Tahlil natijasi tugmalari (ixcham). Admin uchun qo'shimcha (g'oya/eslatma/chat).
     birinchi='full' -> To'liq tugma; birinchi='qisqa' -> Qisqaga qaytish tugma."""
@@ -1834,10 +1871,10 @@ def tahlil_tugmalari(context, aid, uid, birinchi='full'):
         birinchi_btn = InlineKeyboardButton(t(context, 'qisqa_btn'), callback_data=f"qisqa_{aid}")
     else:
         birinchi_btn = InlineKeyboardButton(t(context, 'full_btn'), callback_data=f"full_{aid}")
-    # HAMMAGA: To'liq + Ovoz + Saqlash + Eslatma + AI suhbat (Hook olib tashlandi)
+    # HAMMAGA: Kuchaytirish (sotuv) tepada + To'liq + Ovoz + Saqlash + Eslatma + AI suhbat
     _btns = [
-        [birinchi_btn],
-        [InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
+        [InlineKeyboardButton("🚀 Kuchaytirib olish", callback_data=f"yax_{aid}")],
+        [birinchi_btn, InlineKeyboardButton(t(context, 'tts_full_btn'), callback_data=f"ttsf_{aid}")],
         [InlineKeyboardButton("⭐️ Saqlash", callback_data=f"sev_{aid}"),
          InlineKeyboardButton("📅 Eslatma", callback_data=f"eslat_{aid}")],
         [InlineKeyboardButton("💬 AI bilan suhbat", callback_data=f"chat_{aid}")],
@@ -1875,6 +1912,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if is_blocked(user.id):
         return
+    # Username bloklangan ro'yxatida bo'lsa - avtomatik bloklaymiz (ID almashtirsa ham)
+    if user.username:
+        _bl = _db_execute("SELECT username FROM bloklangan_userlar WHERE username = %s",
+                          (user.username.lower(),), fetch='one')
+        if _bl:
+            _db_execute("UPDATE users SET bloklangan = TRUE WHERE user_id = %s", (user.id,))
+            save_user(user.id, user.username, user.first_name)
+            return
     was_new = not user_exists(user.id)
     save_user(user.id, user.username, user.first_name)
     context.user_data['is_new'] = was_new  # yangi user uchun sovg'a xabari ko'rsatamiz
@@ -2805,14 +2850,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wait = await query.message.reply_text(t(context, 'yaxshilash_loading'))
         try:
             lang = get_lang(context)
-            bonus_prompt = (PROMPT_PREMIUM_RU if lang == 'ru' else PROMPT_PREMIUM_UZ)
-            # Saqlangan tahlil asosida hook taklifini so'raymiz (video qayta kerak emas)
-            asos = (f"Quyida videoning tahlili berilgan. Shu asosda hook yaxshilash bo'limini yoz.\n\n"
-                    f"TAHLIL:\n{toliq}\n") if lang != 'ru' else (
-                    f"Ниже анализ видео. На его основе напиши раздел улучшения хука.\n\nАНАЛИЗ:\n{toliq}\n")
-            txt = await asyncio.to_thread(_generate, [asos + bonus_prompt],
-                                          3, "gemini-2.5-flash")
-            await wait.edit_text(txt if txt else "😔 Hozir tayyorlab bo'lmadi, qayta urinib ko'ring.")
+            # Kuchli tuzatish: 3 hook + yakun + aniq tuzatishlar (tayyor, nusxa oladigan)
+            if lang == 'ru':
+                asos = (
+                    f"Ниже анализ видео блогера. На его основе дай ГОТОВЫЕ, конкретные улучшения "
+                    f"(которые можно скопировать и использовать).\n\nАНАЛИЗ:\n{toliq}\n\n"
+                    f"Дай ответ СТРОГО в таком формате (эмодзи, на русском):\n\n"
+                    f"🎣 <b>НОВЫЙ ХУК (3 варианта):</b>\n(три готовых цепляющих первых фразы для этого видео)\n\n"
+                    f"🎬 <b>СИЛЬНАЯ КОНЦОВКА:</b>\n(готовый текст концовки с призывом к действию)\n\n"
+                    f"📝 <b>3 ТОЧНЫХ УЛУЧШЕНИЯ:</b>\n(три конкретных совета: монтаж, текст, темп)\n\n"
+                    f"Будь конкретным, давай готовые фразы, не общие советы. 200-300 слов.")
+            else:
+                asos = (
+                    f"Quyida bloger videosining tahlili. Shu asosda TAYYOR, aniq yaxshilashlar ber "
+                    f"(nusxa olib ishlatsa bo'ladigan).\n\nTAHLIL:\n{toliq}\n\n"
+                    f"Javobni QAT'IY shu formatda ber (emoji bilan, o'zbekcha):\n\n"
+                    f"🎣 <b>YANGI HOOK (3 variant):</b>\n(shu video uchun 3 ta tayyor, ilib oladigan birinchi gap)\n\n"
+                    f"🎬 <b>KUCHLI YAKUN:</b>\n(harakatga undaydigan tayyor yakun matni)\n\n"
+                    f"📝 <b>3 TA ANIQ TUZATISH:</b>\n(3 ta konkret maslahat: montaj, matn, temp)\n\n"
+                    f"Aniq bo'l, tayyor gaplar ber, umumiy maslahat emas. 200-300 so'z.")
+            txt = await asyncio.to_thread(_generate, [asos], 3, "gemini-2.5-flash")
+            if txt:
+                sarlavha = ("🔥 <b>SIZNING VIDEONGIZ UCHUN TUZATISH</b>\n━━━━━━━━━━━\n\n"
+                            if lang != 'ru' else
+                            "🔥 <b>УЛУЧШЕНИЯ ДЛЯ ВАШЕГО ВИДЕО</b>\n━━━━━━━━━━━\n\n")
+                await wait.edit_text(sarlavha + txt, parse_mode="HTML")
+            else:
+                await wait.edit_text("😔 Hozir tayyorlab bo'lmadi, qayta urinib ko'ring.")
         except Exception as e:
             logger.warning(f"Yaxshilash xato: {e}")
             await wait.edit_text("😔 Hozir tayyorlab bo'lmadi, qayta urinib ko'ring.")
@@ -3779,6 +3843,9 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     qisqa = qisqa + "\n\n" + t(context, 'cmp_same').format(now=foiz)
 
+            # SOTUV UNDOV (foizga qarab: past/o'rta/yuqori) - halol, kafolatsiz
+            qisqa = qisqa + "\n\n" + sotuv_undov(foiz)
+
             # Tahlil oxiriga bot havolasini qo'shamiz (boshqaga ulashsa - reklama)
             qisqa = qisqa + t(context, 'analyzed_footer')
 
@@ -4518,6 +4585,51 @@ async def blok_ochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     _db_execute("UPDATE users SET bloklangan = FALSE WHERE user_id = %s", (target_id,))
     await update.message.reply_text(f"✅ {target_id} blokdan chiqarildi.")
+
+
+async def blok_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: username bo'yicha bloklaydi (ID almashtirsa ham). /blok_user @username"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text(
+            "✍️ Foydalanish: /blok_user @username\n"
+            "Masalan: /blok_user @sevara\n\n"
+            "Bu username'li BARCHA akkauntlar (hozirgi va kelajakdagi) bloklanadi. "
+            "ID almashtirsa ham foyda bermaydi.")
+        return
+    uname = context.args[0].lstrip('@').strip().lower()
+    if not uname:
+        await update.message.reply_text("❌ Username noto'g'ri.")
+        return
+    # Shu username'li barcha userlarni bloklaymiz
+    _db_execute("UPDATE users SET bloklangan = TRUE WHERE LOWER(username) = %s", (uname,))
+    # Bloklangan username ro'yxatiga qo'shamiz (kelajakdagi akkauntlar uchun)
+    _db_execute(
+        "INSERT INTO bloklangan_userlar (username, created) VALUES (%s, %s) "
+        "ON CONFLICT (username) DO NOTHING",
+        (uname, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    # Nechta akkaunt bloklangани
+    cnt = _db_execute("SELECT COUNT(*) FROM users WHERE LOWER(username) = %s AND bloklangan = TRUE", (uname,), fetch='one')
+    soni = cnt[0] if cnt else 0
+    await update.message.reply_text(
+        f"🚫 @{uname} bloklandi!\n\n"
+        f"Bloklangan akkauntlar: {soni} ta\n"
+        f"Endi bu username bilan yangi akkaunt ochsa ham — avtomatik bloklanadi. "
+        f"Blokdan chiqarish: /blok_user_ochir @{uname}")
+
+
+async def blok_user_ochir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: username blokini ochadi. /blok_user_ochir @username"""
+    if not is_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("✍️ Foydalanish: /blok_user_ochir @username")
+        return
+    uname = context.args[0].lstrip('@').strip().lower()
+    _db_execute("UPDATE users SET bloklangan = FALSE WHERE LOWER(username) = %s", (uname,))
+    _db_execute("DELETE FROM bloklangan_userlar WHERE username = %s", (uname,))
+    await update.message.reply_text(f"✅ @{uname} blokdan chiqarildi (barcha akkauntlar).")
 
 
 async def berbalans_premium_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5547,6 +5659,115 @@ async def premium_xarajat_command(update: Update, context: ContextTypes.DEFAULT_
     if len(text) > 4000:
         text = text[:3990] + "\n…"
     await update.message.reply_text(text)
+
+
+async def marafon_konversiya_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: marafon ishlayaptimi? Tugatgan vs tugatmagan -> to'lov solishtirish."""
+    if not is_admin(update.effective_user.id):
+        return
+
+    def cnt(q, p=None):
+        r = _db_execute(q, p, fetch='one')
+        return r[0] if r else 0
+
+    # To'lagan userlar ro'yxati (approved payment bor)
+    tolagan_ids = _db_execute(
+        "SELECT DISTINCT user_id FROM payments WHERE status = 'approved'", fetch='all') or []
+    tolagan_set = set(r[0] for r in tolagan_ids)
+
+    # 1. Marafonni 5/5 BAJARGAN
+    m5 = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(marafon_bajarilgan,0) >= 5", fetch='all') or []
+    m5_ids = set(r[0] for r in m5)
+    m5_soni = len(m5_ids)
+    m5_tolagan = len(m5_ids & tolagan_set)
+
+    # 2. Marafonga kirgan, lekin 5/5 EMAS
+    mk = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(marafon_kun,0) >= 1 "
+        "AND COALESCE(marafon_bajarilgan,0) < 5", fetch='all') or []
+    mk_ids = set(r[0] for r in mk)
+    mk_soni = len(mk_ids)
+    mk_tolagan = len(mk_ids & tolagan_set)
+
+    # 3. Marafonga UMUMAN kirmagan
+    yoq = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(marafon_kun,0) = 0", fetch='all') or []
+    yoq_ids = set(r[0] for r in yoq)
+    yoq_soni = len(yoq_ids)
+    yoq_tolagan = len(yoq_ids & tolagan_set)
+
+    def foiz(a, b):
+        return f"{(a/b*100):.1f}%" if b else "0%"
+
+    # Hozir marafonda (kunlar bo'yicha)
+    hozir_k1 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 1 AND marafon_tugadi = FALSE")
+    hozir_k2 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 2 AND marafon_tugadi = FALSE")
+    hozir_k3 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 3 AND marafon_tugadi = FALSE")
+    hozir_k4 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun = 4 AND marafon_tugadi = FALSE")
+    hozir_k5 = cnt("SELECT COUNT(*) FROM users WHERE marafon_kun >= 5 AND marafon_tugadi = FALSE")
+
+    txt = (
+        "🏃 <b>MARAFON KONVERSIYASI</b>\n"
+        "━━━━━━━━━━━━━\n\n"
+        "<b>MARAFON ISHLAYAPTIMI?</b>\n\n"
+        f"✅ <b>5/5 bajargan:</b> {m5_soni} ta\n"
+        f"   To'lagan: <b>{m5_tolagan}</b> ({foiz(m5_tolagan, m5_soni)})\n\n"
+        f"⚠️ <b>Kirgan, 5/5 emas:</b> {mk_soni} ta\n"
+        f"   To'lagan: <b>{mk_tolagan}</b> ({foiz(mk_tolagan, mk_soni)})\n\n"
+        f"❌ <b>Marafonga kirmagan:</b> {yoq_soni} ta\n"
+        f"   To'lagan: <b>{yoq_tolagan}</b> ({foiz(yoq_tolagan, yoq_soni)})\n\n"
+        "━━━━━━━━━━━━━\n"
+        "📍 <b>HOZIR MARAFONDA:</b>\n"
+        f"1-kun: {hozir_k1} | 2-kun: {hozir_k2} | 3-kun: {hozir_k3}\n"
+        f"4-kun: {hozir_k4} | 5-kun: {hozir_k5}\n\n"
+        "━━━━━━━━━━━━━\n<b>XULOSA:</b>\n"
+    )
+    # Avtomatik xulosa
+    m5_f = (m5_tolagan/m5_soni*100) if m5_soni else 0
+    yoq_f = (yoq_tolagan/yoq_soni*100) if yoq_soni else 0
+    if m5_soni < 10:
+        txt += "⏳ Hali ma'lumot kam (5/5 bajargan 10 tadan kam). Kutish kerak."
+    elif m5_f > yoq_f * 2:
+        txt += f"✅ MARAFON ISHLAYAPTI! Bajarganlar {m5_f:.1f}% to'laydi, kirmaganlar {yoq_f:.1f}%. Farq {m5_f/yoq_f:.1f}x!"
+    elif m5_f > yoq_f:
+        txt += f"🟡 Marafon biroz yordam beryapti ({m5_f:.1f}% vs {yoq_f:.1f}%), lekin kuchli emas."
+    else:
+        txt += f"❌ Marafon ishlamayapti ({m5_f:.1f}% vs {yoq_f:.1f}%). Qayta ko'rib chiqish kerak."
+    await update.message.reply_text(txt, parse_mode="HTML")
+
+
+async def tolovlar_tekshir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: to'lovlarni paket bo'yicha tekshiradi (nechta, qancha summa)."""
+    if not is_admin(update.effective_user.id):
+        return
+    rows = _db_execute(
+        "SELECT package, COUNT(*), COALESCE(SUM(amount),0) FROM payments "
+        "WHERE status = 'approved' GROUP BY package ORDER BY SUM(amount) DESC",
+        fetch='all') or []
+    if not rows:
+        await update.message.reply_text("📭 To'lovlar yo'q.")
+        return
+    txt = "💳 <b>TO'LOVLAR (paket bo'yicha)</b>\n━━━━━━━━━━━\n\n"
+    jami_soni = 0
+    jami_summa = 0
+    # Kutilgan narxlar (tekshirish uchun)
+    kutilgan = {
+        'one_1': 5090, 'test_7day': 6990, 'sub_1month': 29900,
+        'sub_1month_discount': 19900, 'sub_1month_renewal': 23900,
+    }
+    for pkg, soni, summa in rows:
+        jami_soni += soni
+        jami_summa += summa
+        ort = round(summa / soni) if soni else 0
+        # Narx to'g'rimi tekshiramiz
+        kut = kutilgan.get(pkg, None)
+        belgi = ""
+        if kut and abs(ort - kut) > 100:
+            belgi = f" ⚠️ (kutilgan {kut:,})"
+        txt += f"📦 <b>{pkg}</b>\n   Soni: {soni} | Jami: {summa:,} so'm\n   O'rtacha: {ort:,} so'm{belgi}\n\n"
+    txt += f"━━━━━━━━━━━\n💰 JAMI: {jami_soni} ta to'lov, {jami_summa:,} so'm"
+    await update.message.reply_text(txt, parse_mode="HTML")
 
 
 async def obunachilar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -8610,11 +8831,14 @@ def main():
     app.add_handler(CommandHandler("kop_balans", kop_balans_command))
     app.add_handler(CommandHandler("sotuv_balans_0", sotuv_balans_0_command))
     app.add_handler(CommandHandler("blok", blok_command))
+    app.add_handler(CommandHandler("blok_user", blok_user_command))
+    app.add_handler(CommandHandler("blok_user_ochir", blok_user_ochir_command))
     app.add_handler(CommandHandler("blok_ochir", blok_ochir_command))
     app.add_handler(CommandHandler("yoz", yoz_command))
     app.add_handler(CommandHandler("aksiya", aksiya_command))
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
+    app.add_handler(CommandHandler("tolovlar_tekshir", tolovlar_tekshir_command))
     app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
     app.add_handler(CommandHandler("test_sorov", test_sorov_command))
@@ -8653,6 +8877,7 @@ def main():
     app.add_handler(CommandHandler("marafon_on", marafon_on_command))
     app.add_handler(CommandHandler("marafon_off", marafon_off_command))
     app.add_handler(CommandHandler("marafon_holat", marafon_holat_command))
+    app.add_handler(CommandHandler("marafon_konversiya", marafon_konversiya_command))
     app.add_handler(CommandHandler("profile", profile_command))
     app.add_handler(CommandHandler("yangilik_xabar", yangilik_xabar_command))
     app.add_handler(CommandHandler("marafon_eski_tiq", marafon_eski_tiq_command))
