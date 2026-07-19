@@ -305,6 +305,20 @@ def init_db():
                                  ("chat_marta", "INTEGER DEFAULT 0"),
                                  ("streak_kun", "INTEGER DEFAULT 0"),
                                  ("streak_oxirgi", "TEXT"),
+                                 ("xp", "INTEGER DEFAULT 0"),
+                                 ("vip_boshlanish", "TEXT"),
+                                 ("vip_video", "INTEGER DEFAULT 0"),
+                                 ("vip_profil", "INTEGER DEFAULT 0"),
+                                 ("vip_chat_kun", "TEXT"),
+                                 ("vip_chat_bugun", "INTEGER DEFAULT 0"),
+                                 ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
+                                 ("vip_tugadi_xabar", "BOOLEAN DEFAULT FALSE"),
+                                 ("oddiy_oy", "TEXT"),
+                                 ("oddiy_ishlatilgan", "INTEGER DEFAULT 0"),
+                                 ("xp_kirish_oxirgi", "TEXT"),
+                                 ("xp_kochirildi", "BOOLEAN DEFAULT FALSE"),
+                                 ("daraja_xabar", "INTEGER DEFAULT 0"),
+                                 ("daraja5_mukofot", "TEXT"),
                                  ("maqsad_soni", "INTEGER DEFAULT 0"),
                                  ("maqsad_oy", "TEXT"),
                                  ("maqsad_bajarilgan", "INTEGER DEFAULT 0"),
@@ -473,13 +487,16 @@ def kreator_progress_bar(tahlil_soni):
 
 
 def has_access(user_id):
-    """'admin' | 'sub' (obuna faol) | 'credit' (bepul tahlil bor) | 'juma' | 'none'"""
+    """'admin' | 'sub' (obuna faol) | 'vip' (3 kunlik VIP) | 'credit' (bepul tahlil bor) | 'juma' | 'none'"""
     if is_admin(user_id):
         return 'admin'
     if sub_active(user_id):
         return 'sub'
     if get_premium_balance(user_id) > 0:
         return 'sub'   # premium balans = to'liq premium (hook, ovoz ochiq)
+    # VIP aktiv va video limiti qolgan bo'lsa
+    if vip_aktivmi(user_id) and vip_limit_qoldi(user_id, 'video') > 0:
+        return 'vip'
     if get_balance(user_id) > 0:
         return 'credit'
     if get_juma_balance(user_id) > 0:
@@ -659,9 +676,15 @@ def consume_access(user_id):
         # Avval PREMIUM balansdan (sotuv bepul) - u to'liq premium edi
         if get_premium_balance(user_id) > 0:
             _db_execute("UPDATE users SET premium_balance = premium_balance - 1 WHERE user_id = %s AND premium_balance > 0", (user_id,))
+        # VIP aktiv va video limiti bor bo'lsa - VIP dan yechamiz
+        elif vip_aktivmi(user_id) and vip_limit_qoldi(user_id, 'video') > 0:
+            vip_ishlat(user_id, 'video')
         # Keyin JUMA balansidan yechamiz (u kuyadi, shuning uchun birinchi ishlatilsin)
         elif get_juma_balance(user_id) > 0:
             _db_execute("UPDATE users SET juma_balance = juma_balance - 1 WHERE user_id = %s AND juma_balance > 0", (user_id,))
+        # Oddiy rejim (VIP tugagan) - oyiga 3 bepul
+        elif oddiy_limit_qoldi(user_id) > 0 and get_balance(user_id) <= 0:
+            oddiy_ishlat(user_id)
         else:
             _db_execute("UPDATE users SET balance = balance - 1 WHERE user_id = %s AND balance > 0", (user_id,))
     # Referral mukofoti: do'st BIRINCHI tahlil qilganda, TAKLIF QILGAN odamga +1.
@@ -806,15 +829,15 @@ OHANG: Sen ekspertsan, lekin sovuq emas — DO'STONA, ILIQ va RUHLANTIRUVCHI oha
 
 Javobingni ANIQ shu formatda, shu teglar bilan ber (teglarni o'zgartirma, teglardan tashqarida hech narsa yozma):
 
-[FOIZ]videoning rekkaga (rekomendatsiyaga) chiqish ehtimoli — faqat 0-100 oralig'idagi bitta son.
+[FOIZ]videoning SIFAT POTENSIALI — faqat 0-100 oralig'idagi bitta son (bu bashorat emas, videoning umumiy sifat bahosi).
 MUHIM: bu foizni quyidagi mezonlarni BIRGA hisoblab chiqar (faqat montaj/sifatga qarama):
 - Hook kuchi (boshlanishi ushlab tursa) — 25%
-- Niche va auditoriya kengligi (mavzu KENG ommaga qiziqmi yoki TOR doiraga? Tor niche bo'lsa foiz PAST bo'lsin, montaj zo'r bo'lsa ham) — 30%
+- Niche va auditoriya kengligi (mavzu KENG ommaga qiziqmi yoki TOR doiraga? Tor niche bo'lsa potensial PAST bo'lsin, montaj zo'r bo'lsa ham) — 30%
 - Saqlanish/ulashish/qayta ko'rish ehtimoli — 25%
 - Texnik sifat (vizual, audio, montaj) — 20%
-Tor niche (kam odamga qiziq) videolar montaji ideal bo'lsa ham 30-50% dan oshmasin. Keng ommaga mos, viral potensialli videolar yuqori foiz olsin. Bir xil video uchun har safar BIR XIL foiz chiqar (mezonlarga qat'iy amal qil).
+Tor niche (kam odamga qiziq) videolar montaji ideal bo'lsa ham 30-50% dan oshmasin. Keng ommaga mos, sifatli videolar yuqori foiz olsin. Bir xil video uchun har safar BIR XIL foiz chiqar (mezonlarga qat'iy amal qil).
 
-ENG MUHIM QOIDA: foiz yuqoridagi bo'lim BALLARIGA MOS bo'lishi SHART. Agar Hook, Audio, Vizual yoki Montaj ballari PAST bo'lsa (masalan 5/10 dan past), rekka foizi ham PAST bo'lishi MAJBURIY — baland chiqmasin. Hira, sifatsiz, sustkash, e'tibor tortmaydigan videoga YUQORI foiz BERMA. Ballar o'rtachasi past bo'lsa, foiz ham past (masalan 20-40%) bo'lsin. Faqat HAQIQATAN sifatli VA keng ommabop video yuqori foiz (70%+) olsin. Past sifat = past foiz, bu qat'iy.[/FOIZ]
+ENG MUHIM QOIDA: foiz yuqoridagi bo'lim BALLARIGA MOS bo'lishi SHART. Agar Hook, Audio, Vizual yoki Montaj ballari PAST bo'lsa (masalan 5/10 dan past), sifat potensiali ham PAST bo'lishi MAJBURIY — baland chiqmasin. Hira, sifatsiz, sustkash, e'tibor tortmaydigan videoga YUQORI foiz BERMA. Ballar o'rtachasi past bo'lsa, foiz ham past (masalan 20-40%) bo'lsin. Faqat HAQIQATAN sifatli video yuqori foiz (70%+) olsin. Past sifat = past foiz, bu qat'iy.[/FOIZ]
 
 [QISQA]
 QISQA va o'qishga oson tahlil (jami 8-12 qator). Har bo'lim 1-2 qisqa qator, ko'p emoji bilan:
@@ -822,7 +845,7 @@ QISQA va o'qishga oson tahlil (jami 8-12 qator). Har bo'lim 1-2 qisqa qator, ko'
 🎬 Vizual/Montaj — ⭐ _/10 — qisqa sabab
 🗣️ Audio/Nutq — ⭐ _/10 — qisqa sabab
 📝 Kontent — ⭐ _/10 — qisqa sabab
-📈 Rekka chiqish ehtimoli: _% — qisqa sabab
+📊 Sifat potensiali: _% — qisqa sabab
 Oxirida 1 qatorli umumiy xulosa.
 [/QISQA]
 
@@ -849,15 +872,15 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 
 Ответ дай СТРОГО в этом формате с этими тегами (не меняй теги, вне тегов ничего не пиши):
 
-[FOIZ]вероятность попадания видео в рекомендации — только одно число 0-100.
+[FOIZ]ПОТЕНЦИАЛ КАЧЕСТВА видео — только одно число 0-100 (это не прогноз, а общая оценка качества видео).
 ВАЖНО: считай этот процент по критериям ВМЕСТЕ (не только монтаж/качество):
 - Сила хука — 25%
 - Ниша и широта аудитории (тема интересна ШИРОКОЙ публике или УЗКОМУ кругу? Узкая ниша — процент НИЗКИЙ, даже если монтаж отличный) — 30%
 - Вероятность сохранений/репостов/пересмотров — 25%
 - Техническое качество (визуал, аудио, монтаж) — 20%
-Видео узкой ниши не должны превышать 30-50%, даже при идеальном монтаже. Высокий процент — у видео с виральным потенциалом для широкой аудитории. Для одного и того же видео выдавай ОДИН И ТОТ ЖЕ процент.
+Видео узкой ниши не должны превышать 30-50%, даже при идеальном монтаже. Высокий процент — у качественных видео для широкой аудитории. Для одного и того же видео выдавай ОДИН И ТОТ ЖЕ процент.
 
-ГЛАВНОЕ ПРАВИЛО: процент ОБЯЗАН соответствовать БАЛЛАМ разделов. Если баллы Хука, Аудио, Визуала или Монтажа НИЗКИЕ (например ниже 5/10), процент попадания в рекомендации тоже ОБЯЗАН быть НИЗКИМ. Не давай высокий процент тусклому, некачественному, вялому видео. Если средний балл низкий — процент тоже низкий (например 20-40%). Только ДЕЙСТВИТЕЛЬНО качественное И массовое видео получает высокий процент (70%+). Низкое качество = низкий процент, это строго.[/FOIZ]
+ГЛАВНОЕ ПРАВИЛО: процент ОБЯЗАН соответствовать БАЛЛАМ разделов. Если баллы Хука, Аудио, Визуала или Монтажа НИЗКИЕ (например ниже 5/10), потенциал качества тоже ОБЯЗАН быть НИЗКИМ. Не давай высокий процент тусклому, некачественному, вялому видео. Если средний балл низкий — процент тоже низкий (например 20-40%). Только ДЕЙСТВИТЕЛЬНО качественное видео получает высокий процент (70%+). Низкое качество = низкий процент, это строго.[/FOIZ]
 
 [QISQA]
 КОРОТКИЙ, лёгкий для чтения анализ (всего 8-12 строк). Каждый раздел 1-2 строки, с эмодзи:
@@ -865,7 +888,7 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 🎬 Визуал/Монтаж — ⭐ _/10 — кратко
 🗣️ Аудио/Речь — ⭐ _/10 — кратко
 📝 Контент — ⭐ _/10 — кратко
-📈 Вероятность в рекомендации: _% — кратко
+📊 Потенциал качества: _% — кратко
 В конце 1 строка общего вывода.
 [/QISQA]
 
@@ -963,7 +986,7 @@ TEXTS = {
         'welcome': (
             "🩺 <b>INSTADOCTOR AI</b> tizimiga xush kelibsiz!\n\n"
             "Men sizning Reels/Shorts videolaringizni Instagram algoritmlari bo'yicha "
-            "tahlil qilib, <b>TOPga chiqish ehtimolini</b> 📈 hisoblab beraman.\n\n"
+            "tahlil qilib, <b>sifat potensialini</b> 📊 baholab beraman.\n\n"
             "🎁 <b>Ilk qadam uchun 1 ta BEPUL CHUQUR TAHLIL sovg'a!</b>\n\n"
             "👇 Hoziroq videongizni yuboring (2GB gacha)"
         ),
@@ -976,7 +999,7 @@ TEXTS = {
         'menu_video': "🎬 Video tahlil",
         'menu_tahlil': "🎬 Tahlil qilish",
         'aksiya_msg': ("📣 Algoritmlarni yangiladik va sizga yana 1 ta bepul tahlil sovg'a qilamiz!\n\n"
-                       "Salom! Bitta video — bu shunchaki sinov. Haqiqiy natija va topga chiqish "
+                       "Salom! Bitta video — bu shunchaki sinov. Haqiqiy natija va sifat o'sishi "
                        "masofada, xatolar ustida ishlaganda ko'rinadi.\n\n"
                        "Balansingizga yana 1 ta bepul imkoniyat qo'shdik 🎁\n\n"
                        "Oldingi tavsiyamizga qarab, videongizni xuki (boshlanishi) yoki yakunini "
@@ -1301,7 +1324,7 @@ TEXTS = {
                             "👇 Premiumga o'ting va profilingizni yangi bosqichga olib chiqing!"),
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
                       "🎬 Video tahlil — videongizni yuboring, men uni to'liq tahlil qilaman: "
-                      "hook, vizual, audio, montaj va rekka chiqish ehtimoli.\n\n"
+                      "hook, vizual, audio, montaj va sifat potensiali.\n\n"
                       "💰 Balansim — qancha tahlil qolganini ko'rish.\n\n"
                       "🌐 Til — tilni o'zgartirish.\n\n"
                       "📏 Video 2GB dan kichik bo'lsin.\n\n"
@@ -1413,8 +1436,8 @@ TEXTS = {
     'ru': {
         'welcome': (
             "🩺 Добро пожаловать в <b>INSTADOCTOR AI</b>!\n\n"
-            "Я анализирую ваши Reels/Shorts по алгоритмам Instagram и рассчитываю "
-            "<b>вероятность попадания в ТОП</b> 📈.\n\n"
+            "Я анализирую ваши Reels/Shorts по алгоритмам Instagram и оцениваю "
+            "<b>потенциал качества</b> 📊.\n\n"
             "🎁 <b>В подарок — 1 БЕСПЛАТНЫЙ ГЛУБОКИЙ АНАЛИЗ!</b>\n\n"
             "👇 Отправьте ваше видео прямо сейчас (до 2ГБ)"
         ),
@@ -1427,7 +1450,7 @@ TEXTS = {
         'menu_video': "🎬 Анализ видео",
         'menu_tahlil': "🎬 Сделать анализ",
         'aksiya_msg': ("📣 Мы обновили алгоритмы и дарим тебе ещё 1 анализ бесплатно!\n\n"
-                       "Привет! Одно видео — это только тест. Настоящий результат и выход в топ "
+                       "Привет! Одно видео — это только тест. Настоящий результат и рост качества "
                        "видны на дистанции, при работе над ошибками.\n\n"
                        "Мы начислили тебе ещё 1 бесплатный анализ 🎁\n\n"
                        "Измени хук (начало) или концовку по нашей рекомендации и пришли видео снова. "
@@ -1751,6 +1774,245 @@ def streak_yangila(uid):
         return 0
 
 
+# ============ VIP TIZIMI (3 kunlik sovg'a) ============
+VIP_KUN = 3               # necha kun
+VIP_VIDEO_LIMIT = 15      # video tahlil limiti
+VIP_PROFIL_LIMIT = 5      # profil tahlil limiti
+VIP_CHAT_KUNLIK = 3       # kuniga chat limiti
+ODDIY_OYLIK_LIMIT = 3     # VIP tugagach oyiga bepul tahlil
+
+
+def premium_yoki_vip(uid):
+    """Premium (admin/obuna) YOKI VIP aktiv - premium funksiyalar uchun (sevimli/eslatma/hisobot/maqsad)."""
+    return is_admin(uid) or sub_active(uid) or vip_aktivmi(uid)
+
+
+def vip_ber(uid):
+    """Foydalanuvchiga 3 kunlik VIP beradi (bir marta). True agar berildi."""
+    try:
+        row = _db_execute("SELECT COALESCE(vip_berilgan,FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if row and row[0]:
+            return False  # allaqachon berilgan
+        endi = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _db_execute(
+            "UPDATE users SET vip_boshlanish = %s, vip_berilgan = TRUE, "
+            "vip_video = 0, vip_profil = 0, vip_chat_bugun = 0 WHERE user_id = %s",
+            (endi, uid))
+        return True
+    except Exception:
+        return False
+
+
+def vip_aktivmi(uid):
+    """VIP hali aktivmi (3 kun ichida)? True/False."""
+    try:
+        row = _db_execute("SELECT vip_boshlanish FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not row or not row[0]:
+            return False
+        boshlanish = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        return datetime.now() < boshlanish + timedelta(days=VIP_KUN)
+    except Exception:
+        return False
+
+
+def vip_limit_qoldi(uid, tur):
+    """VIP limitidan qancha qolganini qaytaradi. tur: 'video'/'profil'/'chat'."""
+    try:
+        if tur == 'video':
+            row = _db_execute("SELECT COALESCE(vip_video,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+            ishlatilgan = row[0] if row else 0
+            return max(0, VIP_VIDEO_LIMIT - ishlatilgan)
+        elif tur == 'profil':
+            row = _db_execute("SELECT COALESCE(vip_profil,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+            ishlatilgan = row[0] if row else 0
+            return max(0, VIP_PROFIL_LIMIT - ishlatilgan)
+        elif tur == 'chat':
+            bugun = datetime.now().strftime("%Y-%m-%d")
+            row = _db_execute("SELECT vip_chat_kun, COALESCE(vip_chat_bugun,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+            if not row or row[0] != bugun:
+                return VIP_CHAT_KUNLIK  # yangi kun - to'liq limit
+            return max(0, VIP_CHAT_KUNLIK - row[1])
+        return 0
+    except Exception:
+        return 0
+
+
+def vip_ishlat(uid, tur):
+    """VIP limitidan 1 ta ishlatadi (kamaytiradi)."""
+    try:
+        if tur == 'video':
+            _db_execute("UPDATE users SET vip_video = COALESCE(vip_video,0) + 1 WHERE user_id = %s", (uid,))
+        elif tur == 'profil':
+            _db_execute("UPDATE users SET vip_profil = COALESCE(vip_profil,0) + 1 WHERE user_id = %s", (uid,))
+        elif tur == 'chat':
+            bugun = datetime.now().strftime("%Y-%m-%d")
+            row = _db_execute("SELECT vip_chat_kun FROM users WHERE user_id = %s", (uid,), fetch='one')
+            if not row or row[0] != bugun:
+                _db_execute("UPDATE users SET vip_chat_kun = %s, vip_chat_bugun = 1 WHERE user_id = %s", (bugun, uid))
+            else:
+                _db_execute("UPDATE users SET vip_chat_bugun = COALESCE(vip_chat_bugun,0) + 1 WHERE user_id = %s", (uid,))
+    except Exception:
+        pass
+
+
+def oddiy_limit_qoldi(uid):
+    """VIP tugagach oddiy rejim: oyiga 3 bepul. Qancha qolganini qaytaradi."""
+    try:
+        shu_oy = datetime.now().strftime("%Y-%m")
+        row = _db_execute("SELECT oddiy_oy, COALESCE(oddiy_ishlatilgan,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not row or row[0] != shu_oy:
+            return ODDIY_OYLIK_LIMIT  # yangi oy
+        return max(0, ODDIY_OYLIK_LIMIT - row[1])
+    except Exception:
+        return 0
+
+
+def oddiy_ishlat(uid):
+    """Oddiy rejim bepul tahlilidan 1 ta ishlatadi."""
+    try:
+        shu_oy = datetime.now().strftime("%Y-%m")
+        row = _db_execute("SELECT oddiy_oy FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not row or row[0] != shu_oy:
+            _db_execute("UPDATE users SET oddiy_oy = %s, oddiy_ishlatilgan = 1 WHERE user_id = %s", (shu_oy, uid))
+        else:
+            _db_execute("UPDATE users SET oddiy_ishlatilgan = COALESCE(oddiy_ishlatilgan,0) + 1 WHERE user_id = %s", (uid,))
+    except Exception:
+        pass
+
+
+# ============ XP VA DARAJA TIZIMI ============
+# Darajalar: (min_xp, nom, emoji)
+DARAJALAR = [
+    (0, "Yangi Bloger", "🌱"),
+    (300, "Faol Kreator", "📱"),
+    (800, "Reels Ustasi", "🎬"),
+    (1800, "Kontent Pro", "🚀"),
+    (3500, "Viral Yulduz", "⭐️"),
+    (6000, "Algoritm Hukmdori", "👑"),
+    (10000, "InstaDoctor Afsonasi", "🏆"),
+]
+XP_KIRISH = 50      # har kunlik kirish
+XP_TAHLIL = 20      # har tahlil
+XP_STREAK_BONUS = 100  # 7 kunlik streak bonus
+XP_SEVIMLI = 10     # sevimli saqlash
+
+
+def daraja_aniqla(xp):
+    """XP bo'yicha darajani qaytaradi: (raqam 1-7, nom, emoji, joriy_min, keyingi_min)."""
+    xp = xp or 0
+    daraja_raqam = 1
+    nom, emoji = DARAJALAR[0][1], DARAJALAR[0][2]
+    joriy_min = 0
+    keyingi_min = None
+    for i, (min_xp, d_nom, d_emoji) in enumerate(DARAJALAR):
+        if xp >= min_xp:
+            daraja_raqam = i + 1
+            nom, emoji = d_nom, d_emoji
+            joriy_min = min_xp
+            keyingi_min = DARAJALAR[i + 1][0] if i + 1 < len(DARAJALAR) else None
+    return daraja_raqam, nom, emoji, joriy_min, keyingi_min
+
+
+def xp_qoshish(uid, miqdor, sabab=""):
+    """XP qo'shadi. Daraja oshgan bo'lsa (yangi_daraja, nom, emoji) qaytaradi, aks holda None."""
+    try:
+        row = _db_execute("SELECT COALESCE(xp,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        eski_xp = row[0] if row else 0
+        eski_daraja = daraja_aniqla(eski_xp)[0]
+        yangi_xp = eski_xp + miqdor
+        _db_execute("UPDATE users SET xp = %s WHERE user_id = %s", (yangi_xp, uid))
+        yangi_daraja, nom, emoji, _, _ = daraja_aniqla(yangi_xp)
+        if yangi_daraja > eski_daraja:
+            return (yangi_daraja, nom, emoji)
+        return None
+    except Exception:
+        return None
+
+
+def xp_kunlik_kirish(uid):
+    """Kunlik birinchi kirishda +50 XP. Daraja oshsa qaytaradi."""
+    try:
+        bugun = datetime.now().strftime("%Y-%m-%d")
+        row = _db_execute("SELECT xp_kirish_oxirgi FROM users WHERE user_id = %s", (uid,), fetch='one')
+        oxirgi = row[0] if row else None
+        if oxirgi == bugun:
+            return None  # bugun allaqachon olgan
+        _db_execute("UPDATE users SET xp_kirish_oxirgi = %s WHERE user_id = %s", (bugun, uid))
+        return xp_qoshish(uid, XP_KIRISH, "kunlik kirish")
+    except Exception:
+        return None
+
+
+def xp_eski_kochir(uid):
+    """Eski tahlillarni bir marta XP ga o'tkazadi (tahlil_soni x 20). Faqat 1 marta."""
+    try:
+        row = _db_execute(
+            "SELECT COALESCE(xp_kochirildi,FALSE), COALESCE(xp,0) FROM users WHERE user_id = %s",
+            (uid,), fetch='one')
+        if not row or row[0]:
+            return  # allaqachon ko'chirilgan
+        # Tahlil sonini analyses jadvalidan olamiz
+        tr = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s", (uid,), fetch='one')
+        tahlil_soni = tr[0] if tr else 0
+        eski_xp = tahlil_soni * XP_TAHLIL
+        _db_execute(
+            "UPDATE users SET xp = COALESCE(xp,0) + %s, xp_kochirildi = TRUE WHERE user_id = %s",
+            (eski_xp, uid))
+    except Exception:
+        pass
+
+
+def _daraja5_mukofot_ber(uid):
+    """5-darajaga yetganda 30% chegirma (48 soat, bir marta). Matn qaytaradi."""
+    try:
+        row = _db_execute("SELECT daraja5_mukofot FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if row and row[0]:
+            return ""  # allaqachon berilgan
+        # 48 soat amal qiladi
+        tugash = (datetime.now() + timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+        _db_execute("UPDATE users SET daraja5_mukofot = %s WHERE user_id = %s", (tugash, uid))
+        return ("\n\n🎁 <b>MAXSUS MUKOFOT!</b>\n"
+                "5-darajaga yetganingiz uchun — Premium'ga <b>30% CHEGIRMA!</b>\n"
+                "29,900 → <b>20,900 so'm</b>\n"
+                "⏰ Faqat 48 soat amal qiladi!\n"
+                "«💎 Premium» tugmasidan foydalaning.")
+    except Exception:
+        return ""
+
+
+def daraja5_chegirma_bormi(uid):
+    """5-daraja 30% chegirmasi hali amal qiladimi (48 soat ichida)."""
+    try:
+        row = _db_execute("SELECT daraja5_mukofot FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not row or not row[0]:
+            return False
+        tugash = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+        return datetime.now() < tugash
+    except Exception:
+        return False
+
+
+def daraja_progress_matn(uid):
+    """Kabinet uchun XP/daraja/progress matnini qaytaradi."""
+    try:
+        row = _db_execute("SELECT COALESCE(xp,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        xp = row[0] if row else 0
+        raqam, nom, emoji, joriy_min, keyingi_min = daraja_aniqla(xp)
+        txt = f"🏆 Daraja: <b>{nom}</b> {emoji} ({raqam}-daraja)\n"
+        if keyingi_min:
+            oraliq = keyingi_min - joriy_min
+            otilgan = xp - joriy_min
+            foiz = int(otilgan / oraliq * 10) if oraliq else 0
+            bar = "▓" * foiz + "░" * (10 - foiz)
+            qoldi = keyingi_min - xp
+            txt += f"⭐️ XP: <b>{xp}</b> / {keyingi_min}\n{bar} keyingi darajagacha {qoldi} XP"
+        else:
+            txt += f"⭐️ XP: <b>{xp}</b> — MAKSIMAL daraja! 🎉"
+        return txt
+    except Exception:
+        return ""
+
+
 # Yutuqlar ro'yxati: (kod, emoji, nom, tekshiruv-funksiya-sharti)
 YUTUQLAR_RUYXAT = [
     ("birinchi", "🎬", "Birinchi tahlil", 1),
@@ -1936,8 +2198,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_menu(message, context):
+    # XP: eski tahlillarni bir marta ko'chirish + kunlik kirish +50
+    try:
+        uid = message.chat.id
+        xp_eski_kochir(uid)  # bir martalik (eski tahlillar x20)
+        daraja_up = xp_kunlik_kirish(uid)  # kunlik +50
+        if daraja_up:
+            d_raqam, d_nom, d_emoji = daraja_up
+            await message.reply_text(
+                f"🎊 <b>YANGI DARAJA!</b>\n\n{d_emoji} <b>{d_nom}</b> ({d_raqam}-daraja)\n\n"
+                f"Tabriklaymiz! 🚀", parse_mode="HTML")
+    except Exception:
+        pass
     # Bitta toza xabar (welcome ichida sovg'a ham bor - 'Wall of Text' bo'lmasin)
     await message.reply_text(t(context, 'welcome'), reply_markup=main_keyboard(context, message.chat.id), parse_mode="HTML")
+    # YANGI USER -> 3 kunlik VIP sovg'a (bir marta)
+    if context.user_data.get('is_new'):
+        try:
+            uid = message.chat.id
+            if vip_ber(uid):
+                await asyncio.sleep(1)
+                await message.reply_text(
+                    "🎁 <b>Sizga SOVG'A — 3 KUNLIK VIP!</b>\n\n"
+                    "3 kun davomida barcha Premium imkoniyatlar BEPUL:\n"
+                    f"🎬 {VIP_VIDEO_LIMIT} ta video tahlil\n"
+                    f"📊 {VIP_PROFIL_LIMIT} ta profil tahlil\n"
+                    f"💬 Kuniga {VIP_CHAT_KUNLIK} ta AI suhbat\n"
+                    "⭐️ Sevimlilar, 📅 eslatma, 📂 hisobot — cheksiz!\n\n"
+                    "Boshlash uchun video yuboring! 🚀",
+                    parse_mode="HTML")
+        except Exception:
+            pass
     # Marafon yoqilgan bo'lsa va bu yangi user bo'lsa - marafonni boshlaymiz
     if context.user_data.get('is_new') and get_setting("marafon_aktiv", "off") == "on":
         try:
@@ -2554,12 +2845,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             txt += "\n💡 Video suratga olganda ochib ishlating!"
             await query.message.reply_text(txt, parse_mode="HTML")
     elif data == 'kab_daraja':
-        # Daraja + yutuqlar
+        # XP/Daraja + streak + yutuqlar (yangi tizim)
         uid = query.from_user.id
+        xp_eski_kochir(uid)  # kafolat: eski ko'chirilgan bo'lsin
         _vs = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s AND kind='video'", (uid,), fetch='one')
         video_soni = _vs[0] if _vs else 0
-        emoji, nom, kerak, keyingi = kreator_status(video_soni)
-        bar = kreator_progress_bar(video_soni)
+        daraja_txt = daraja_progress_matn(uid)
+        # Streak
+        srow = _db_execute("SELECT COALESCE(streak_kun,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        streak = srow[0] if srow else 0
+        streak_txt = f"🔥 Streak: <b>{streak} kun ketma-ket!</b>\n" if streak >= 1 else ""
         # Yutuqlar
         yrow = _db_execute("SELECT yutuqlar FROM users WHERE user_id = %s", (uid,), fetch='one')
         bor = set((yrow[0] or "").split(",")) if yrow and yrow[0] else set()
@@ -2571,13 +2866,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 yutuq_txt += f"🔒 {yemoji} {ynom} ({video_soni}/{shart})\n"
         await query.message.reply_text(
             f"🏆 <b>DARAJAM VA YUTUQLARIM</b>\n━━━━━━━━━━━\n\n"
-            f"{emoji} Darajangiz: <b>{nom}</b>\n{bar}\n"
-            f"Keyingi daraja: {keyingi} ({kerak} ta qoldi)\n\n"
+            f"{daraja_txt}\n"
+            f"{streak_txt}"
+            f"🎬 Jami tahlil: <b>{video_soni} ta</b>\n\n"
+            f"💡 Har kuni kirsangiz +50 XP, har tahlil +20 XP!\n\n"
             f"<b>YUTUQLAR:</b>\n{yutuq_txt}", parse_mode="HTML")
     elif data == 'kab_maqsad':
-        # Maqsad - PREMIUM funksiya
+        # Maqsad - PREMIUM/VIP funksiya
         uid = query.from_user.id
-        if not (is_admin(uid) or sub_active(uid)):
+        if not premium_yoki_vip(uid):
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
             await query.message.reply_text(
                 "🎯 <b>Oylik maqsad</b> — bu Premium funksiya! 💎\n\n"
@@ -2650,7 +2947,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'tahlil_profil':
         # Profil tahlil rejimi (premium yoki balans kerak)
         uid = query.from_user.id
-        if is_admin(uid) or has_access(uid) in ('admin', 'sub') or get_premium_balance(uid) > 0:
+        if (is_admin(uid) or has_access(uid) in ('admin', 'sub') or get_premium_balance(uid) > 0
+                or (vip_aktivmi(uid) and vip_limit_qoldi(uid, 'profil') > 0)):
             context.user_data['mode'] = 'profile'
             context.user_data['profile_imgs'] = []
             await query.message.reply_text(t(context, 'profile_instr'), parse_mode="HTML")
@@ -2660,9 +2958,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]])
             await query.message.reply_text(t(context, 'profile_premium'), reply_markup=kb, parse_mode="HTML")
     elif data.startswith('sev_'):
-        # Tahlilni sevimlilarga saqlash - PREMIUM funksiya
+        # Tahlilni sevimlilarga saqlash - PREMIUM/VIP funksiya
         uid = query.from_user.id
-        if not (is_admin(uid) or sub_active(uid)):
+        if not premium_yoki_vip(uid):
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
             await query.message.reply_text(
                 "⭐️ <b>Saqlash</b> — bu Premium funksiya! 💎\n\n"
@@ -2737,16 +3035,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await query.message.reply_text("⚠️ Xatolik yuz berdi, biroz keyin urinib ko'ring.")
     elif data.startswith('chat_'):
-        # ADMIN TEST: AI bilan suhbat (premium, oyda 2 marta)
+        # AI bilan suhbat (premium yoki VIP, kunlik limit)
         uid = query.from_user.id
         premium = is_admin(uid) or sub_active(uid)
-        if not premium:
+        _chat_vip = (not premium) and vip_aktivmi(uid) and vip_limit_qoldi(uid, 'chat') > 0
+        if not premium and not _chat_vip:
+            # VIP aktiv lekin chat limiti tugagan bo'lsa - boshqacha xabar
+            if vip_aktivmi(uid):
+                await query.message.reply_text(
+                    "💬 <b>AI bilan suhbat</b>\n\nBugungi VIP suhbat limitingiz tugadi 😊\n"
+                    "Ertaga yana suhbatlashamiz yoki Premium bilan ko'proq! 💎", parse_mode="HTML")
+                return
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
             await query.message.reply_text(
                 "💬 <b>AI bilan suhbat</b> — bu Premium funksiya! 💎\n\n"
                 "Instagram/Reels bo'yicha savolingizni bering, AI mutaxassis javob beradi 🤖✨\n\n"
                 "Premium'ga o'ting! 🚀", reply_markup=kb, parse_mode="HTML")
             return
+        # VIP bo'lsa - chat limitidan yechamiz (premium emas, cheksiz)
+        if _chat_vip:
+            vip_ishlat(uid, 'chat')
         # Kunda 2 marta (sana bo'yicha)
         try:
             aid = int(data.split('_', 1)[1])
@@ -2770,9 +3078,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "(Masalan: qanday hashtag ishlatay? Bu mavzu trendmi? Hook qanday kuchaytiraman?)\n\n"
             "✍️ Savolingizni yozing 👇", parse_mode="HTML")
     elif data.startswith('eslat_'):
-        # PREMIUM: Eslatma - odam ERKIN yozadi (masalan "10 iyul 11:00 da")
+        # PREMIUM/VIP: Eslatma - odam ERKIN yozadi (masalan "10 iyul 11:00 da")
         uid = query.from_user.id
-        if not (is_admin(uid) or sub_active(uid)):
+        if not premium_yoki_vip(uid):
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
             await query.message.reply_text(
                 "📅 <b>Eslatma</b> — bu Premium funksiya! 💎\n\n"
@@ -2949,11 +3257,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not imgs:
             await query.message.reply_text(t(context, 'profile_none'))
             return
-        # Profil tahlil: admin, obunachi YOKI premium balansi bor
+        # Profil tahlil: admin, obunachi, premium balansi YOKI VIP (profil limiti bor)
         _profil_premium_balans = False
+        _profil_vip = False
         if not (is_admin(user_id) or has_access(user_id) in ('admin', 'sub')):
             if get_premium_balance(user_id) > 0:
                 _profil_premium_balans = True  # premium balansdan yechamiz (tahlil oxirida)
+            elif vip_aktivmi(user_id) and vip_limit_qoldi(user_id, 'profil') > 0:
+                _profil_vip = True  # VIP profil limitidan yechamiz
             else:
                 kb = InlineKeyboardMarkup([[
                     InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
@@ -3017,6 +3328,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     _qoldi = get_premium_balance(user_id)
                     await query.message.reply_text(
                         f"💎 1 ta premium tahlil ishlatildi. Qolgan: {_qoldi} ta")
+                # VIP profil limitidan yechildi
+                elif _profil_vip:
+                    vip_ishlat(user_id, 'profil')
+                    _qoldi = vip_limit_qoldi(user_id, 'profil')
+                    await query.message.reply_text(
+                        f"🎁 VIP profil tahlil ishlatildi. Qolgan: {_qoldi} ta")
                 # Adminlarga profil tannarx hisoboti
                 try:
                     _rep = (f"📊 Tannarx (PROFIL tahlil)\n👤 @{_uname} (ID: {user_id})\n"
@@ -3627,7 +3944,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Flash (sifatli) + reklamasiz FAQAT admin va FAOL OBUNA uchun.
         # Balans (credit) = bepul tahlil (referral/sovg'a) -> bepul kabi: Flash-Lite + reklama.
         _access = has_access(user_id)
-        _is_priority = _access in ('admin', 'sub')
+        _is_priority = _access in ('admin', 'sub', 'vip')
 
         # Video o'lcham chegarasi: admin cheksiz, pullik 300MB, bepul 100MB
         if not is_admin(user_id) and video.file_size:
@@ -3881,7 +4198,12 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     _vs = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s AND kind='video'", (user_id,), fetch='one')
                     video_soni = _vs[0] if _vs else 0
                     yangi_yutuqlar = yutuq_tekshir(user_id, video_soni)
-                    # Streak xabari (3+ kun bo'lsa ko'rsatamiz)
+                    # XP: har tahlil uchun +20, daraja oshsa xabar
+                    daraja_up = xp_qoshish(user_id, XP_TAHLIL, "tahlil")
+                    # Streak 7 kunlik bo'lsa bonus XP
+                    if streak and streak % 7 == 0:
+                        xp_qoshish(user_id, XP_STREAK_BONUS, "streak bonus")
+                    # Streak xabari (2+ kun bo'lsa ko'rsatamiz)
                     if streak >= 2:
                         await message.reply_text(
                             f"🔥 <b>{streak} KUN KETMA-KET!</b>\n\n"
@@ -3894,8 +4216,20 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             f"🎉 <b>YANGI YUTUQ!</b>\n\n{yutuq_txt}\n\n"
                             f"Kabinetingizda barcha yutuqlaringizni ko'ring! 🏆",
                             parse_mode="HTML")
+                    # Daraja oshgan bo'lsa - tabrik
+                    if daraja_up:
+                        d_raqam, d_nom, d_emoji = daraja_up
+                        mukofot_txt = ""
+                        # 5-darajaga yetganda 30% chegirma mukofoti
+                        if d_raqam == 5:
+                            mukofot_txt = _daraja5_mukofot_ber(user_id)
+                        await message.reply_text(
+                            f"🎊 <b>YANGI DARAJA!</b>\n\n"
+                            f"{d_emoji} <b>{d_nom}</b> ({d_raqam}-daraja)\n\n"
+                            f"Tabriklaymiz! Siz o'sib boryapsiz! 🚀{mukofot_txt}",
+                            parse_mode="HTML")
                 except Exception as e:
-                    logger.warning(f"Streak/yutuq xato: {e}")
+                    logger.warning(f"Streak/yutuq/xp xato: {e}")
 
             # AVTOMATIK +2 AKSIYA: 1 ta bepulni ishlatib, balansi tugagan bo'lsa
             # (faqat avtomatik aksiya YOQILGAN bo'lsa). Har odam 1 marta.
@@ -4257,8 +4591,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t(context, 'send_video'))
     elif text in (TEXTS['uz']['menu_profile'], TEXTS['ru']['menu_profile']):
         uid = update.effective_user.id
-        # Profil tahlili: admin, obunachi YOKI premium balansi bor (1 ta tahlillik)
-        if is_admin(uid) or has_access(uid) in ('admin', 'sub') or get_premium_balance(uid) > 0:
+        # Profil tahlili: admin, obunachi, premium balansi YOKI VIP (profil limiti)
+        if (is_admin(uid) or has_access(uid) in ('admin', 'sub') or get_premium_balance(uid) > 0
+                or (vip_aktivmi(uid) and vip_limit_qoldi(uid, 'profil') > 0)):
             context.user_data['mode'] = 'profile'
             context.user_data['profile_imgs'] = []
             await update.message.reply_text(t(context, 'profile_instr'), parse_mode="HTML")
@@ -5737,6 +6072,110 @@ async def marafon_konversiya_command(update: Update, context: ContextTypes.DEFAU
     await update.message.reply_text(txt, parse_mode="HTML")
 
 
+async def vip_hammaga_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: premiumlardan tashqari HAMMAGA 3 kunlik VIP beradi + xabar.
+    /vip_hammaga - test (soni ko'rsatadi), /vip_hammaga YUBOR - beradi."""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Premium bo'lmagan, VIP hali berilmagan, bloklanmagan userlar
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(vip_berilgan,FALSE) = FALSE "
+        "AND COALESCE(bloklangan,FALSE) = FALSE "
+        "AND (sub_until IS NULL OR sub_until < %s)", (now,), fetch='all') or []
+    # Adminlarni chiqaramiz
+    hedef = [r[0] for r in rows if not is_admin(r[0])]
+    if arg != "YUBOR":
+        await update.message.reply_text(
+            f"🎁 <b>VIP HAMMAGA</b>\n\n"
+            f"VIP beriladigan userlar: <b>{len(hedef)}</b> ta\n"
+            f"(premiumlar va allaqachon VIP olganlar chiqarilgan)\n\n"
+            f"Berish uchun: <code>/vip_hammaga YUBOR</code>",
+            parse_mode="HTML")
+        return
+    # 2 xil xabar: A (ishlatgan) / B (0 tahlil)
+    matn_a = (
+        "🤍 <b>Sizni sog'indik!</b>\n\n"
+        "Ancha vaqt bo'ldi... InstaDoctor'ni yanada kuchli qildik va sizni qadrlaymiz.\n\n"
+        "🎁 Sizga <b>3 KUNLIK VIP</b> sovg'a!\n"
+        f"🎬 {VIP_VIDEO_LIMIT} video tahlil, 📊 {VIP_PROFIL_LIMIT} profil, "
+        f"💬 kuniga {VIP_CHAT_KUNLIK} suhbat + sevimli, eslatma, hisobot!\n\n"
+        "Qani, birga davom etaylik! 🚀")
+    matn_b = (
+        "🤍 <b>Nega hali sinab ko'rmadingiz?</b>\n\n"
+        "InstaDoctor Reels'laringizni tahlil qilib, sifatini oshirishga yordam beradi 📈\n\n"
+        "🎁 Sizga <b>3 KUNLIK VIP</b> sovg'a!\n"
+        "Bir video yuboring — o'zingiz ko'rasiz! Bepul, yo'qotadigan narsangiz yo'q 😊")
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🚀 Boshlash", callback_data="menyu_yangila")]])
+    await update.message.reply_text(f"⏳ {len(hedef)} ta userga VIP berilyapti...")
+    berildi, xabar_yetdi = 0, 0
+    for uid in hedef:
+        try:
+            if vip_ber(uid):
+                berildi += 1
+                # Tahlil qilganmi tekshiramiz (A yoki B xabar)
+                _tr = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s", (uid,), fetch='one')
+                tahlil_soni = _tr[0] if _tr else 0
+                matn = matn_a if tahlil_soni > 0 else matn_b
+                try:
+                    await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+                    xabar_yetdi += 1
+                except Exception:
+                    pass
+                if berildi % 25 == 0:
+                    await asyncio.sleep(1)
+        except Exception:
+            continue
+    await update.message.reply_text(
+        f"✅ VIP berildi: {berildi} ta\n📨 Xabar yetdi: {xabar_yetdi} ta")
+
+
+async def vip_stat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: VIP statistikasi (nechta aktiv, nechta tugagan, sotib olgan)."""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now()
+    rows = _db_execute(
+        "SELECT user_id, vip_boshlanish, COALESCE(vip_video,0), COALESCE(vip_profil,0) "
+        "FROM users WHERE vip_berilgan = TRUE", fetch='all') or []
+    aktiv, tugagan = 0, 0
+    jami_video, jami_profil = 0, 0
+    tolagan_ids = _db_execute("SELECT DISTINCT user_id FROM payments WHERE status = 'approved'", fetch='all') or []
+    tolagan_set = set(r[0] for r in tolagan_ids)
+    vip_tolagan = 0
+    for uid, boshlanish, v_video, v_profil in rows:
+        jami_video += v_video
+        jami_profil += v_profil
+        if uid in tolagan_set:
+            vip_tolagan += 1
+        if boshlanish:
+            try:
+                b = datetime.strptime(boshlanish, "%Y-%m-%d %H:%M:%S")
+                if now < b + timedelta(days=VIP_KUN):
+                    aktiv += 1
+                else:
+                    tugagan += 1
+            except Exception:
+                pass
+    jami = len(rows)
+    konv = f"{(vip_tolagan/jami*100):.1f}%" if jami else "0%"
+    await update.message.reply_text(
+        f"🎁 <b>VIP STATISTIKA</b>\n━━━━━━━━━━━\n\n"
+        f"👥 Jami VIP olgan: <b>{jami}</b>\n"
+        f"🟢 Hozir aktiv: {aktiv}\n"
+        f"⚪️ Tugagan: {tugagan}\n\n"
+        f"🎬 Jami VIP video: {jami_video}\n"
+        f"📊 Jami VIP profil: {jami_profil}\n\n"
+        f"💰 VIP olgandan keyin sotib olgan: <b>{vip_tolagan}</b> ({konv})\n\n"
+        f"💡 Xarajat (taxminan): {jami_video * 64 + jami_profil * 40:,} so'm",
+        parse_mode="HTML")
+
+
+async def vip_hammaga_command_end(update, context):
+    pass
+
+
 async def tolovlar_tekshir_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: to'lovlarni paket bo'yicha tekshiradi (nechta, qancha summa)."""
     if not is_admin(update.effective_user.id):
@@ -6760,7 +7199,7 @@ async def premium_stat_command(update, context):
 async def _shaxsiy_hisobot_ishga(reply_func, uid, context):
     """Shaxsiy hisobot logikasi (menu_arxiv va kab_hisobot ikkalasi chaqiradi).
     reply_func - update.message.reply_text yoki query.message.reply_text."""
-    premium = is_admin(uid) or sub_active(uid)
+    premium = is_admin(uid) or sub_active(uid) or vip_aktivmi(uid)
     if not premium:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("💎 Premiumga o'tish — 29,900", callback_data="buy_sub")]])
         await reply_func(
@@ -7471,7 +7910,7 @@ async def post_init(application):
         )
         await application.bot.set_my_description(
             description=("🎬 Instagram videongizni AI bilan tahlil qilaman: hook, "
-                         "vizual, audio, montaj va rekka chiqish ehtimoli (%).\n\n"
+                         "vizual, audio, montaj va sifat potensiali (%).\n\n"
                          "📊 Profil tahlili ham bor.\n\nBoshlash uchun «Start» 👇")
         )
     except Exception as e:
@@ -8631,6 +9070,83 @@ async def marafon_kuydir(context: ContextTypes.DEFAULT_TYPE):
         (now_str,))
 
 
+async def vip_tugadi_tekshir(context: ContextTypes.DEFAULT_TYPE):
+    """VIP 3 kuni tugagan userlarga bir marta 'kambag'al rejim' xabari (premiumga undash)."""
+    now = datetime.now()
+    rows = _db_execute(
+        "SELECT user_id, vip_boshlanish FROM users "
+        "WHERE vip_berilgan = TRUE AND COALESCE(vip_tugadi_xabar,FALSE) = FALSE "
+        "AND COALESCE(bloklangan,FALSE) = FALSE", fetch='all') or []
+    yuborildi = 0
+    for uid, boshlanish in rows:
+        if not boshlanish:
+            continue
+        try:
+            b = datetime.strptime(boshlanish, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+        # VIP tugaganmi (3 kun o'tdimi)?
+        if now < b + timedelta(days=VIP_KUN):
+            continue  # hali aktiv
+        # Premium olган bo'lsa - xabar kerak emas (belgilaymiz)
+        if sub_active(uid) or is_admin(uid):
+            _db_execute("UPDATE users SET vip_tugadi_xabar = TRUE WHERE user_id = %s", (uid,))
+            continue
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💎 Premium olish — 29,900", callback_data="buy_sub")]])
+            await context.bot.send_message(
+                uid,
+                "🎁 <b>3 kunlik VIP tugadi!</b>\n\n"
+                "Umid qilamiz, yoqqandir 😊\n\n"
+                "Endi oddiy rejimдasiz:\n"
+                f"• Oyiga faqat {ODDIY_OYLIK_LIMIT} ta tahlil\n"
+                "• AI suhbat YO'Q\n"
+                "• Chuqur hisobot YO'Q\n"
+                "• Sevimlilar cheklangan\n\n"
+                "💎 Premium'da esa CHEKSIZ — hammasi ochiq!\n"
+                "XP va darajangiz saqlanadi — o'sishda davom eting! 🚀\n\n"
+                "VIP'dagi erkinlikni sog'indingizmi?",
+                reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET vip_tugadi_xabar = TRUE WHERE user_id = %s", (uid,))
+            yuborildi += 1
+            if yuborildi % 25 == 0:
+                await asyncio.sleep(1)
+        except Exception:
+            _db_execute("UPDATE users SET vip_tugadi_xabar = TRUE WHERE user_id = %s", (uid,))
+            continue
+    logger.info(f"VIP tugadi xabar yuborildi: {yuborildi}")
+
+
+async def streak_eslatma(context: ContextTypes.DEFAULT_TYPE):
+    """Kechqurun: streak bor (2+) va bugun tahlil qilmagan userlarga eslatma.
+    'Streakingiz kuyishi mumkin' - qaytishga undaydi (odat)."""
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    # Streak 2+ bor userlar
+    rows = _db_execute(
+        "SELECT user_id, COALESCE(streak_kun,0), streak_oxirgi FROM users "
+        "WHERE COALESCE(streak_kun,0) >= 2 AND COALESCE(bloklangan,FALSE) = FALSE",
+        fetch='all') or []
+    yuborildi = 0
+    for uid, streak, streak_oxirgi in rows:
+        # Bugun tahlil qilgan bo'lsa - eslatma kerak emas (streak_oxirgi = bugun)
+        if streak_oxirgi == bugun:
+            continue
+        try:
+            await context.bot.send_message(
+                uid,
+                f"🔥 <b>{streak} kunlik streakingiz bugun kuyishi mumkin!</b>\n\n"
+                f"Bugun hali tahlil qilmadingiz 😊\n"
+                f"1 ta video yuboring — streakingiz saqlanadi va +XP olasiz! 🎬",
+                parse_mode="HTML")
+            yuborildi += 1
+            if yuborildi % 25 == 0:
+                await asyncio.sleep(1)
+        except Exception:
+            continue
+    logger.info(f"Streak eslatma yuborildi: {yuborildi}")
+
+
 async def drip_kunlik(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: yangi kirgan (deploy'dan keyin) foydalanuvchilarni izchil isitadi.
     1-kun: bepul (mavjud). 2-kun: jamoa videosi + empatiya +1 bepul. 3-kun: 7 kunlik aksiya.
@@ -8796,6 +9312,8 @@ def main():
             jq.run_daily(juma_kuydir, time=_dtime(hour=uz_to_utc(0), minute=30), days=(5,))
             # Drip (3 kunlik isitish) - har kuni 19:00 UZ (aktiv payt)
             jq.run_daily(drip_kunlik, time=_dtime(hour=uz_to_utc(19), minute=0))
+            jq.run_daily(streak_eslatma, time=_dtime(hour=uz_to_utc(20), minute=0))
+            jq.run_daily(vip_tugadi_tekshir, time=_dtime(hour=uz_to_utc(12), minute=0))
             # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
             jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
             # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
@@ -8839,6 +9357,8 @@ def main():
     app.add_handler(CommandHandler("aksiya_tugadi", aksiya_tugadi_command))
     app.add_handler(CommandHandler("obunachilar", obunachilar_command))
     app.add_handler(CommandHandler("tolovlar_tekshir", tolovlar_tekshir_command))
+    app.add_handler(CommandHandler("vip_hammaga", vip_hammaga_command))
+    app.add_handler(CommandHandler("vip_stat", vip_stat_command))
     app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
     app.add_handler(CommandHandler("test_sorov", test_sorov_command))
