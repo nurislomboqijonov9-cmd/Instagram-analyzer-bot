@@ -311,6 +311,7 @@ def init_db():
                                  ("vip_profil", "INTEGER DEFAULT 0"),
                                  ("vip_chat_kun", "TEXT"),
                                  ("vip_chat_bugun", "INTEGER DEFAULT 0"),
+                                 ("vip_kuchaytirish", "INTEGER DEFAULT 0"),
                                  ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
                                  ("vip_tugadi_xabar", "BOOLEAN DEFAULT FALSE"),
                                  ("oddiy_oy", "TEXT"),
@@ -1187,13 +1188,16 @@ TEXTS = {
                       "💎 PREMIUM tarifda nimalarga ega bo'lasiz?\n\n"
                       "⚡ <b>Maksimal tezlik</b> — navbatsiz, soniyalarda tahlil\n"
                       "♾ <b>Cheksiz tahlil</b> — kuniga xohlagancha video\n"
+                      "🚀 <b>Kuchaytirib olish</b> — AI videongizga 3 ta tayyor HOOK, "
+                      "kuchli YAKUN va aniq tuzatishlar beradi (nusxa oling, ishlating!)\n"
                       "🗣 <b>Audio</b> — tahlilni ovozli eshitish\n"
-                      "🎯 <b>Hook tahlili</b> — soniyama-soniya + 3 ta tayyor variant\n"
+                      "💬 <b>AI mutaxassis</b> — istalgan savolingizga javob\n"
+                      "📂 <b>Chuqur hisobot</b> — o'sishingizni AI tahlil qiladi\n"
                       "📈 <b>Yashirin trendlar</b> — algoritm yangiliklari birinchi sizga\n\n"
                       "💰 Narx: <b>29 900 so'm/oy</b>\n"
                       "(Kuniga atigi 1000 so'm — bir choydan ham arzon! ☕️)\n\n"
-                      "Bitta REKka chiqqan video bu pulni qoplaydi! 🚀\n\n"
-                      "👇 Hoziroq faollashtiring — kontentingizni TOPga chiqaring!"),
+                      "Bitta kuchli video bu pulni qoplaydi! 🚀\n\n"
+                      "👇 Hoziroq faollashtiring — kontentingizni keyingi bosqichga olib chiqing!"),
         'fikr_ask': ("💬 Fikr yoki taklifingizni yozib qoldiring 👇\n"
                      "Biz uchun har bir fikr muhim! 🙏\n\n"
                      "📩 Yoki to'g'ridan-to'g'ri yozishingiz mumkin: @Nurislom_admin"),
@@ -1521,7 +1525,11 @@ TEXTS = {
                       "💎 Что вы получите в PREMIUM?\n\n"
                       "⚡ <b>Максимальная скорость</b> — без очереди, анализ за секунды\n"
                       "♾ <b>Безлимитный анализ</b> — сколько угодно видео в день\n"
+                      "🚀 <b>Усилить видео</b> — AI даёт 3 готовых ХУКА, сильную КОНЦОВКУ "
+                      "и точные улучшения (копируй и используй!)\n"
                       "🗣 <b>Аудио</b> — озвучка анализа\n"
+                      "💬 <b>AI-эксперт</b> — ответ на любой ваш вопрос\n"
+                      "📂 <b>Глубокий отчёт</b> — AI анализирует ваш рост\n"
                       "📈 <b>Скрытые тренды</b> — новинки алгоритмов первыми для вас\n\n"
                       "🔥 ТОЛЬКО СЕГОДНЯ — СКИДКА!\n"
                       "Текущая цена: <s>29 900 сум</s>\n"
@@ -1779,6 +1787,7 @@ VIP_KUN = 3               # necha kun
 VIP_VIDEO_LIMIT = 15      # video tahlil limiti
 VIP_PROFIL_LIMIT = 5      # profil tahlil limiti
 VIP_CHAT_KUNLIK = 3       # kuniga chat limiti
+VIP_KUCHAYTIRISH_LIMIT = 3  # jami kuchaytirish limiti (3 kunga)
 ODDIY_OYLIK_LIMIT = 3     # VIP tugagach oyiga bepul tahlil
 
 
@@ -1832,6 +1841,10 @@ def vip_limit_qoldi(uid, tur):
             if not row or row[0] != bugun:
                 return VIP_CHAT_KUNLIK  # yangi kun - to'liq limit
             return max(0, VIP_CHAT_KUNLIK - row[1])
+        elif tur == 'kuchaytirish':
+            row = _db_execute("SELECT COALESCE(vip_kuchaytirish,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+            ishlatilgan = row[0] if row else 0
+            return max(0, VIP_KUCHAYTIRISH_LIMIT - ishlatilgan)
         return 0
     except Exception:
         return 0
@@ -1851,6 +1864,8 @@ def vip_ishlat(uid, tur):
                 _db_execute("UPDATE users SET vip_chat_kun = %s, vip_chat_bugun = 1 WHERE user_id = %s", (bugun, uid))
             else:
                 _db_execute("UPDATE users SET vip_chat_bugun = COALESCE(vip_chat_bugun,0) + 1 WHERE user_id = %s", (uid,))
+        elif tur == 'kuchaytirish':
+            _db_execute("UPDATE users SET vip_kuchaytirish = COALESCE(vip_kuchaytirish,0) + 1 WHERE user_id = %s", (uid,))
     except Exception:
         pass
 
@@ -3139,8 +3154,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("😔 Videoni yuborib bo'lmadi (muddati o'tgan bo'lishi mumkin).")
         return
     elif data.startswith('yax_'):
-        # "Qanday yaxshilash?" - faqat PREMIUM (admin yoki obunachi)
-        if not (is_admin(query.from_user.id) or has_access(query.from_user.id) in ('admin', 'sub')):
+        # "Kuchaytirib olish" - PREMIUM (cheksiz) yoki VIP (jami 3 marta)
+        uid = query.from_user.id
+        _premium = is_admin(uid) or has_access(uid) in ('admin', 'sub')
+        _kuch_vip = (not _premium) and vip_aktivmi(uid) and vip_limit_qoldi(uid, 'kuchaytirish') > 0
+        if not _premium and not _kuch_vip:
+            # VIP aktiv lekin kuchaytirish limiti tugagan
+            if vip_aktivmi(uid):
+                premium_kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("💎 Premium olish — 29,900", callback_data="buy_sub")
+                ]])
+                await query.message.reply_text(
+                    "🚀 <b>Kuchaytirib olish</b>\n\n"
+                    f"VIP'da bu kuchli funksiyani {VIP_KUCHAYTIRISH_LIMIT} marta ishlatish mumkin — "
+                    "limitingiz tugadi 😊\n\n"
+                    "Premium'da esa CHEKSIZ! Har videongizga tayyor hook, yakun va tuzatishlar 💎",
+                    reply_markup=premium_kb, parse_mode="HTML")
+                return
             premium_kb = InlineKeyboardMarkup([[
                 InlineKeyboardButton(t(context, 'obuna_taklif_btn'), callback_data="buy_sub")
             ]])
@@ -3155,6 +3185,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not toliq:
             await query.message.reply_text(t(context, 'full_gone'))
             return
+        # VIP bo'lsa - kuchaytirish limitidan yechamiz
+        if _kuch_vip:
+            vip_ishlat(uid, 'kuchaytirish')
         wait = await query.message.reply_text(t(context, 'yaxshilash_loading'))
         try:
             lang = get_lang(context)
@@ -3182,7 +3215,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sarlavha = ("🔥 <b>SIZNING VIDEONGIZ UCHUN TUZATISH</b>\n━━━━━━━━━━━\n\n"
                             if lang != 'ru' else
                             "🔥 <b>УЛУЧШЕНИЯ ДЛЯ ВАШЕГО ВИДЕО</b>\n━━━━━━━━━━━\n\n")
-                await wait.edit_text(sarlavha + txt, parse_mode="HTML")
+                # VIP bo'lsa - qolgan limitni ko'rsatamiz
+                izoh = ""
+                if _kuch_vip:
+                    _qoldi = vip_limit_qoldi(uid, 'kuchaytirish')
+                    izoh = (f"\n\n━━━━━━━━━━━\n🎁 VIP kuchaytirish: yana <b>{_qoldi}</b> marta qoldi. "
+                            f"Premium'da CHEKSIZ! 💎")
+                await wait.edit_text(sarlavha + txt + izoh, parse_mode="HTML")
             else:
                 await wait.edit_text("😔 Hozir tayyorlab bo'lmadi, qayta urinib ko'ring.")
         except Exception as e:
