@@ -6225,6 +6225,63 @@ async def marafon_yakunla_command(update: Update, context: ContextTypes.DEFAULT_
             f"Bir necha kundan keyin faqat VIP qoladi 🎯", parse_mode="HTML")
 
 
+async def premium_passiv_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: PREMIUM sotib olgan, lekin kam ishlatayotgan (yoki umuman ishlatmagan)
+    obunachilarni username bilan chiqaradi. Ular ketib qolmasin - ushlab qolish uchun.
+    /premium_passiv [kun] - necha kundan ko'p kelmaganlar (default 5)"""
+    if not is_admin(update.effective_user.id):
+        return
+    try:
+        min_kun = int(context.args[0]) if context.args else 5
+    except Exception:
+        min_kun = 5
+    now = datetime.now()
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    # Faol obunachilar (premium) + oxirgi tahlil sanasi
+    rows = _db_execute(
+        "SELECT u.user_id, u.username, u.first_name, u.sub_until, MAX(a.created) AS oxirgi "
+        "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "WHERE u.sub_until IS NOT NULL AND u.sub_until > %s "
+        "GROUP BY u.user_id, u.username, u.first_name, u.sub_until", (now_s,), fetch='all') or []
+    passivlar = []
+    for uid, username, first_name, sub_until, oxirgi in rows:
+        if not oxirgi:
+            kun = 9999  # umuman ishlatmagan
+        else:
+            try:
+                oxirgi_dt = datetime.strptime(oxirgi[:10], "%Y-%m-%d")
+                kun = (now.date() - oxirgi_dt.date()).days
+            except Exception:
+                kun = 9999
+        if kun >= min_kun:
+            passivlar.append((uid, username, first_name, kun))
+    passivlar.sort(key=lambda x: -x[3])  # eng ko'p kelmagan birinchi
+    if not passivlar:
+        await update.message.reply_text(
+            f"✅ {min_kun}+ kun kelmagan premium yo'q — hammasi faol! 🎉")
+        return
+    # Ro'yxat (username bilan)
+    lines = []
+    for uid, username, first_name, kun in passivlar[:60]:
+        uname = f"@{username}" if username else f"ID:{uid}"
+        ism = (first_name or "")[:15]
+        kun_txt = "hech" if kun == 9999 else f"{kun} kun"
+        lines.append(f"• {uname} ({ism}) — {kun_txt}")
+    matn = (f"⚠️ <b>PREMIUM — PASSIV OBUNACHILAR</b>\n"
+            f"({min_kun}+ kun kelmagan)\n━━━━━━━━━━━\n\n"
+            f"Jami: <b>{len(passivlar)}</b> ta\n"
+            f"(pastda {min(60, len(passivlar))} tasi)\n\n"
+            + "\n".join(lines))
+    if len(passivlar) > 60:
+        matn += f"\n\n... va yana {len(passivlar) - 60} ta"
+    matn += ("\n\n💡 Bular pul to'lagan, lekin ishlatmayapti — "
+             "ketib qolmasligi uchun ularга qiymat eslatmasi yuboring.")
+    # Telegram xabar limiti (4096) - bo'lib yuboramiz
+    if len(matn) > 4000:
+        matn = matn[:3900] + "\n\n... (ro'yxat uzun)"
+    await update.message.reply_text(matn, parse_mode="HTML")
+
+
 async def segment_korish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: userlarni oxirgi faollik (kun) bo'yicha segmentlarga bo'ladi.
     Kim necha kun kelmaganini ko'rsatadi (analyses.created bo'yicha).
@@ -6565,6 +6622,66 @@ async def vip_hammaga_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             continue
     await update.message.reply_text(
         f"✅ VIP berildi: {berildi} ta\n📨 Xabar yetdi: {xabar_yetdi} ta")
+
+
+async def vip_kunlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: VIP olganlarni KUN bo'yicha batafsil chiqaradi.
+    Aktivlar: 1/2/3-kunda nechta. Tugaganlar: necha kun oldin tugagan.
+    /vip_kunlar"""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now()
+    rows = _db_execute(
+        "SELECT vip_boshlanish, sub_until FROM users WHERE vip_berilgan = TRUE",
+        fetch='all') or []
+    # Aktiv kunlar
+    aktiv = {0: 0, 1: 0, 2: 0}
+    # Tugagan kunlar (necha kun oldin)
+    tugagan = {}  # kun -> soni
+    tolagan = 0  # VIP olib keyin premium olganlar
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    for boshlanish, sub_until in rows:
+        if not boshlanish:
+            continue
+        try:
+            b = datetime.strptime(boshlanish, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+        if sub_until and sub_until > now_s:
+            tolagan += 1
+        tugash = b + timedelta(days=VIP_KUN)
+        if now < tugash:
+            kun = (now - b).days
+            aktiv[min(kun, 2)] = aktiv.get(min(kun, 2), 0) + 1
+        else:
+            o_kun = (now - tugash).days
+            tugagan[o_kun] = tugagan.get(o_kun, 0) + 1
+    jami = len(rows)
+    jami_aktiv = sum(aktiv.values())
+    jami_tugagan = sum(tugagan.values())
+    # Tugaganlarni guruhlash
+    tug_bugun = tugagan.get(0, 0)
+    tug_1 = tugagan.get(1, 0)
+    tug_2_3 = sum(v for k, v in tugagan.items() if 2 <= k <= 3)
+    tug_4_7 = sum(v for k, v in tugagan.items() if 4 <= k <= 7)
+    tug_8plus = sum(v for k, v in tugagan.items() if k >= 8)
+    konv = f"{(tolagan/jami*100):.1f}%" if jami else "0%"
+    await update.message.reply_text(
+        f"🎁 <b>VIP — KUN BO'YICHA</b>\n━━━━━━━━━━━\n\n"
+        f"👥 Jami VIP olgan: <b>{jami}</b>\n\n"
+        f"🟢 <b>AKTIV ({jami_aktiv} ta):</b>\n"
+        f"• 1-kunda: {aktiv.get(0,0)} ta\n"
+        f"• 2-kunda: {aktiv.get(1,0)} ta\n"
+        f"• 3-kunda (oxirgi): {aktiv.get(2,0)} ta\n\n"
+        f"⚪️ <b>TUGAGAN ({jami_tugagan} ta):</b>\n"
+        f"• Bugun tugadi: {tug_bugun} ta\n"
+        f"• 1 kun oldin: {tug_1} ta\n"
+        f"• 2-3 kun oldin: {tug_2_3} ta\n"
+        f"• 4-7 kun oldin: {tug_4_7} ta\n"
+        f"• 8+ kun oldin: {tug_8plus} ta\n\n"
+        f"💰 <b>VIP → Premium sotib olgan: {tolagan} ta ({konv})</b>\n\n"
+        f"💡 Konversiya = VIP olgandan keyin to'laganlar",
+        parse_mode="HTML")
 
 
 async def vip_stat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -10043,9 +10160,11 @@ def main():
     app.add_handler(CommandHandler("tolovlar_tekshir", tolovlar_tekshir_command))
     app.add_handler(CommandHandler("vip_hammaga", vip_hammaga_command))
     app.add_handler(CommandHandler("vip_stat", vip_stat_command))
+    app.add_handler(CommandHandler("vip_kunlar", vip_kunlar_command))
     app.add_handler(CommandHandler("vip_sinxron", vip_sinxron_command))
     app.add_handler(CommandHandler("reset_yubor", reset_yubor_command))
     app.add_handler(CommandHandler("segment_korish", segment_korish_command))
+    app.add_handler(CommandHandler("premium_passiv", premium_passiv_command))
     app.add_handler(CommandHandler("segment_xabar", segment_xabar_command))
     app.add_handler(CommandHandler("marafon_yakunla", marafon_yakunla_command))
     app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
