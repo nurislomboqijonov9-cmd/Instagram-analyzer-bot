@@ -313,6 +313,8 @@ def init_db():
                                  ("vip_chat_bugun", "INTEGER DEFAULT 0"),
                                  ("vip_kuchaytirish", "INTEGER DEFAULT 0"),
                                  ("vip_bosqich", "INTEGER DEFAULT 0"),
+                                 ("reset_yuborildi", "BOOLEAN DEFAULT FALSE"),
+                                 ("avto_sotuv_off", "BOOLEAN DEFAULT FALSE"),
                                  ("vip_kun_xabar", "INTEGER DEFAULT 0"),
                                  ("vip_bonus_until", "TEXT"),
                                  ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
@@ -2687,6 +2689,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📢 Bepul tahlil uchun avval kanalimizga obuna bo'ling:\n{MARAFON_KANAL}\n\n"
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
+    elif data == 'reset_vip':
+        # Kechirim+reset: VIP ni qayta boshlash
+        uid = query.from_user.id
+        # VIP ni qayta beramiz (vip_berilgan ni FALSE qilib, keyin beramiz)
+        _db_execute("UPDATE users SET vip_berilgan = FALSE, vip_video = 0, vip_profil = 0, "
+                    "vip_chat_bugun = 0, vip_kuchaytirish = 0, vip_bosqich = 0, vip_kun_xabar = 0 "
+                    "WHERE user_id = %s", (uid,))
+        if vip_ber(uid):
+            await query.message.reply_text(
+                "🎁 <b>Ajoyib! 3 KUNLIK VIP boshlandi!</b>\n\n"
+                "Barcha Premium imkoniyatlar ochiq:\n"
+                f"🎬 {VIP_VIDEO_LIMIT} video tahlil\n"
+                f"📊 {VIP_PROFIL_LIMIT} profil tahlil\n"
+                f"💬 Kuniga {VIP_CHAT_KUNLIK} AI suhbat\n"
+                "⭐️ Sevimlilar, 📅 eslatma, 📂 hisobot\n\n"
+                "Boshlash uchun video yuboring! 🚀",
+                reply_markup=main_keyboard(context, uid), parse_mode="HTML")
+        else:
+            await query.message.reply_text(
+                "Video yuboring — tahlil qilib beraman! 🎬",
+                reply_markup=main_keyboard(context, uid))
+        return
+    elif data == 'reset_kam':
+        # Kamroq xabar - foydalanuvchi tinchlikni tanladi
+        uid = query.from_user.id
+        _db_execute("UPDATE users SET avto_sotuv_off = TRUE WHERE user_id = %s", (uid,))
+        await query.message.reply_text(
+            "🔕 <b>Tushunarli!</b>\n\n"
+            "Endi sizga kam xabar yuboramiz — faqat eng muhimini.\n\n"
+            "Istagan paytda video yuborib, tahlil olishingiz mumkin 🎬\n"
+            "Biz shu yerdamiz! 🤍",
+            reply_markup=main_keyboard(context, uid), parse_mode="HTML")
+        return
     elif data == 'menyu_yangila':
         # Menyuni yangilaydi (start bosilgandek - yangi menyu ochiladi)
         await query.answer("✅ Menyu yangilandi!")
@@ -6190,6 +6225,214 @@ async def marafon_yakunla_command(update: Update, context: ContextTypes.DEFAULT_
             f"Bir necha kundan keyin faqat VIP qoladi 🎯", parse_mode="HTML")
 
 
+async def segment_korish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: userlarni oxirgi faollik (kun) bo'yicha segmentlarga bo'ladi.
+    Kim necha kun kelmaganini ko'rsatadi (analyses.created bo'yicha).
+    /segment_korish - segmentlarni ko'rsatadi (RAQAM bilan)"""
+    if not is_admin(update.effective_user.id):
+        return
+    now = datetime.now()
+    # Har user uchun oxirgi tahlil sanasi (analyses.created MAX)
+    rows = _db_execute(
+        "SELECT u.user_id, MAX(a.created) AS oxirgi, "
+        "COALESCE(u.bloklangan,FALSE), u.sub_until "
+        "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "GROUP BY u.user_id, u.bloklangan, u.sub_until", fetch='all') or []
+    faol = soviyapti = uxlagan = olik = hech = bloklagan = premium = 0
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    for uid, oxirgi, blok, sub_until in rows:
+        if blok:
+            bloklagan += 1
+            continue
+        if sub_until and sub_until > now_s:
+            premium += 1
+            continue
+        if not oxirgi:
+            hech += 1
+            continue
+        try:
+            oxirgi_dt = datetime.strptime(oxirgi[:10], "%Y-%m-%d")
+        except Exception:
+            hech += 1
+            continue
+        kun = (now.date() - oxirgi_dt.date()).days
+        if kun <= 3:
+            faol += 1
+        elif kun <= 7:
+            soviyapti += 1
+        elif kun <= 20:
+            uxlagan += 1
+        else:
+            olik += 1
+    await update.message.reply_text(
+        f"🔍 <b>SEGMENTLAR (oxirgi faollik)</b>\n━━━━━━━━━━━\n\n"
+        f"🟢 <b>Faol</b> (0-3 kun): {faol} ta\n"
+        f"   → tegmaymiz (yaxshi holatda)\n\n"
+        f"🟡 <b>Soviyapti</b> (4-7 kun): {soviyapti} ta\n"
+        f"   → yumshoq turtki mumkin\n\n"
+        f"🟠 <b>Uxlagan</b> (8-20 kun): {uxlagan} ta\n"
+        f"   → kechirim+VIP (reset)\n\n"
+        f"🔴 <b>O'lik</b> (20+ kun): {olik} ta\n"
+        f"   → oxirgi urinish\n\n"
+        f"⚪️ <b>Hech ishlatmagan</b>: {hech} ta\n"
+        f"   → 'nega sinamadingiz'\n\n"
+        f"💎 <b>Premium</b>: {premium} ta (faqat qiymat)\n"
+        f"⚫️ <b>Bloklagan</b>: {bloklagan} ta (yeta olmaymiz)\n\n"
+        f"💡 Xabar yuborish: <code>/segment_xabar [kun_dan] [kun_gacha]</code>\n"
+        f"Masalan: <code>/segment_xabar 8 20</code> (uxlaganlarga)",
+        parse_mode="HTML")
+
+
+async def segment_xabar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: ma'lum kun oralig'idagi (kelmaganlarga) xabar + VIP yuboradi.
+    /segment_xabar 8 20 - test (nechta) | /segment_xabar 8 20 YUBOR - yuboradi
+    Xabar ohangi kun oralig'iga qarab avtomatik tanlanadi."""
+    if not is_admin(update.effective_user.id):
+        return
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Foydalanish: <code>/segment_xabar [kun_dan] [kun_gacha] [YUBOR]</code>\n\n"
+            "Masalan:\n"
+            "• <code>/segment_xabar 4 7</code> — 4-7 kun kelmaganlar (soviyapti)\n"
+            "• <code>/segment_xabar 8 20 YUBOR</code> — 8-20 kun (uxlagan)\n"
+            "• <code>/segment_xabar 21 9999 YUBOR</code> — 20+ kun (o'lik)",
+            parse_mode="HTML")
+        return
+    try:
+        kun_dan = int(args[0])
+        kun_gacha = int(args[1])
+    except Exception:
+        await update.message.reply_text("❌ Kun raqam bo'lishi kerak.")
+        return
+    yubor = len(args) >= 3 and args[2].upper() == "YUBOR"
+    now = datetime.now()
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    rows = _db_execute(
+        "SELECT u.user_id, MAX(a.created) AS oxirgi "
+        "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
+        "AND (u.sub_until IS NULL OR u.sub_until < %s) "
+        "GROUP BY u.user_id", (now_s,), fetch='all') or []
+    hedef = []
+    for uid, oxirgi in rows:
+        if not oxirgi:
+            continue
+        try:
+            oxirgi_dt = datetime.strptime(oxirgi[:10], "%Y-%m-%d")
+        except Exception:
+            continue
+        kun = (now.date() - oxirgi_dt.date()).days
+        if kun_dan <= kun <= kun_gacha:
+            hedef.append(uid)
+    # Ohangni kun oralig'iga qarab tanlaymiz
+    if kun_gacha <= 7:
+        matn = ("👋 <b>Salom! Qaytishga vaqt keldi 😊</b>\n\n"
+                "Bir necha kun ko'rinmadingiz. Kontentingiz qanday ketyapti?\n\n"
+                "Yangi videongizni tahlil qilib, sifatini oshiraylik 🎬\n"
+                "Bitta video yuboring — 1 daqiqada natija! 👇")
+        tugma = "🎬 Tahlil qilish"
+        cb = "tahlil_video"
+    elif kun_gacha <= 20:
+        matn = ("🤍 <b>Sizni sog'indik!</b>\n\n"
+                "Ancha vaqt bo'ldi... InstaDoctor'ni yangiladik va sizni qadrlaymiz.\n\n"
+                "🎁 Sizga <b>3 KUNLIK VIP</b> sovg'a!\n"
+                "Barcha Premium imkoniyatlarni bepul sinang.\n\n"
+                "Qani, birga davom etaylik! 🚀")
+        tugma = "🎁 VIP ni boshlash"
+        cb = "reset_vip"
+    else:
+        matn = ("🤍 <b>Sizni juda sog'indik!</b>\n\n"
+                "Uzoq vaqt ko'rinmadingiz. Balki band bo'lgandirsiz 😊\n\n"
+                "InstaDoctor butunlay yangilandi — endi yanada kuchli!\n\n"
+                "🎁 Sizga <b>3 KUNLIK VIP</b> sovg'a — qaytib keling!\n"
+                "Bir video bilan boshlang 🎬")
+        tugma = "🎁 VIP ni boshlash"
+        cb = "reset_vip"
+    if not yubor:
+        await update.message.reply_text(
+            f"🎯 <b>SEGMENT: {kun_dan}-{kun_gacha} kun kelmaganlar</b>\n\n"
+            f"Topildi: <b>{len(hedef)}</b> ta\n\n"
+            f"Yuboriladigan xabar namunasi:\n━━━━━━━━━━━\n{matn}\n━━━━━━━━━━━\n\n"
+            f"Yuborish: <code>/segment_xabar {kun_dan} {kun_gacha} YUBOR</code>",
+            parse_mode="HTML")
+        return
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+    await update.message.reply_text(f"⏳ {len(hedef)} ta yuborilyapti...")
+    yuborildi = 0
+    for uid in hedef:
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            yuborildi += 1
+        except Exception:
+            pass
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    await update.message.reply_text(f"✅ Yuborildi: {yuborildi} ta ({kun_dan}-{kun_gacha} kun)")
+
+
+async def reset_yubor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: charchagan/uxlagan userlarga 'kechirim+reset' xabari (SEKIN, kuniga 2500).
+    Har kuni chaqiriladi - keyingi qismini yuboradi. VIP tugagan 2+ kun (bosqich 7).
+    /reset_yubor - nechta qolgani | /reset_yubor YUBOR - bugungi qismni yuboradi"""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    KUNLIK = 2500
+    # Reset yuborilmagan, bloklanmagan, premium bo'lmagan, VIP sotuv ketma-ketligida bo'lmaganlar
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    qolgan_row = _db_execute(
+        "SELECT COUNT(*) FROM users WHERE COALESCE(reset_yuborildi,FALSE) = FALSE "
+        "AND COALESCE(bloklangan,FALSE) = FALSE AND COALESCE(vip_bosqich,0) = 7 "
+        "AND (sub_until IS NULL OR sub_until < %s)", (now,), fetch='one')
+    qolgan = qolgan_row[0] if qolgan_row else 0
+    if arg != "YUBOR":
+        await update.message.reply_text(
+            f"🔄 <b>RESET (kechirim + VIP)</b>\n━━━━━━━━━━━\n\n"
+            f"Yuborilishi kerak: <b>{qolgan}</b> ta\n"
+            f"Kunlik limit: {KUNLIK} ta\n"
+            f"Taxminan: {(qolgan + KUNLIK - 1) // KUNLIK} kun\n\n"
+            f"Bugungi qismni yuborish: <code>/reset_yubor YUBOR</code>\n\n"
+            f"💡 Har kuni bir marta yuboring — avtomatik keyingi qism ketadi.",
+            parse_mode="HTML")
+        return
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(reset_yuborildi,FALSE) = FALSE "
+        "AND COALESCE(bloklangan,FALSE) = FALSE AND COALESCE(vip_bosqich,0) = 7 "
+        "AND (sub_until IS NULL OR sub_until < %s) LIMIT %s", (now, KUNLIK), fetch='all') or []
+    if not rows:
+        await update.message.reply_text("✅ Hammasi yuborilgan! Reset tugadi.")
+        return
+    matn = ("🤍 <b>Salom! Bir narsani tan olamiz.</b>\n\n"
+            "So'nggi paytda sizga juda ko'p xabar yubordik — kechirasiz 🙏\n\n"
+            "Biz InstaDoctor'ni butunlay yangiladik:\n"
+            "✅ Endi kamroq, lekin foydali xabar\n"
+            "✅ Faqat sizga kerakli maslahat\n"
+            "✅ Spam yo'q\n\n"
+            "Va sizga sovg'a — <b>3 KUNLIK VIP</b> 🎁\n"
+            "Hammasini qaytadan, toza boshlaymiz!\n\n"
+            "Rozimisiz? 👇")
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎁 Ha, VIP ni boshlash", callback_data="reset_vip")],
+        [InlineKeyboardButton("🔕 Kamroq xabar", callback_data="reset_kam")]])
+    await update.message.reply_text(f"⏳ {len(rows)} ta yuborilyapti...")
+    yuborildi = 0
+    for (uid,) in rows:
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            yuborildi += 1
+        except Exception:
+            pass
+        _db_execute("UPDATE users SET reset_yuborildi = TRUE WHERE user_id = %s", (uid,))
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    qoldi = qolgan - yuborildi
+    await update.message.reply_text(
+        f"✅ Yuborildi: {yuborildi} ta\n"
+        f"Qoldi: {max(0, qoldi)} ta\n\n"
+        f"{'Ertaga yana /reset_yubor YUBOR yozing 🔄' if qoldi > 0 else 'Reset TUGADI! 🎉'}")
+
+
 async def vip_sinxron_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: MAVJUD VIP userlarni yangi rejaga to'g'ri joylashtiradi (segmentlar bo'yicha).
     Eskirgan xabar ketmasin, kasha bo'lmasin.
@@ -6251,14 +6494,17 @@ async def vip_sinxron_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         _db_execute("UPDATE users SET vip_bosqich = 0 WHERE user_id = %s", (uid,)); n += 1
     for uid in seg["tugadi1"]:
         _db_execute("UPDATE users SET vip_bosqich = 1 WHERE user_id = %s", (uid,)); n += 1
+    # 2+ kun oldin (18k+) - SOTUV ketma-ketligiga TUSHIRMAYMIZ (bombardimon bo'lmasin)
+    # Ular /reset_yubor orqali sekin "kechirim+reset" oladi. Hozir bosqich 7 (to'xtatilgan)
     for uid in seg["tugadi2plus"]:
-        # Eskirgan "VIP tugadi" xabarini o'tkazamiz - to'g'ridan TAKLIF+BONUS ga
-        _db_execute("UPDATE users SET vip_bosqich = 1 WHERE user_id = %s", (uid,)); n += 1
+        _db_execute("UPDATE users SET vip_bosqich = 7 WHERE user_id = %s", (uid,))
     await update.message.reply_text(
-        f"✅ <b>Sinxronlandi: {n} ta</b>\n\n"
-        f"Hamma o'z kunига mos joyга qo'yildi.\n"
-        f"Eskirgan xabarlar yuborilmaydi.\n\n"
-        f"⏰ Bugun 12:00 va 20:30 da reja bo'yicha ketadi 🎯",
+        f"✅ <b>Sinxronlandi: {n} ta</b> (aktiv + yaqin tugaganlar)\n\n"
+        f"🟢 Aktivlar → bugun 20:30 turtki\n"
+        f"⚪️ Bugun/1-kun tugagan → 12:00 reja\n\n"
+        f"⚠️ <b>2+ kun oldin ({len(seg['tugadi2plus'])} ta)</b> — "
+        f"SOTUV ketma-ketligiga tushirilMADI (bombardimon bo'lmasin).\n"
+        f"Ular uchun: <code>/reset_yubor</code> (sekin kechirim+reset)",
         parse_mode="HTML")
 
 
@@ -9020,6 +9266,10 @@ async def avto_sotuv(context: ContextTypes.DEFAULT_TYPE):
         # (VIP 3 kun = faqat qiymat, sotuv yo'q. Ular o'z turtkisini oladi)
         if vip_aktivmi(uid):
             return False
+        # "Kamroq xabar" tanlagan - hurmat qilamiz
+        _off = _db_execute("SELECT COALESCE(avto_sotuv_off,FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if _off and _off[0]:
+            return False
         # Marafonda bo'lgan (tugatmagan) odamlarga avto-sotuv YUBORMAYMIZ
         # (ular allaqachon marafon orqali bepul olyapti - chalkashmasin)
         _mar = _db_execute("SELECT marafon_kun, marafon_tugadi FROM users WHERE user_id = %s", (uid,), fetch='one')
@@ -9794,6 +10044,9 @@ def main():
     app.add_handler(CommandHandler("vip_hammaga", vip_hammaga_command))
     app.add_handler(CommandHandler("vip_stat", vip_stat_command))
     app.add_handler(CommandHandler("vip_sinxron", vip_sinxron_command))
+    app.add_handler(CommandHandler("reset_yubor", reset_yubor_command))
+    app.add_handler(CommandHandler("segment_korish", segment_korish_command))
+    app.add_handler(CommandHandler("segment_xabar", segment_xabar_command))
     app.add_handler(CommandHandler("marafon_yakunla", marafon_yakunla_command))
     app.add_handler(CommandHandler("premium_xarajat", premium_xarajat_command))
     app.add_handler(CommandHandler("sorov", sorov_command))
