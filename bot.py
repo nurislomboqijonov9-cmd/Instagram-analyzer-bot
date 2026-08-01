@@ -315,6 +315,7 @@ def init_db():
                                  ("vip_bosqich", "INTEGER DEFAULT 0"),
                                  ("reset_yuborildi", "BOOLEAN DEFAULT FALSE"),
                                  ("avto_sotuv_off", "BOOLEAN DEFAULT FALSE"),
+                                 ("yangi_sovga", "BOOLEAN DEFAULT FALSE"),
                                  ("vip_kun_xabar", "INTEGER DEFAULT 0"),
                                  ("vip_bonus_until", "TEXT"),
                                  ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
@@ -2270,16 +2271,21 @@ async def show_menu(message, context):
     if context.user_data.get('is_new'):
         try:
             uid = message.chat.id
-            if vip_ber(uid):
+            # YANGI USER: 2 ta PREMIUM tahlil sovg'a (VIP o'rniga)
+            # 1-si kirgani uchun, 2-si g'amxo'rlik sifatida
+            row = _db_execute("SELECT COALESCE(yangi_sovga,FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+            if not row or not row[0]:
+                add_premium_balance(uid, 2)  # 2 ta to'liq premium tahlil
+                _db_execute("UPDATE users SET yangi_sovga = TRUE WHERE user_id = %s", (uid,))
                 await asyncio.sleep(1)
                 await message.reply_text(
-                    "🎁 <b>Sizga SOVG'A — 3 KUNLIK VIP!</b>\n\n"
-                    "3 kun davomida barcha Premium imkoniyatlar BEPUL:\n"
-                    f"🎬 {VIP_VIDEO_LIMIT} ta video tahlil\n"
-                    f"📊 {VIP_PROFIL_LIMIT} ta profil tahlil\n"
-                    f"💬 Kuniga {VIP_CHAT_KUNLIK} ta AI suhbat\n"
-                    "⭐️ Sevimlilar, 📅 eslatma, 📂 hisobot — cheksiz!\n\n"
-                    "Boshlash uchun video yuboring! 🚀",
+                    "🎁 <b>Xush kelibsiz — sizga SOVG'A!</b>\n\n"
+                    "Kirganingiz uchun — <b>1 ta PREMIUM tahlil</b> 🎬\n"
+                    "Barcha imkoniyatlar bilan: kuchaytirish, sevimli, ovoz!\n\n"
+                    "Va sizni yanada rivojlantirish uchun — <b>yana 1 ta</b> "
+                    "g'amxo'rlik sovg'asi 🤍\n\n"
+                    "Jami: <b>2 ta bepul PREMIUM tahlil!</b>\n"
+                    "Boshlash uchun video yuboring 🚀",
                     parse_mode="HTML")
         except Exception:
             pass
@@ -6237,7 +6243,7 @@ async def premium_passiv_command(update: Update, context: ContextTypes.DEFAULT_T
         min_kun = 5
     now = datetime.now()
     now_s = now.strftime("%Y-%m-%d %H:%M:%S")
-    # Faol obunachilar (premium) + oxirgi tahlil sanasi
+    # Faol obunachilar (premium) + oxirgi tahlil sanasi + to'lov sanasi
     rows = _db_execute(
         "SELECT u.user_id, u.username, u.first_name, u.sub_until, MAX(a.created) AS oxirgi "
         "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
@@ -6247,38 +6253,45 @@ async def premium_passiv_command(update: Update, context: ContextTypes.DEFAULT_T
     for uid, username, first_name, sub_until, oxirgi in rows:
         if not oxirgi:
             kun = 9999  # umuman ishlatmagan
+            oxirgi_str = "hech"
         else:
             try:
                 oxirgi_dt = datetime.strptime(oxirgi[:10], "%Y-%m-%d")
                 kun = (now.date() - oxirgi_dt.date()).days
+                oxirgi_str = oxirgi[:10]
             except Exception:
                 kun = 9999
+                oxirgi_str = "hech"
         if kun >= min_kun:
-            passivlar.append((uid, username, first_name, kun))
+            # To'lov sanasi (oxirgi approved payment)
+            _pay = _db_execute(
+                "SELECT created FROM payments WHERE user_id = %s AND status = 'approved' "
+                "ORDER BY id DESC LIMIT 1", (uid,), fetch='one')
+            tolov_sana = _pay[0][:10] if _pay and _pay[0] else "?"
+            passivlar.append((uid, username, first_name, kun, oxirgi_str, tolov_sana))
     passivlar.sort(key=lambda x: -x[3])  # eng ko'p kelmagan birinchi
     if not passivlar:
         await update.message.reply_text(
             f"✅ {min_kun}+ kun kelmagan premium yo'q — hammasi faol! 🎉")
         return
-    # Ro'yxat (username bilan)
+    # Ro'yxat (username + kun + to'lov sanasi bilan)
     lines = []
-    for uid, username, first_name, kun in passivlar[:60]:
+    for uid, username, first_name, kun, oxirgi_str, tolov_sana in passivlar[:50]:
         uname = f"@{username}" if username else f"ID:{uid}"
-        ism = (first_name or "")[:15]
-        kun_txt = "hech" if kun == 9999 else f"{kun} kun"
-        lines.append(f"• {uname} ({ism}) — {kun_txt}")
+        ism = (first_name or "")[:12]
+        kun_txt = "hech ishlatmagan" if kun == 9999 else f"{kun} kun oldin"
+        lines.append(f"• {uname} ({ism})\n  ✅ To'lov: {tolov_sana} | 📊 Oxirgi: {kun_txt}")
     matn = (f"⚠️ <b>PREMIUM — PASSIV OBUNACHILAR</b>\n"
-            f"({min_kun}+ kun kelmagan)\n━━━━━━━━━━━\n\n"
+            f"({min_kun}+ kun ishlatmagan)\n━━━━━━━━━━━\n\n"
             f"Jami: <b>{len(passivlar)}</b> ta\n"
-            f"(pastda {min(60, len(passivlar))} tasi)\n\n"
+            f"(pastda {min(50, len(passivlar))} tasi)\n\n"
             + "\n".join(lines))
-    if len(passivlar) > 60:
-        matn += f"\n\n... va yana {len(passivlar) - 60} ta"
+    if len(passivlar) > 50:
+        matn += f"\n\n... va yana {len(passivlar) - 50} ta"
     matn += ("\n\n💡 Bular pul to'lagan, lekin ishlatmayapti — "
-             "ketib qolmasligi uchun ularга qiymat eslatmasi yuboring.")
-    # Telegram xabar limiti (4096) - bo'lib yuboramiz
+             "keyingi oy uzaytirmasligi mumkin. Qiymat eslatmasi yuboring.")
     if len(matn) > 4000:
-        matn = matn[:3900] + "\n\n... (ro'yxat uzun)"
+        matn = matn[:3900] + "\n\n... (ro'yxat uzun, min_kun ni oshiring)"
     await update.message.reply_text(matn, parse_mode="HTML")
 
 
@@ -6622,6 +6635,95 @@ async def vip_hammaga_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             continue
     await update.message.reply_text(
         f"✅ VIP berildi: {berildi} ta\n📨 Xabar yetdi: {xabar_yetdi} ta")
+
+
+async def kunlik_obzor(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni ertalab adminlarga umumiy obzor: segmentlar, VIP, premium, sotuv."""
+    now = datetime.now()
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    bugun = now.strftime("%Y-%m-%d")
+    kecha = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    try:
+        # Segmentlar (oxirgi faollik)
+        rows = _db_execute(
+            "SELECT u.user_id, MAX(a.created) AS oxirgi, COALESCE(u.bloklangan,FALSE), u.sub_until "
+            "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+            "GROUP BY u.user_id, u.bloklangan, u.sub_until", fetch='all') or []
+        faol = soviyapti = uxlagan = olik = premium = 0
+        for uid, oxirgi, blok, sub_until in rows:
+            if blok:
+                continue
+            if sub_until and sub_until > now_s:
+                premium += 1
+                continue
+            if not oxirgi:
+                continue
+            try:
+                kun = (now.date() - datetime.strptime(oxirgi[:10], "%Y-%m-%d").date()).days
+            except Exception:
+                continue
+            if kun <= 3: faol += 1
+            elif kun <= 7: soviyapti += 1
+            elif kun <= 20: uxlagan += 1
+            else: olik += 1
+        # Bugungi/kechagi tahlillar
+        b_tahlil = _db_execute("SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (bugun+'%',), fetch='one')
+        k_tahlil = _db_execute("SELECT COUNT(*) FROM analyses WHERE created LIKE %s", (kecha+'%',), fetch='one')
+        # Bugungi/kechagi to'lovlar
+        b_tolov = _db_execute("SELECT COUNT(*) FROM payments WHERE status='approved' AND created LIKE %s", (bugun+'%',), fetch='one')
+        k_tolov = _db_execute("SELECT COUNT(*) FROM payments WHERE status='approved' AND created LIKE %s", (kecha+'%',), fetch='one')
+        # VIP aktiv
+        vip_rows = _db_execute("SELECT vip_boshlanish FROM users WHERE vip_berilgan = TRUE", fetch='all') or []
+        vip_aktiv = 0
+        for (vb,) in vip_rows:
+            if vb:
+                try:
+                    if now < datetime.strptime(vb, "%Y-%m-%d %H:%M:%S") + timedelta(days=VIP_KUN):
+                        vip_aktiv += 1
+                except Exception:
+                    pass
+        # Yangi userlar (bugun/kecha joined)
+        b_yangi = _db_execute("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (bugun+'%',), fetch='one')
+        k_yangi = _db_execute("SELECT COUNT(*) FROM users WHERE joined LIKE %s", (kecha+'%',), fetch='one')
+        matn = (
+            f"📊 <b>KUNLIK OBZOR</b> — {bugun}\n━━━━━━━━━━━\n\n"
+            f"💰 <b>SOTUV:</b>\n"
+            f"• Bugun: {b_tolov[0] if b_tolov else 0} ta\n"
+            f"• Kecha: {k_tolov[0] if k_tolov else 0} ta\n\n"
+            f"🎬 <b>TAHLILLAR:</b>\n"
+            f"• Bugun: {b_tahlil[0] if b_tahlil else 0} ta\n"
+            f"• Kecha: {k_tahlil[0] if k_tahlil else 0} ta\n\n"
+            f"🆕 <b>YANGI USERLAR:</b>\n"
+            f"• Bugun: {b_yangi[0] if b_yangi else 0} ta\n"
+            f"• Kecha: {k_yangi[0] if k_yangi else 0} ta\n\n"
+            f"👥 <b>SEGMENTLAR:</b>\n"
+            f"🟢 Faol (0-3 kun): {faol}\n"
+            f"🟡 Soviyapti (4-7): {soviyapti}\n"
+            f"🟠 Uxlagan (8-20): {uxlagan}\n"
+            f"🔴 O'lik (20+): {olik}\n"
+            f"💎 Premium: {premium}\n"
+            f"🎁 VIP aktiv: {vip_aktiv}\n\n"
+            f"💡 Batafsil: /segment_korish, /vip_kunlar, /premium_passiv"
+        )
+        for aid in ADMIN_IDS:
+            try:
+                await context.bot.send_message(aid, matn, parse_mode="HTML")
+            except Exception:
+                pass
+        logger.info("Kunlik obzor yuborildi")
+    except Exception as e:
+        logger.warning(f"Kunlik obzor xato: {e}")
+
+
+async def kunlik_obzor_end(context):
+    pass
+
+
+async def obzor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: kunlik obzorni istagan payt ko'rish."""
+    if not is_admin(update.effective_user.id):
+        return
+    await kunlik_obzor(context)
 
 
 async def vip_kunlar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -10115,6 +10217,7 @@ def main():
             jq.run_daily(streak_tozala, time=_dtime(hour=uz_to_utc(6), minute=0))
             jq.run_daily(vip_keyingi_bosqich, time=_dtime(hour=uz_to_utc(12), minute=0))
             jq.run_daily(vip_kunlik_turtki, time=_dtime(hour=uz_to_utc(20), minute=30))
+            jq.run_daily(kunlik_obzor, time=_dtime(hour=uz_to_utc(9), minute=0))
             # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
             jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
             # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
@@ -10161,6 +10264,7 @@ def main():
     app.add_handler(CommandHandler("vip_hammaga", vip_hammaga_command))
     app.add_handler(CommandHandler("vip_stat", vip_stat_command))
     app.add_handler(CommandHandler("vip_kunlar", vip_kunlar_command))
+    app.add_handler(CommandHandler("obzor", obzor_command))
     app.add_handler(CommandHandler("vip_sinxron", vip_sinxron_command))
     app.add_handler(CommandHandler("reset_yubor", reset_yubor_command))
     app.add_handler(CommandHandler("segment_korish", segment_korish_command))
