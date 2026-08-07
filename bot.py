@@ -316,6 +316,8 @@ def init_db():
                                  ("reset_yuborildi", "BOOLEAN DEFAULT FALSE"),
                                  ("avto_sotuv_off", "BOOLEAN DEFAULT FALSE"),
                                  ("yangi_sovga", "BOOLEAN DEFAULT FALSE"),
+                                 ("sotuv_issiq_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("shaxsiy_chegirma_until", "TEXT"),
                                  ("vip_kun_xabar", "INTEGER DEFAULT 0"),
                                  ("vip_bonus_until", "TEXT"),
                                  ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
@@ -613,6 +615,24 @@ def discount_active():
     try:
         until_dt = datetime.strptime(until, "%Y-%m-%d %H:%M:%S")
         return datetime.now() < until_dt
+    except Exception:
+        return False
+
+
+def sub_price_for(uid):
+    """Foydalanuvchi uchun obuna narxi: shaxsiy chegirma bo'lsa 19,900, aks holda 29,900."""
+    if shaxsiy_chegirma_bormi(uid):
+        return SUB_PRICE_DISCOUNT
+    return SUB_PRICE
+
+
+def shaxsiy_chegirma_bormi(uid):
+    """Foydalanuvchida faol 48 soatlik shaxsiy chegirma (19,900) bormi?"""
+    try:
+        row = _db_execute("SELECT shaxsiy_chegirma_until FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not row or not row[0]:
+            return False
+        return datetime.now() < datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
     except Exception:
         return False
 
@@ -2374,13 +2394,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_keyboard(context, query.from_user.id), parse_mode="HTML")
         except Exception:
             pass
+        # Shaxsiy 48 soatlik chegirma (19,900) bormi?
+        _chegirma = shaxsiy_chegirma_bormi(query.from_user.id)
+        _narx_txt = "19 900" if _chegirma else "29 900"
+        _bosh = (f"🎁 <b>Sizga maxsus narx: {_narx_txt} so'm!</b>\n⏰ 48 soat ichida amal qiladi.\n\n"
+                 if _chegirma else "")
         # To'lov turini tanlash: Payme yoki Karta
         kb = InlineKeyboardMarkup([
             [InlineKeyboardButton(t(context, 'payme_choose'), callback_data='pm_sub')],
             [InlineKeyboardButton(t(context, 'click_choose'), callback_data='cl_sub')],
             [InlineKeyboardButton(t(context, 'card_choose'), callback_data='card_sub')],
         ])
-        await query.message.reply_text("💳 To'lov turini tanlang:", reply_markup=kb)
+        await query.message.reply_text(f"{_bosh}💳 To'lov turini tanlang:", reply_markup=kb, parse_mode="HTML")
     elif data == 'buy_test':
         # Aksiya tugagan bo'lsa - 7 minglik o'chirilgan, to'liq obunaga yo'naltiramiz
         # Aksiya tugaganmi? (1) qo'lda o'chirilgan, YOKI (2) tugash vaqti o'tgan
@@ -2435,7 +2460,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
         if data == 'pm_sub':
-            summa, nom = current_sub_price(), "1 oylik obuna"
+            summa, nom = sub_price_for(query.from_user.id), "1 oylik obuna"
         elif data == 'pm_renewal':
             summa, nom = SUB_PRICE_RENEWAL, "1 oylik obuna (20% chegirma)"
         elif data == 'pm_test':
@@ -2465,7 +2490,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(t(context, 'pay_unavailable'))
             return
         if data == 'cl_sub':
-            summa, nom, pkg = current_sub_price(), "1 oylik obuna", "sub_1month"
+            _s = sub_price_for(query.from_user.id)
+            summa, nom, pkg = _s, "1 oylik obuna", ("sub_1month_discount" if _s == SUB_PRICE_DISCOUNT else "sub_1month")
         elif data == 'cl_renewal':
             summa, nom, pkg = SUB_PRICE_RENEWAL, "1 oylik obuna (20% chegirma)", "sub_1month_renewal"
         elif data == 'cl_test':
@@ -2492,7 +2518,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ===== KARTA tanlandi (chek yuborish) =====
     elif data in ('card_sub', 'card_test', 'card_one', 'card_renewal'):
         if data == 'card_sub':
-            paket_nom, summa, pkg = "1 oylik obuna", current_sub_price(), "sub_1month"
+            _s = sub_price_for(query.from_user.id)
+            paket_nom, summa, pkg = "1 oylik obuna", _s, ("sub_1month_discount" if _s == SUB_PRICE_DISCOUNT else "sub_1month")
         elif data == 'card_renewal':
             paket_nom, summa, pkg = "1 oylik obuna (20% chegirma)", SUB_PRICE_RENEWAL, "sub_1month_renewal"
         elif data == 'card_test':
@@ -6637,6 +6664,77 @@ async def vip_hammaga_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"✅ VIP berildi: {berildi} ta\n📨 Xabar yetdi: {xabar_yetdi} ta")
 
 
+async def kunlik_foyda(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni: FAOL bo'lmagan (lekin bloklamagan) userlarga foydali maslahat/trend.
+    Sotuv EMAS - qiymat. Odam botga qaytsin, zerikmasin. Kunlar bo'yicha aylanadi."""
+    # Foydali maslahatlar ro'yxati (kunlar bo'yicha aylanadi)
+    maslahatlar = [
+        ("🎣 <b>Hook siri</b>", "Birinchi 3 soniyada SAVOL bering yoki ziddiyat ko'rsating. "
+         "\"Bu xatoni 90% qiladi...\" — odam to'xtaydi va oxirigacha ko'radi.\n\n"
+         "Videongiz hooki kuchlimi? Tekshiring 👇"),
+        ("📈 <b>Algoritm siri</b>", "Instagram eng ko'p SAQLASH va ULASHISHni qadrlaydi — "
+         "ko'rishlar emas! Video foydali bo'lsa (maslahat, ro'yxat) — saqlanadi.\n\n"
+         "Videongiz saqlashga arziydimi? 👇"),
+        ("⏱ <b>Uzunlik siri</b>", "Reels uchun eng yaxshi uzunlik — 7-15 soniya. "
+         "Qisqa video oxirigacha ko'riladi → algoritm yoqtiradi → ko'proq odamga beradi.\n\n"
+         "Videongiz uzunligi to'g'rimi? 👇"),
+        ("🎬 <b>Montaj siri</b>", "Har 2-3 soniyada kadr almashsin — odam zerikmaydi. "
+         "Statik video → odam suradi. Dinamik montaj → oxirigacha ko'radi.\n\n"
+         "Videongiz montaji dinamikmi? 👇"),
+        ("🗣 <b>Ovoz siri</b>", "Birinchi gapni ENERGIYA bilan boshlang. "
+         "Sekin, past ovoz → odam suradi. Jonli, ishtiyoqli ovoz → qoladi.\n\n"
+         "Videongiz ovozi jozibalimi? 👇"),
+        ("📝 <b>Matn siri</b>", "Videodagi matn YIRIK va QISQA bo'lsin — "
+         "telefonda o'qishga oson. Kichik matn → odam o'qimaydi → suradi.\n\n"
+         "Videongiz matni o'qishga qulaymi? 👇"),
+        ("🎯 <b>Yakun siri</b>", "Video oxirida ANIQ harakat ayting: "
+         "\"Saqlab qo'ying\", \"Izoh yozing\", \"Do'stingizga yuboring\". "
+         "Bu — algoritm uchun signal!\n\nVideongiz yakuni kuchlimi? 👇"),
+    ]
+    # Bugungi maslahat (kun raqamiga qarab aylanadi)
+    kun_raqam = datetime.now().timetuple().tm_yday
+    sarlavha, matn = maslahatlar[kun_raqam % len(maslahatlar)]
+    now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    bugun = datetime.now().strftime("%Y-%m-%d")
+    kecha = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    # Faqat: bloklamagan, "kamroq xabar" tanlamagan, VIP aktiv emas, bugun kelmagan
+    rows = _db_execute(
+        "SELECT u.user_id, MAX(a.created) AS oxirgi FROM users u "
+        "LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
+        "AND COALESCE(u.avto_sotuv_off,FALSE) = FALSE "
+        "GROUP BY u.user_id", fetch='all') or []
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🎬 Videomni tekshirish", callback_data="tahlil_video")]])
+    to_matn = f"💡 <b>KUNLIK MASLAHAT</b>\n\n{sarlavha}\n\n{matn}"
+    yuborildi = 0
+    for uid, oxirgi in rows:
+        # VIP aktivlarni o'tkazamiz (ular o'z turtkisini oladi)
+        if vip_aktivmi(uid):
+            continue
+        # Bugun kelganlarni o'tkazamiz (ular allaqachon faol)
+        if oxirgi and oxirgi[:10] == bugun:
+            continue
+        # 4-14 kun oralig'idagilar (soviyapti - qaytarish kerak, lekin o'lik emas)
+        if oxirgi:
+            try:
+                kun = (datetime.now().date() - datetime.strptime(oxirgi[:10], "%Y-%m-%d").date()).days
+                if kun < 4 or kun > 14:
+                    continue  # faqat 4-14 kun (soviyapti segment)
+            except Exception:
+                continue
+        else:
+            continue  # hech ishlatmagan - bu xabar ular uchun emas
+        try:
+            await context.bot.send_message(uid, to_matn, reply_markup=kb, parse_mode="HTML")
+            yuborildi += 1
+        except Exception:
+            pass
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    logger.info(f"Kunlik foyda yuborildi: {yuborildi}")
+
+
 async def kunlik_obzor(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni ertalab adminlarga umumiy obzor: segmentlar, VIP, premium, sotuv."""
     now = datetime.now()
@@ -7178,6 +7276,73 @@ async def sotuv_reset_command(update, context):
     _db_execute(f"UPDATE users SET {col} = FALSE")
     await update.message.reply_text(
         f"♻️ sotuv{key} tiklandi! Endi /sotuv{key} bosing — HAMMAGA qayta boradi.")
+
+
+async def sotuv_issiq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 5+ ishlatgan, to'lamagan (ISSIQ) userlarga KUCHLI sotuv taklifi.
+    Qiymat + maxsus narx + shoshilinch. /sotuv_issiq - test | /sotuv_issiq YUBOR"""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 5+ tahlil, to'lamagan, bloklanmagan, bu xabarni olmagan
+    rows = _db_execute(
+        "SELECT u.user_id, COUNT(a.id) AS soni FROM users u "
+        "JOIN analyses a ON u.user_id = a.user_id "
+        "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
+        "AND (u.sub_until IS NULL OR u.sub_until < %s) "
+        "AND COALESCE(u.sotuv_issiq_given,FALSE) = FALSE "
+        "GROUP BY u.user_id HAVING COUNT(a.id) >= 5", (now_s,), fetch='all') or []
+    hedef = [(r[0], r[1]) for r in rows]
+    if arg != "YUBOR":
+        namuna = (
+            "🔥 <b>Siz — bizning eng faol foydalanuvchimizsiz!</b>\n\n"
+            "Botni <b>{N} marta</b> ishlatdingiz — demak u sizga rostdan yordam beryapti 💪\n\n"
+            "Lekin siz eng kuchli imkoniyatlarni hali sinamadingiz:\n"
+            "🚀 <b>Kuchaytirish</b> — AI 3 ta tayyor hook, yakun, tuzatish beradi\n"
+            "💬 <b>AI mutaxassis</b> — istalgan savolga javob\n"
+            "📂 <b>Chuqur hisobot</b> — o'sishingiz tahlili\n"
+            "♾ <b>Cheksiz tahlil</b>\n\n"
+            "🎁 <b>Faqat SIZGA — maxsus narx:</b>\n"
+            "💎 Premium 1 oy: <s>29,900</s> → <b>19,900 so'm</b>\n\n"
+            "⏰ Faqat 48 soat! Keyin 29,900 ga qaytadi.\n\n"
+            "Bir marta REKka chiqqan video bu pulni qoplaydi 🚀")
+        await update.message.reply_text(
+            f"🔥 <b>SOTUV — ISSIQ (5+ ishlatgan)</b>\n\n"
+            f"Topildi: <b>{len(hedef)}</b> ta\n\n"
+            f"Xabar namunasi:\n━━━━━━━━━━━\n{namuna.replace('{N}', '7')}\n━━━━━━━━━━━\n\n"
+            f"Yuborish: <code>/sotuv_issiq YUBOR</code>",
+            parse_mode="HTML")
+        return
+    await update.message.reply_text(f"⏳ {len(hedef)} ta issiqqa yuborilyapti...")
+    yuborildi = 0
+    for uid, soni in hedef:
+        matn = (
+            "🔥 <b>Siz — bizning eng faol foydalanuvchimizsiz!</b>\n\n"
+            f"Botni <b>{soni} marta</b> ishlatdingiz — demak u sizga rostdan yordam beryapti 💪\n\n"
+            "Lekin siz eng kuchli imkoniyatlarni hali sinamadingiz:\n"
+            "🚀 <b>Kuchaytirish</b> — AI 3 ta tayyor hook, yakun, tuzatish beradi\n"
+            "💬 <b>AI mutaxassis</b> — istalgan savolga javob\n"
+            "📂 <b>Chuqur hisobot</b> — o'sishingiz tahlili\n"
+            "♾ <b>Cheksiz tahlil</b>\n\n"
+            "🎁 <b>Faqat SIZGA — maxsus narx:</b>\n"
+            "💎 Premium 1 oy: <s>29,900</s> → <b>19,900 so'm</b>\n\n"
+            "⏰ Faqat 48 soat! Keyin 29,900 ga qaytadi.\n\n"
+            "Kuchli kontent bilan farqni ko'ring 🚀")
+        try:
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💎 19,900 ga olish", callback_data="buy_sub")]])
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            # 48 soatlik shaxsiy chegirma (19,900) belgilaymiz
+            chegirma_until = (datetime.now() + timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
+            _db_execute("UPDATE users SET sotuv_issiq_given = TRUE, shaxsiy_chegirma_until = %s "
+                        "WHERE user_id = %s", (chegirma_until, uid))
+            yuborildi += 1
+        except Exception:
+            pass
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    await update.message.reply_text(f"✅ Yuborildi: {yuborildi} ta issiqqa")
 
 
 async def sotuv1_command(update, context):
@@ -10218,6 +10383,7 @@ def main():
             jq.run_daily(vip_keyingi_bosqich, time=_dtime(hour=uz_to_utc(12), minute=0))
             jq.run_daily(vip_kunlik_turtki, time=_dtime(hour=uz_to_utc(20), minute=30))
             jq.run_daily(kunlik_obzor, time=_dtime(hour=uz_to_utc(9), minute=0))
+            jq.run_daily(kunlik_foyda, time=_dtime(hour=uz_to_utc(13), minute=0), days=(0, 2, 4))
             # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
             jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
             # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
@@ -10330,6 +10496,7 @@ def main():
     app.add_handler(CommandHandler("sotuv_reset", sotuv_reset_command))
     app.add_handler(CommandHandler("bepul_royxat", bepul_royxat_command))
     app.add_handler(CommandHandler("sotuv1", sotuv1_command))
+    app.add_handler(CommandHandler("sotuv_issiq", sotuv_issiq_command))
     app.add_handler(CommandHandler("sotuv1b", sotuv1b_command))
     app.add_handler(CommandHandler("sotuv3", sotuv3_command))
     app.add_handler(CommandHandler("sotuv4", sotuv4_command))
