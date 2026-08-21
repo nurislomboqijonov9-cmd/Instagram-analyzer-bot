@@ -318,6 +318,9 @@ def init_db():
                                  ("yangi_sovga", "BOOLEAN DEFAULT FALSE"),
                                  ("sotuv_issiq_given", "BOOLEAN DEFAULT FALSE"),
                                  ("shaxsiy_chegirma_until", "TEXT"),
+                                 ("renewal_qiymat_given", "BOOLEAN DEFAULT FALSE"),
+                                 ("qaytish_sovga", "BOOLEAN DEFAULT FALSE"),
+                                 ("segment_xabar_sana", "TEXT"),
                                  ("vip_kun_xabar", "INTEGER DEFAULT 0"),
                                  ("vip_bonus_until", "TEXT"),
                                  ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
@@ -2722,6 +2725,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📢 Bepul tahlil uchun avval kanalimizga obuna bo'ling:\n{MARAFON_KANAL}\n\n"
                 "Obuna bo'lgach, pastdagi '✅ Obuna bo'ldim' tugmasini bosing 👇",
                 reply_markup=kb)
+    elif data == 'sovga_1' or data == 'sovga_2':
+        # Qaytarish sovg'asi: 1 yoki 2 bepul premium tahlil (bir marta)
+        uid = query.from_user.id
+        soni = 1 if data == 'sovga_1' else 2
+        row = _db_execute("SELECT COALESCE(qaytish_sovga,FALSE) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if row and row[0]:
+            await query.message.reply_text(
+                "Siz allaqachon sovg'angizni oldingiz 😊\nVideo yuboring — tahlil qilib beraman! 🎬",
+                reply_markup=main_keyboard(context, uid))
+            return
+        add_premium_balance(uid, soni)
+        _db_execute("UPDATE users SET qaytish_sovga = TRUE WHERE user_id = %s", (uid,))
+        await query.message.reply_text(
+            f"🎁 <b>Ajoyib! Sizga {soni} ta BEPUL Premium tahlil berildi!</b>\n\n"
+            "Barcha imkoniyatlar bilan: 🚀 kuchaytirish, ⭐️ sevimli, 🔊 ovoz!\n\n"
+            "Boshlash uchun video yuboring 🎬",
+            reply_markup=main_keyboard(context, uid), parse_mode="HTML")
+        return
     elif data == 'reset_vip':
         # Kechirim+reset: VIP ni qayta boshlash
         uid = query.from_user.id
@@ -6322,6 +6343,50 @@ async def premium_passiv_command(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text(matn, parse_mode="HTML")
 
 
+async def hech_xabar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: HECH ishlatmaganlarga (0 tahlil) qiziqtirish + 1 premium tahlil.
+    /hech_xabar - test | /hech_xabar YUBOR"""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Umuman tahlil qilmagan, bloklanmagan, premium bo'lmagan
+    rows = _db_execute(
+        "SELECT u.user_id FROM users u "
+        "LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
+        "AND (u.sub_until IS NULL OR u.sub_until < %s) "
+        "AND COALESCE(u.qaytish_sovga,FALSE) = FALSE "
+        "GROUP BY u.user_id HAVING COUNT(a.id) = 0", (now_s,), fetch='all') or []
+    hedef = [r[0] for r in rows]
+    matn = ("👋 <b>Salom! Bir narsani sinab ko'rasizmi?</b>\n\n"
+            "InstaDoctor Reels/video'laringizni AI bilan tahlil qiladi:\n"
+            "🎣 Hook kuchli yoki yo'qligini aytadi\n"
+            "📊 Sifat bahosi (%) beradi\n"
+            "🚀 3 ta tayyor hook yozib beradi (nusxa olasiz!)\n\n"
+            "🎁 Sinash uchun — <b>1 ta BEPUL Premium tahlil</b>!\n\n"
+            "Bitta video yuboring — 1 daqiqada natija ko'rasiz 🎬")
+    if arg != "YUBOR":
+        await update.message.reply_text(
+            f"⚪️ <b>HECH ISHLATMAGANLAR</b>\n\n"
+            f"Topildi: <b>{len(hedef)}</b> ta\n\n"
+            f"Namuna:\n━━━━━━━━━━━\n{matn}\n━━━━━━━━━━━\n\n"
+            f"Yuborish: <code>/hech_xabar YUBOR</code>", parse_mode="HTML")
+        return
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎁 Bepul tahlil olish", callback_data="sovga_1")]])
+    await update.message.reply_text(f"⏳ {len(hedef)} ta yuborilyapti...")
+    yuborildi = 0
+    for uid in hedef:
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            yuborildi += 1
+        except Exception:
+            pass
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    await update.message.reply_text(f"✅ Yuborildi: {yuborildi} ta (hech ishlatmagan)")
+
+
 async def segment_korish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: userlarni oxirgi faollik (kun) bo'yicha segmentlarga bo'ladi.
     Kim necha kun kelmaganini ko'rsatadi (analyses.created bo'yicha).
@@ -6406,14 +6471,19 @@ async def segment_xabar_command(update: Update, context: ContextTypes.DEFAULT_TY
     now = datetime.now()
     now_s = now.strftime("%Y-%m-%d %H:%M:%S")
     rows = _db_execute(
-        "SELECT u.user_id, MAX(a.created) AS oxirgi "
+        "SELECT u.user_id, MAX(a.created) AS oxirgi, u.segment_xabar_sana "
         "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
         "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
         "AND (u.sub_until IS NULL OR u.sub_until < %s) "
-        "GROUP BY u.user_id", (now_s,), fetch='all') or []
+        "GROUP BY u.user_id, u.segment_xabar_sana", (now_s,), fetch='all') or []
+    # Oxirgi 14 kun ichida segment xabar olganlar - QAYTA yubormaymiz (spam bo'lmasin)
+    chegara = (now - timedelta(days=14)).strftime("%Y-%m-%d")
     hedef = []
-    for uid, oxirgi in rows:
+    for uid, oxirgi, seg_sana in rows:
         if not oxirgi:
+            continue
+        # Yaqinda (14 kun) segment xabar olgan bo'lsa - o'tkazamiz
+        if seg_sana and seg_sana[:10] > chegara:
             continue
         try:
             oxirgi_dt = datetime.strptime(oxirgi[:10], "%Y-%m-%d")
@@ -6422,30 +6492,35 @@ async def segment_xabar_command(update: Update, context: ContextTypes.DEFAULT_TY
         kun = (now.date() - oxirgi_dt.date()).days
         if kun_dan <= kun <= kun_gacha:
             hedef.append(uid)
-    # Ohangni kun oralig'iga qarab tanlaymiz
+    # Ohangni kun oralig'iga qarab tanlaymiz (VIP EMAS - 1-2 premium tahlil, qadrli)
     if kun_gacha <= 7:
+        # SOVIYAPTI (4-7 kun) - yaqin, turtki + 1 premium
         matn = ("👋 <b>Salom! Qaytishga vaqt keldi 😊</b>\n\n"
                 "Bir necha kun ko'rinmadingiz. Kontentingiz qanday ketyapti?\n\n"
-                "Yangi videongizni tahlil qilib, sifatini oshiraylik 🎬\n"
-                "Bitta video yuboring — 1 daqiqada natija! 👇")
-        tugma = "🎬 Tahlil qilish"
-        cb = "tahlil_video"
+                "🎁 Sizni qaytarish uchun — <b>1 ta BEPUL Premium tahlil</b>!\n"
+                "(kuchaytirish, sevimli, ovoz — hammasi bilan)\n\n"
+                "Videongizni yuboring — sifatini oshiraylik 🎬")
+        tugma = "🎬 Bepul tahlil olish"
+        cb = "sovga_1"
     elif kun_gacha <= 20:
+        # UXLAGAN (8-20 kun) - feedback + 2 premium
         matn = ("🤍 <b>Sizni sog'indik!</b>\n\n"
-                "Ancha vaqt bo'ldi... InstaDoctor'ni yangiladik va sizni qadrlaymiz.\n\n"
-                "🎁 Sizga <b>3 KUNLIK VIP</b> sovg'a!\n"
-                "Barcha Premium imkoniyatlarni bepul sinang.\n\n"
-                "Qani, birga davom etaylik! 🚀")
-        tugma = "🎁 VIP ni boshlash"
-        cb = "reset_vip"
+                "Bir savolimiz bor: nega qaytmadingiz? 🤔\n"
+                "Fikringiz biz uchun juda muhim.\n\n"
+                "🎁 Va sizga — <b>2 ta BEPUL Premium tahlil</b> sovg'a!\n"
+                "AI videongizga 3 tayyor hook, yakun, tuzatish beradi.\n\n"
+                "Sinab ko'ring — farqni o'zingiz his qilasiz 🚀")
+        tugma = "🎁 2 bepul tahlil olish"
+        cb = "sovga_2"
     else:
+        # O'LIK (20+ kun) - kechirim + 2 premium
         matn = ("🤍 <b>Sizni juda sog'indik!</b>\n\n"
-                "Uzoq vaqt ko'rinmadingiz. Balki band bo'lgandirsiz 😊\n\n"
-                "InstaDoctor butunlay yangilandi — endi yanada kuchli!\n\n"
-                "🎁 Sizga <b>3 KUNLIK VIP</b> sovg'a — qaytib keling!\n"
-                "Bir video bilan boshlang 🎬")
-        tugma = "🎁 VIP ni boshlash"
-        cb = "reset_vip"
+                "So'nggi paytda ko'p xabar yuborgan bo'lsak — kechirasiz 🙏\n"
+                "InstaDoctor butunlay yangilandi — endi yanada kuchli va kamroq xabar!\n\n"
+                "🎁 Qaytishingiz uchun — <b>2 ta BEPUL Premium tahlil</b> sovg'a!\n\n"
+                "Bir video bilan boshlang — o'zingiz ko'rasiz 🎬")
+        tugma = "🎁 2 bepul tahlil olish"
+        cb = "sovga_2"
     if not yubor:
         await update.message.reply_text(
             f"🎯 <b>SEGMENT: {kun_dan}-{kun_gacha} kun kelmaganlar</b>\n\n"
@@ -6457,9 +6532,11 @@ async def segment_xabar_command(update: Update, context: ContextTypes.DEFAULT_TY
     kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
     await update.message.reply_text(f"⏳ {len(hedef)} ta yuborilyapti...")
     yuborildi = 0
+    bugun_s = now.strftime("%Y-%m-%d %H:%M:%S")
     for uid in hedef:
         try:
             await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET segment_xabar_sana = %s WHERE user_id = %s", (bugun_s, uid))
             yuborildi += 1
         except Exception:
             pass
@@ -7276,6 +7353,207 @@ async def sotuv_reset_command(update, context):
     _db_execute(f"UPDATE users SET {col} = FALSE")
     await update.message.reply_text(
         f"♻️ sotuv{key} tiklandi! Endi /sotuv{key} bosing — HAMMAGA qayta boradi.")
+
+
+async def tahlil_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: butun baza statistikasini AI tahlil qiladi va XULOSA + TAVSIYA beradi.
+    Arzon (1 marta umumiy tahlil). /tahlil_ai"""
+    if not is_admin(update.effective_user.id):
+        return
+    await update.message.reply_text("🤖 AI butun bazani tahlil qilyapti... (30-60 soniya)")
+    now = datetime.now()
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        # Statistika yig'amiz
+        jami = _db_execute("SELECT COUNT(*) FROM users", fetch='one')[0]
+        tahlil_qilgan = _db_execute("SELECT COUNT(DISTINCT user_id) FROM analyses", fetch='one')[0]
+        premium = _db_execute("SELECT COUNT(*) FROM users WHERE sub_until > %s", (now_s,), fetch='one')[0]
+        jami_tahlil = _db_execute("SELECT COUNT(*) FROM analyses", fetch='one')[0]
+        # To'lovlar
+        tolov = _db_execute("SELECT COUNT(*), COALESCE(SUM(amount),0) FROM payments WHERE status='approved'", fetch='one')
+        tolov_soni = tolov[0] if tolov else 0
+        tolov_summa = int(tolov[1]) if tolov and tolov[1] else 0
+        # Segmentlar (faollik)
+        rows = _db_execute(
+            "SELECT MAX(a.created) AS oxirgi FROM users u "
+            "LEFT JOIN analyses a ON u.user_id = a.user_id "
+            "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
+            "AND (u.sub_until IS NULL OR u.sub_until < %s) GROUP BY u.user_id", (now_s,), fetch='all') or []
+        faol = soviyapti = uxlagan = olik = hech = 0
+        for (oxirgi,) in rows:
+            if not oxirgi:
+                hech += 1
+                continue
+            try:
+                kun = (now.date() - datetime.strptime(oxirgi[:10], "%Y-%m-%d").date()).days
+                if kun <= 3: faol += 1
+                elif kun <= 7: soviyapti += 1
+                elif kun <= 20: uxlagan += 1
+                else: olik += 1
+            except Exception:
+                pass
+        # Premium passiv (premium olib ishlatmagan)
+        prem_passiv = _db_execute(
+            "SELECT COUNT(*) FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+            "WHERE u.sub_until > %s GROUP BY u.user_id HAVING MAX(a.created) IS NULL "
+            "OR MAX(a.created) < %s",
+            (now_s, (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")), fetch='all') or []
+        prem_passiv_soni = len(prem_passiv)
+        # Issiq (5+ to'lamagan)
+        issiq = _db_execute(
+            "SELECT COUNT(*) FROM (SELECT u.user_id FROM users u JOIN analyses a ON u.user_id=a.user_id "
+            "WHERE (u.sub_until IS NULL OR u.sub_until < %s) GROUP BY u.user_id HAVING COUNT(a.id)>=5) t",
+            (now_s,), fetch='one')
+        issiq_soni = issiq[0] if issiq else 0
+
+        stat_matn = f"""InstaDoctor Telegram bot statistikasi (Instagram Reels AI tahlil xizmati, Premium 29900 so'm/oy):
+
+UMUMIY:
+- Ro'yxat: {jami} kishi
+- Tahlil qilgan: {tahlil_qilgan} ({tahlil_qilgan*100//max(jami,1)}%)
+- Jami tahlillar: {jami_tahlil}
+- Premium (aktiv): {premium}
+- To'lovlar: {tolov_soni} ta, {tolov_summa:,} so'm
+
+FAOLLIK SEGMENTLARI (premium bo'lmaganlar):
+- Faol (0-3 kun): {faol}
+- Soviyapti (4-7 kun): {soviyapti}
+- Uxlagan (8-20 kun): {uxlagan}
+- O'lik (20+ kun): {olik}
+- Hech ishlatmagan: {hech}
+
+MUAMMOLAR:
+- Premium olib 7+ kun ishlatmaganlar: {prem_passiv_soni}
+- Issiq (5+ ishlatgan, to'lamagan): {issiq_soni}
+
+Kontekst: aktivlik 19000 dan 10000 ga tushdi, premium 300 dan 90 ga tushdi."""
+
+        prompt = f"""Sen tajribali marketolog va biznes tahlilchisisan. Quyidagi Telegram bot statistikasini tahlil qil:
+
+{stat_matn}
+
+Menga BERGIN (o'zbek tilida, aniq va qisqa):
+1. UMUMIY XULOSA (biznes qanday holatda - 3-4 gap)
+2. ENG KATTA 3 MUAMMO (raqamlarga asoslangan)
+3. ENG KATTA 3 IMKONIYAT (qayerda pul bor)
+4. DARROV QILINADIGAN 3 AMAL (aniq, bajarsa bo'ladigan)
+
+Xushomad qilma, rostini ayt. Raqamlarga asoslan."""
+
+        natija = _generate([prompt], model="gemini-2.5-flash")
+        if not natija:
+            await update.message.reply_text("❌ AI javob bermadi, qayta urinib ko'ring.")
+            return
+        # Telegram limiti (4096) - bo'lib yuboramiz
+        xulosa = f"🤖 <b>AI BIZNES TAHLILI</b>\n━━━━━━━━━━━\n\n{natija}"
+        if len(xulosa) > 4000:
+            await update.message.reply_text(xulosa[:4000], parse_mode="HTML")
+            await update.message.reply_text(xulosa[4000:], parse_mode="HTML")
+        else:
+            await update.message.reply_text(xulosa, parse_mode="HTML")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Xato: {e}")
+
+
+async def eksport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: HAMMA user haqida to'liq ma'lumot - FAYL qilib yuboradi (cheklovsiz).
+    Har user: ID, username, tahlil soni, oxirgi faollik (kun), premium holati.
+    /eksport - hammasi | /eksport premium - faqat premium | /eksport 20 - 20+ kun kelmagan"""
+    if not is_admin(update.effective_user.id):
+        return
+    filtr = (context.args[0].lower() if context.args else "hammasi")
+    now = datetime.now()
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    await update.message.reply_text("⏳ Ma'lumot yig'ilyapti... (biroz kuting)")
+    # Har user: id, username, ism, tahlil soni, birinchi/oxirgi tahlil, premium
+    rows = _db_execute(
+        "SELECT u.user_id, u.username, u.first_name, u.joined, u.sub_until, "
+        "COUNT(a.id) AS tahlil_soni, MIN(a.created) AS birinchi, MAX(a.created) AS oxirgi, "
+        "COALESCE(u.bloklangan,FALSE), COALESCE(u.premium_balance,0) "
+        "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "GROUP BY u.user_id, u.username, u.first_name, u.joined, u.sub_until, u.bloklangan, u.premium_balance "
+        "ORDER BY tahlil_soni DESC", fetch='all') or []
+    # CSV fayl tayyorlaymiz
+    lines = ["ID,Username,Ism,Tahlil_soni,Birinchi,Oxirgi,Kelmagan_kun,Premium,Premium_balans,Bloklagan"]
+    jami = premium_soni = faol = 0
+    for r in rows:
+        uid, username, ism, joined, sub_until, tahlil, birinchi, oxirgi, blok, pbalans = r
+        # Kelmagan kun
+        if oxirgi:
+            try:
+                kelmagan = (now.date() - datetime.strptime(oxirgi[:10], "%Y-%m-%d").date()).days
+            except Exception:
+                kelmagan = ""
+        else:
+            kelmagan = "hech"
+        # Premium holati
+        is_prem = sub_until and sub_until > now_s
+        prem_txt = "HA" if is_prem else "yo'q"
+        if is_prem:
+            premium_soni += 1
+        # Filtr
+        if filtr == "premium" and not is_prem:
+            continue
+        if filtr.isdigit():
+            if not isinstance(kelmagan, int) or kelmagan < int(filtr):
+                continue
+        uname = (username or "").replace(",", " ")
+        ism_t = (ism or "").replace(",", " ")[:20]
+        birinchi_t = birinchi[:10] if birinchi else ""
+        oxirgi_t = oxirgi[:10] if oxirgi else ""
+        blok_t = "HA" if blok else ""
+        lines.append(f"{uid},{uname},{ism_t},{tahlil},{birinchi_t},{oxirgi_t},{kelmagan},{prem_txt},{pbalans},{blok_t}")
+        jami += 1
+    # Faylga yozamiz
+    import io
+    fayl_matn = "\n".join(lines)
+    fayl = io.BytesIO(fayl_matn.encode("utf-8"))
+    nom = f"instadoctor_userlar_{now.strftime('%Y%m%d_%H%M')}.csv"
+    fayl.name = nom
+    await context.bot.send_document(
+        update.effective_chat.id, document=fayl, filename=nom,
+        caption=(f"📊 <b>EKSPORT</b> ({filtr})\n\n"
+                 f"Jami: {jami} ta\n"
+                 f"Premium: {premium_soni} ta\n\n"
+                 f"Ustunlar: ID, Username, Ism, Tahlil soni, "
+                 f"Birinchi, Oxirgi, Kelmagan kun, Premium, Balans, Bloklagan\n\n"
+                 f"💡 Excel/Google Sheets'da ochib, saralashingiz mumkin"),
+        parse_mode="HTML")
+
+
+async def xabar_tarix_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: kimga qanday xabar/chegirma yuborilganini bazadan ko'rsatadi."""
+    if not is_admin(update.effective_user.id):
+        return
+    now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # 19,900 issiq (sotuv_issiq)
+    issiq = _db_execute("SELECT COUNT(*) FROM users WHERE COALESCE(sotuv_issiq_given,FALSE) = TRUE", fetch='one')
+    # Hozir faol shaxsiy chegirma (19,900, 48 soat)
+    chegirma_aktiv = _db_execute(
+        "SELECT COUNT(*) FROM users WHERE shaxsiy_chegirma_until IS NOT NULL "
+        "AND shaxsiy_chegirma_until > %s", (now_s,), fetch='one')
+    # Segment xabar olganlar
+    segment = _db_execute("SELECT COUNT(*) FROM users WHERE segment_xabar_sana IS NOT NULL", fetch='one')
+    # Reset (kechirim) olganlar
+    reset = _db_execute("SELECT COUNT(*) FROM users WHERE COALESCE(reset_yuborildi,FALSE) = TRUE", fetch='one')
+    # Qaytish sovg'a (1-2 premium) olganlar
+    sovga = _db_execute("SELECT COUNT(*) FROM users WHERE COALESCE(qaytish_sovga,FALSE) = TRUE", fetch='one')
+    # Yangi user sovg'a (2 premium)
+    yangi = _db_execute("SELECT COUNT(*) FROM users WHERE COALESCE(yangi_sovga,FALSE) = TRUE", fetch='one')
+    await update.message.reply_text(
+        f"📨 <b>XABAR TARIXI (kim nima oldi)</b>\n━━━━━━━━━━━\n\n"
+        f"🔥 <b>19,900 issiq taklif</b> (sotuv_issiq):\n"
+        f"   Yuborilgan: <b>{issiq[0] if issiq else 0}</b> ta\n"
+        f"   Hozir faol 48h chegirma: <b>{chegirma_aktiv[0] if chegirma_aktiv else 0}</b> ta\n\n"
+        f"📩 <b>Segment win-back</b> (4-7, 8-20, 20+ kun):\n"
+        f"   Yuborilgan: <b>{segment[0] if segment else 0}</b> ta\n\n"
+        f"🤍 <b>Reset (kechirim)</b>:\n"
+        f"   Yuborilgan: <b>{reset[0] if reset else 0}</b> ta\n\n"
+        f"🎁 <b>Qaytish sovg'a</b> (1-2 premium olgan):\n"
+        f"   Olgan: <b>{sovga[0] if sovga else 0}</b> ta\n\n"
+        f"🆕 <b>Yangi user sovg'a</b> (2 premium):\n"
+        f"   Olgan: <b>{yangi[0] if yangi else 0}</b> ta",
+        parse_mode="HTML")
 
 
 async def sotuv_issiq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -9439,6 +9717,67 @@ async def obuna_tugadi_xabar(context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(0.2)
 
 
+async def obuna_qiymat_eslatma(context: ContextTypes.DEFAULT_TYPE):
+    """Har kuni: obunasi 3 kundan keyin tugaydiganlarga QIYMAT eslatmasi (SOTUVSIZ!).
+    'Bu oy X tahlil qildingiz' - foydani his qildiradi. Uzaytirishga tayyorlaydi."""
+    now = datetime.now()
+    kun3_boshi = (now + timedelta(days=3)).strftime("%Y-%m-%d 00:00")
+    kun3_oxiri = (now + timedelta(days=3)).strftime("%Y-%m-%d 23:59")
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE sub_until IS NOT NULL "
+        "AND sub_until >= %s AND sub_until <= %s "
+        "AND (renewal_qiymat_given IS NULL OR renewal_qiymat_given = FALSE)",
+        (kun3_boshi, kun3_oxiri), fetch='all') or []
+    if not rows:
+        return
+    sent = 0
+    for r in rows:
+        uid = r[0]
+        if is_admin(uid) or is_blocked(uid):
+            continue
+        try:
+            # Bu oy nechta tahlil qilgan (oxirgi 30 kun)
+            oy_boshi = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+            _t = _db_execute(
+                "SELECT COUNT(*) FROM analyses WHERE user_id = %s AND created >= %s",
+                (uid, oy_boshi), fetch='one')
+            tahlil_soni = _t[0] if _t else 0
+            # Sifat o'sishi (birinchi va oxirgi foiz)
+            _f = _db_execute(
+                "SELECT foiz FROM analyses WHERE user_id = %s AND foiz IS NOT NULL "
+                "AND created >= %s ORDER BY id", (uid, oy_boshi), fetch='all') or []
+            osish_txt = ""
+            if len(_f) >= 2 and _f[0][0] and _f[-1][0] and _f[-1][0] > _f[0][0]:
+                osish_txt = f"📈 Sifat: {_f[0][0]}% → <b>{_f[-1][0]}%</b> (+{_f[-1][0]-_f[0][0]}%)\n"
+            # XP/daraja
+            daraja_txt = ""
+            try:
+                _xp = _db_execute("SELECT COALESCE(xp,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+                if _xp and _xp[0]:
+                    _, nom, emoji, _, _ = daraja_aniqla(_xp[0])
+                    daraja_txt = f"🏆 Darajangiz: {nom} {emoji}\n"
+            except Exception:
+                pass
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("💎 Premiumni davom ettirish", callback_data="buy_sub")]])
+            await context.bot.send_message(
+                uid,
+                f"📊 <b>Bu oy siz bilan qilgan ishlarimiz:</b>\n\n"
+                f"🎬 <b>{tahlil_soni} ta</b> tahlil qildingiz\n"
+                f"{osish_txt}"
+                f"{daraja_txt}\n"
+                f"Zo'r natija! Bu — sizning mehnatingiz 💪\n\n"
+                f"💎 Premiumingiz <b>3 kundan keyin</b> tugaydi.\n"
+                f"Bu o'sishni to'xtatmang — davom eting! 🚀",
+                reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET renewal_qiymat_given = TRUE WHERE user_id = %s", (uid,))
+            sent += 1
+        except Exception:
+            pass
+        await asyncio.sleep(0.4)
+    logger.info(f"Renewal qiymat eslatma (3 kun): {sent} ta")
+
+
 async def obuna_tugash_eslatma(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: obunasi 1 kundan keyin tugaydigan foydalanuvchilarga
     1 oylik taklif yuboradi (renewal). Har userga 1 marta (renewal_eslatma_given)."""
@@ -10385,7 +10724,8 @@ def main():
             jq.run_daily(kunlik_obzor, time=_dtime(hour=uz_to_utc(9), minute=0))
             jq.run_daily(kunlik_foyda, time=_dtime(hour=uz_to_utc(13), minute=0), days=(0, 2, 4))
             # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
-            jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
+            jq.run_daily(obuna_qiymat_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
+            jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=30))
             # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
             jq.run_daily(obuna_tugadi_xabar, time=_dtime(hour=uz_to_utc(11), minute=5))
             # Marafon: har kuni 11:00 kunlik xabar+bepul, 23:00 kuydir
@@ -10434,6 +10774,7 @@ def main():
     app.add_handler(CommandHandler("vip_sinxron", vip_sinxron_command))
     app.add_handler(CommandHandler("reset_yubor", reset_yubor_command))
     app.add_handler(CommandHandler("segment_korish", segment_korish_command))
+    app.add_handler(CommandHandler("hech_xabar", hech_xabar_command))
     app.add_handler(CommandHandler("premium_passiv", premium_passiv_command))
     app.add_handler(CommandHandler("segment_xabar", segment_xabar_command))
     app.add_handler(CommandHandler("marafon_yakunla", marafon_yakunla_command))
@@ -10497,6 +10838,9 @@ def main():
     app.add_handler(CommandHandler("bepul_royxat", bepul_royxat_command))
     app.add_handler(CommandHandler("sotuv1", sotuv1_command))
     app.add_handler(CommandHandler("sotuv_issiq", sotuv_issiq_command))
+    app.add_handler(CommandHandler("xabar_tarix", xabar_tarix_command))
+    app.add_handler(CommandHandler("eksport", eksport_command))
+    app.add_handler(CommandHandler("tahlil_ai", tahlil_ai_command))
     app.add_handler(CommandHandler("sotuv1b", sotuv1b_command))
     app.add_handler(CommandHandler("sotuv3", sotuv3_command))
     app.add_handler(CommandHandler("sotuv4", sotuv4_command))
