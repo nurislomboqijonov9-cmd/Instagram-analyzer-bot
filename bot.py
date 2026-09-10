@@ -1058,11 +1058,13 @@ PROMPT_PROFILE_RU = """Ты опытный, объективный экспер�
 TEXTS = {
     'uz': {
         'welcome': (
-            "🩺 <b>INSTADOCTOR AI</b> tizimiga xush kelibsiz!\n\n"
-            "Men sizning Reels/Shorts videolaringizni Instagram algoritmlari bo'yicha "
-            "tahlil qilib, <b>sifat potensialini</b> 📊 baholab beraman.\n\n"
-            "🎁 <b>Ilk qadam uchun 1 ta BEPUL CHUQUR TAHLIL sovg'a!</b>\n\n"
-            "👇 Hoziroq videongizni yuboring (2GB gacha)"
+            "🩺 <b>InstaDoctor'ga xush kelibsiz!</b>\n\n"
+            "Videolaringizni AI tahlil qiladi — <b>hook, mazmun, yakun, vizual va audio</b>ni "
+            "tekshirib, kuchli va zaif joylarini aniq ko'rsatadi 📊\n\n"
+            "🎁 <b>Sizga 2 ta BEPUL PREMIUM tahlil sovg'a!</b>\n"
+            "(kuchaytirish, tayyor hook — hammasi bilan)\n\n"
+            "📅 Va <b>har hafta 3 ta bepul tahlil</b> doim ochiq.\n\n"
+            "👇 Birinchi videongizni hoziroq yuboring!"
         ),
         'gift_new': ("🎁 SOVG'A! Sizga 1 ta BEPUL tahlil berildi!\n\n"
                      "🎬 Hoziroq videongizni yuboring va sun'iy intellekt tahlilini "
@@ -1078,11 +1080,18 @@ TEXTS = {
                        "Balansingizga yana 1 ta bepul imkoniyat qo'shdik 🎁\n\n"
                        "Oldingi tavsiyamizga qarab, videongizni xuki (boshlanishi) yoki yakunini "
                        "o'zgartirib, qaytadan yuklab ko'ring. Keling, videongizni ideal holatga keltiramiz! 🚀"),
-        'obuna_taklif_msg': ("Sizning Reels'dagi salohiyatingiz juda katta! 🚀\n\n"
-                             "Cheksiz video tahlil qilish, har bir hookni ideal holatga keltirish va "
-                             "ko'rishlarda barqaror o'sish uchun — obunani faollashtiring.\n\n"
-                             "Bu atigi oyiga 29 900 so'm — kuniga 1 000 so'mdan ham kam, "
-                             "shaxsiy AI-prodyuseringiz uchun! 💎"),
+        'obuna_taklif_msg': ("💎 <b>PREMIUM — nega arziydi?</b>\n\n"
+                             "🎣 <b>Tayyor material</b> — AI 3 ta tayyor hook, kuchaytirilgan asos "
+                             "va yakun yozadi. O'zingiz o'ylab o'tirmaysiz — nusxa olasiz. "
+                             "1 soatlik ishni 1 daqiqada! ⚡️\n\n"
+                             "♾ <b>Cheksiz tahlil</b> — haftalik 3 ta yetmaydimi? "
+                             "Premium'da kuniga 10 ta ham tahlil qiling.\n\n"
+                             "📂 <b>Chuqur hisobot</b> — AI barcha videolaringizni o'rganib, "
+                             "qaysi mavzu va uslub aynan sizga ishlashini aytadi.\n\n"
+                             "💬 <b>AI mutaxassis 24/7</b> — 'bu mavzu trendmi?', 'qanday hook?' "
+                             "— shaxsiy maslahatchi doim yoningizda.\n\n"
+                             "💰 <b>Atigi 29 900/oy</b> = kuniga 1 000 so'm. "
+                             "SMM mutaxassis oyiga 2-3 mln oladi — InstaDoctor 100 barobar arzon! ☕️"),
         'obuna_taklif_btn': "💎 Obunani faollashtirish",
         'test_taklif_msg': ("🎉 <b>10 000+ blogger InstaDoctor'dan foydalanmoqda — navbat sizda!</b>\n\n"
                             "Hali to'liq obunaga shoshilmayapsizmi? Tushunamiz! 😊\n"
@@ -1093,7 +1102,7 @@ TEXTS = {
                             "♾ <b>CHEKSIZ video</b> — 7 kun limitsiz\n"
                             "🎙 <b>OVOZLI MASLAHAT</b> + kuchli xeshteglar\n"
                             "📊 <b>PROFIL TAHLILI</b> — shaxsiy tavsiyalar\n"
-                            "📈 <b>REK EHTIMOLI</b> — TOPga chiqish % larda\n"
+                            "📊 <b>SIFAT BALLI</b> — video kuchi 100 ballik\n"
                             "━━━━━━━━━━━━━\n"
                             "⏰ <b>DIQQAT: bu taklif faqat 24 SOAT amal qiladi!</b>\n"
                             "Keyin bu narx yo'qoladi — shoshiling! 🔥\n\n"
@@ -1101,7 +1110,7 @@ TEXTS = {
         'test_taklif_btn': "⚡ 7 kunlik Premium — faollashtirish",
         'sorov_msg': ("🆘 Yordamingiz kerak! Evaziga BONUS sovg'a qilamiz 🎁\n\n"
                       "🎉 Do'stlar, qisqa vaqt ichida botimizdan foydalanuvchilar soni {n} tadan oshdi!\n\n"
-                      "Biz sizga yanada ko'proq foyda keltirishni va videolaringizni REKga "
+                      "Biz sizga yanada ko'proq foyda keltirishni va videolaringizni kuchliroq "
                       "chiqishiga yordam berishni xohlaymiz 🚀\n\n"
                       "Buning uchun fikringiz juda muhim 🙏 Bor-yo'g'i 2 ta savol.\n"
                       "Javob bergan har kimga 🎁 +1 BEPUL tahlil!\n\n"
@@ -1122,7 +1131,7 @@ TEXTS = {
                            "♾ <b>Cheksiz tahlil</b> imkoniyati\n"
                            "🎙 <b>Ovozli maslahatlar</b>\n"
                            "🔥 <b>Eng kuchli xeshteglar</b>\n"
-                           "📈 <b>Yashirin REK ehtimoli</b>\n\n"
+                           "📊 <b>Chuqur sifat tahlili</b>\n\n"
                            "2 ta savolga javob bering 👇"),
         'test_sorov_btn': "✍️ Fikr bildirish",
         'test_sorov_q1': ("1️⃣ <b>7 kunlik test Premium (atigi 6 990 so'm) qo'shmoqchimiz</b> — "
@@ -1396,7 +1405,7 @@ TEXTS = {
                             "Premium bilan butun Instagram profilingizni chuqur tahlil qilamiz:\n"
                             "👤 Bio va profil — nimasi yaxshi, nimasi kam\n"
                             "🎨 Umumiy uslub va kontent\n"
-                            "📈 TOPga chiqish uchun aniq strategiya\n"
+                            "📊 Kontentni kuchaytirish strategiyasi\n"
                             "🇺🇿 O'zbek bozori uchun maslahatlar\n\n"
                             "👇 Premiumga o'ting va profilingizni yangi bosqichga olib chiqing!"),
         'help_text': ("ℹ️ INSTADOKTOR — Yordam\n\n"
@@ -1422,7 +1431,7 @@ TEXTS = {
                          "♾ Cheksiz video tahlil\n"
                          "🗣 Ovozli tahlil — maslahatlarni eshitasiz\n"
                          "🔥 Eng kuchli heshteglar va trendlar\n"
-                         "📈 Yashirin REK ehtimoli (% larda)\n\n"
+                         "📊 Chuqur sifat tahlili (100 ballik)\n\n"
                          "👇 Hoziroq obunani faollashtiring"),
         'too_big': "❌ Video juda katta (2GB dan oshmasligi kerak). 📏\n\nIltimos, qisqaroq yuboring.",
         'wrong_format': "❌ Video formatini tanimadim. MP4 yoki MOV yuboring. 📹",
@@ -1498,7 +1507,7 @@ TEXTS = {
                       "🔍 <b>Chuqur tahlil</b> — eng aniq, batafsil baho\n"
                       "🗣 <b>Ovozli javob</b> — maslahatlarni eshitasiz\n"
                       "🔥 <b>Eng kuchli heshteglar</b> va yashirin trendlar\n"
-                      "📈 <b>REK ehtimoli</b> — % larda aniq ko'rsatkich\n"
+                      "📊 <b>Sifat balli</b> — aniq 100 ballik baho\n"
                       "⚡ <b>Navbatsiz</b> — kutishsiz xizmat\n\n"
                       "💰 <b>Narxi: 29 900 so'm / oy</b>\n"
                       "(kuniga 1 000 so'mdan ham kam — bir choydan arzon! ☕️)\n\n"
@@ -1532,11 +1541,16 @@ TEXTS = {
                        "Мы начислили тебе ещё 1 бесплатный анализ 🎁\n\n"
                        "Измени хук (начало) или концовку по нашей рекомендации и пришли видео снова. "
                        "Давай доведём твоё видео до идеала! 🚀"),
-        'obuna_taklif_msg': ("Твой потенциал в Reels огромен! 🚀\n\n"
-                             "Чтобы анализировать неограниченное количество видео, докручивать каждый "
-                             "хук до идеала и стабильно расти в охватах — активируй подписку.\n\n"
-                             "Это всего 29 900 сумов в месяц — меньше 1 000 сумов в день "
-                             "за личного AI-продюсера! 💎"),
+        'obuna_taklif_msg': ("💎 <b>PREMIUM — почему стоит?</b>\n\n"
+                             "🎣 <b>Готовый материал</b> — AI пишет 3 готовых хука, усиленную основу "
+                             "и финал. Не думаете сами — копируете. Час работы за 1 минуту! ⚡️\n\n"
+                             "♾ <b>Безлимит</b> — 3 в неделю мало? В Premium хоть 10 в день.\n\n"
+                             "📂 <b>Глубокий отчёт</b> — AI изучит все ваши видео и скажет, "
+                             "какая тема и стиль работают именно для вас.\n\n"
+                             "💬 <b>AI-эксперт 24/7</b> — 'это тренд?', 'какой хук?' — "
+                             "личный консультант всегда рядом.\n\n"
+                             "💰 <b>Всего 29 900/мес</b> = 1 000 сумов в день. "
+                             "SMM-специалист берёт 2-3 млн — InstaDoctor в 100 раз дешевле! ☕️"),
         'obuna_taklif_btn': "💎 Активировать подписку",
         'test_taklif_msg': ("🎉 <b>10 000+ блогеров используют InstaDoctor — теперь ваша очередь!</b>\n\n"
                             "Ещё не готовы к полной подписке? Понимаем! 😊\n"
@@ -2331,16 +2345,7 @@ async def show_menu(message, context):
             if not row or not row[0]:
                 add_premium_balance(uid, 2)  # 2 ta to'liq premium tahlil
                 _db_execute("UPDATE users SET yangi_sovga = TRUE WHERE user_id = %s", (uid,))
-                await asyncio.sleep(1)
-                await message.reply_text(
-                    "🎁 <b>Xush kelibsiz — sizga SOVG'A!</b>\n\n"
-                    "Kirganingiz uchun — <b>1 ta PREMIUM tahlil</b> 🎬\n"
-                    "Barcha imkoniyatlar bilan: kuchaytirish, sevimli, ovoz!\n\n"
-                    "Va sizni yanada rivojlantirish uchun — <b>yana 1 ta</b> "
-                    "g'amxo'rlik sovg'asi 🤍\n\n"
-                    "Jami: <b>2 ta bepul PREMIUM tahlil!</b>\n"
-                    "Boshlash uchun video yuboring 🚀",
-                    parse_mode="HTML")
+                # Welcome'da sovg'a allaqachon aytildi - bu yerda TAKRORLAMAYMIZ (kasha bo'lmasin)
         except Exception:
             pass
     # Marafon yoqilgan bo'lsa va bu yangi user bo'lsa - marafonni boshlaymiz
@@ -4190,12 +4195,11 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             async def _show_progress():
                 steps = [
-                    "🔍 Video ko'rilmoqda...",
-                    "🎬 Vizual tahlil qilinmoqda...",
-                    "🗣 Audio tinglanmoqda...",
-                    "📊 Ballar hisoblanmoqda...",
-                    "📈 REK ehtimoli aniqlanmoqda...",
-                    "✍️ Tavsiyalar tayyorlanmoqda...",
+                    "📥 Video qabul qilindi",
+                    "🎬 Kadrlar va montaj tekshirilmoqda...",
+                    "🎙 Audio va nutq tinglanmoqda...",
+                    "🧠 Hook, mazmun va yakun tahlil qilinmoqda...",
+                    "📊 Natija tayyorlanmoqda...",
                 ]
                 i = 0
                 secs = 1  # darrov boshlanadi
