@@ -321,6 +321,7 @@ def init_db():
                                  ("renewal_qiymat_given", "BOOLEAN DEFAULT FALSE"),
                                  ("qaytish_sovga", "BOOLEAN DEFAULT FALSE"),
                                  ("segment_xabar_sana", "TEXT"),
+                                 ("tekin_elon_given", "BOOLEAN DEFAULT FALSE"),
                                  ("vip_kun_xabar", "INTEGER DEFAULT 0"),
                                  ("vip_bonus_until", "TEXT"),
                                  ("vip_berilgan", "BOOLEAN DEFAULT FALSE"),
@@ -883,31 +884,40 @@ Tor niche (kam odamga qiziq) videolar montaji ideal bo'lsa ham 30-50% dan oshmas
 ENG MUHIM QOIDA: foiz yuqoridagi bo'lim BALLARIGA MOS bo'lishi SHART. Agar Hook, Audio, Vizual yoki Montaj ballari PAST bo'lsa (masalan 5/10 dan past), sifat potensiali ham PAST bo'lishi MAJBURIY — baland chiqmasin. Hira, sifatsiz, sustkash, e'tibor tortmaydigan videoga YUQORI foiz BERMA. Ballar o'rtachasi past bo'lsa, foiz ham past (masalan 20-40%) bo'lsin. Faqat HAQIQATAN sifatli video yuqori foiz (70%+) olsin. Past sifat = past foiz, bu qat'iy.[/FOIZ]
 
 [QISQA]
-QISQA va o'qishga oson tahlil (jami 8-12 qator). Har bo'lim 1-2 qisqa qator, ko'p emoji bilan:
-🎣 Hook — ⭐ _/10 — qisqa sabab
-🎬 Vizual/Montaj — ⭐ _/10 — qisqa sabab
-🗣️ Audio/Nutq — ⭐ _/10 — qisqa sabab
-📝 Kontent — ⭐ _/10 — qisqa sabab
-📊 Sifat potensiali: _% — qisqa sabab
-Oxirida 1 qatorli umumiy xulosa.
+🎯 QISQA XULOSA
+🌟 Kuchli tomon: [videodan ANIQ, haqiqiy kuzatuv — bitta konkret kuchli joy]
+⚠️ Asosiy zaif joy: [e'tibor qayerda yo'qoladi va NEGA]
+📊 Sifat balli: XX/100
+Batafsil tahlilda hook, mazmun, yakun, vizual va audio alohida baholanadi.
+
+MUHIM: agar videoда OBYEKTIV kuchli tomon bo'lmasa, MAQTOV O'YLAB TOPMA. "🌟 Kuchli tomon" o'rniga shuni yoz:
+🎯 Boshlash kerak bo'lgan nuqta: Video g'oyasi hozircha aniq shakllanmagan. Tomoshabinga qanday fikr yoki qiymat berilishi tushunarsiz.
+Va oxirida (zaif/tushunarsiz video uchun) qo'sh:
+Bu muallifning qobiliyatiga baho emas, aynan ushbu videoning hozirgi holati. G'oya va maqsad aniqlashtirilsa, uni kuchliroq formatga olib kelish mumkin.
+UZUNLIK: 350-600 belgi. Bir ekranda o'qilsin, scroll qilmasin. Tayyor hook/stsenariy/CTA BERMA (bu Premium).
 [/QISQA]
 
 [TOLIQ]
-TO'LIQ, chuqur tahlil (har bo'lim bir necha jumla, ko'p emoji bilan). MUHIM: har bo'lim orasiga BITTA BO'SH QATOR qo'y, bo'limlar bir-biriga yopishmasin, o'qishga oson bo'lsin.
-UZUNLIK CHEGARASI: butun to'liq tahlil JAMI 3500 belgidan OSHMASIN. Har bo'limni aniq, to'yimli, lekin ortiqcha cho'zmasdan yoz — qisqa va lo'nda bo'lsin.
-JUDA MUHIM: har bo'limda BALL HAR DOIM ENG BOSHIDA, sarlavhadan keyin darrov tursin (izohdan OLDIN). Ballni jumlaning oxiriga QO'YMA. Format aniq shunday: "sarlavha — ⭐ _/10 — keyin batafsil izoh".
-🎣 HOOK (0-3 sekund) — ⭐ _/10 — e'tiborni tortadimi? batafsil izoh
-🎬 VIZUAL VA MONTAJ — ⭐ _/10 — 🎥 yoritish, kamera, montaj bo'yicha batafsil izoh
-🗣️ AUDIO VA NUTQ — ⭐ _/10 — 🎙️ nima gapirildi, ovoz toni bo'yicha batafsil izoh
-📝 KONTENT VA QIYMAT — ⭐ _/10 — 💬 xabar, CTA bo'yicha batafsil izoh
-📊 REKKA CHIQISH EHTIMOLI — 🎯 _% va batafsil sabablar.
-✅ KUCHLI TOMONLARI — faqat haqiqiy kuchli joylar.
-❌ KAMCHILIKLAR — barcha jiddiy kamchiliklar, ochiq ayt.
-💡 TAVSIYALAR — 🚀 5 ta aniq, amaliy qadam.
-🇺🇿 O'ZBEK BOZORI MASLAHATI — bu video O'ZBEK Instagram auditoriyasi uchun qanchalik mos? O'zbekistonda qaysi vaqtda (masalan kechqurun 19:00-23:00) post qilish, mahalliy trendlar, o'zbek tomoshabin nimani yoqtirishi, qaysi hashtaglar va mahalliy kontekst bo'yicha 2-3 ta ANIQ maslahat ber.
+📖 BATAFSIL TAHLIL
+Har bo'lim 1-2 QISQA jumla. Bir fikrni turli bo'limда takrorlama. Har bo'lim orasiga BITTA bo'sh qator. Ball HAR DOIM sarlavhadan keyin darrov (izohdan oldin).
+🎣 Hook — X/10 — [nima ishlaydi yoki yo'q, aniq moment, nega tomoshabin qoladi/suradi]
+🧠 Mazmun — X/10 — [asosiy fikr aniqmi, mantiq va qiymat bormi]
+🏁 Yakun — X/10 — [tugashi bormi, xulosa aniqmi, CTA formatga mosmi]
+🎬 Vizual va montaj — X/10 — [kadr, yorug'lik, matn, temp, montaj — faqat muhimi]
+🎙 Audio va nutq — X/10 — [tiniqlik, temp, ohang, shovqin — formatga tegishli bo'lsa]
+⚠️ Eng muhim zaif joy — [BITTA muammo, tuzatilsa eng katta kuchayish beradi. Muammoni tushuntir, LEKIN tayyor variant YOZMA]
+📊 Umumiy sifat balli: XX/100
+ℹ️ Bu ko'rishlar prognozi yoki "rekka chiqish" ehtimoli emas. Ball hook, mazmun, yakun, vizual va audio sifatiga qarab hisoblangan.
+
+QOIDALAR:
+- Yaxshi video bo'lsa sun'iy ayb TOPMA. Faqat KONKRET muammo bo'lsa ayt.
+- "juda zo'r", "professional", "rekka chiqadi" kabi bo'sh maqtov ISHLATMA.
+- Format talab qilmasa (atmosfera, hazil, vizual video) — CTA/nutq/yuz yo'qligini AYB deb hisoblama.
+- Universal post vaqti (19:00-23:00) BERMA. Kerak bo'lsa: "Eng yaxshi vaqtni Insights orqali aniqlang".
+- UZUNLIK: 900-1300 belgi. Besh ekran cho'zma.
 [/TOLIQ]
 
-Baho videoning haqiqiy sifatiga MOS bo'lsin. Foiz REAL bo'lsin. Sen oddiy AI emas, O'ZBEK Instagram bozorini chuqur biladigan ekspertsan — mahalliy, aniq, foydali maslahat ber. Halol baho bloggerni o'stiradi."""
+Ballar OG'IRLIGI: Hook 25%, Mazmun 30%, Yakun 20%, Vizual/montaj 15%, Audio/nutq 10%. Agar biror mezon formatga mos kelmasa — unga sun'iy past ball qo'yma, mezonni chiqarib qolganini qayta hisobla."""
 
 PROMPT_RU = """Ты опытный, объективный аналитик Instagram-контента. Оцени видео блогера ЧЕСТНО. Говори только ПРАВДУ.
 
@@ -926,59 +936,80 @@ PROMPT_RU = """Ты опытный, объективный аналитик Inst
 ГЛАВНОЕ ПРАВИЛО: процент ОБЯЗАН соответствовать БАЛЛАМ разделов. Если баллы Хука, Аудио, Визуала или Монтажа НИЗКИЕ (например ниже 5/10), потенциал качества тоже ОБЯЗАН быть НИЗКИМ. Не давай высокий процент тусклому, некачественному, вялому видео. Если средний балл низкий — процент тоже низкий (например 20-40%). Только ДЕЙСТВИТЕЛЬНО качественное видео получает высокий процент (70%+). Низкое качество = низкий процент, это строго.[/FOIZ]
 
 [QISQA]
-КОРОТКИЙ, лёгкий для чтения анализ (всего 8-12 строк). Каждый раздел 1-2 строки, с эмодзи:
-🎣 Хук — ⭐ _/10 — кратко
-🎬 Визуал/Монтаж — ⭐ _/10 — кратко
-🗣️ Аудио/Речь — ⭐ _/10 — кратко
-📝 Контент — ⭐ _/10 — кратко
-📊 Потенциал качества: _% — кратко
-В конце 1 строка общего вывода.
+🎯 QISQA XULOSA (kratkiy vyvod)
+🌟 Sil'naya storona: [konkretnoe nablyudenie iz video — odna real'naya sil'naya storona]
+⚠️ Osnovnaya slabost': [gde teryaetsya vnimanie i pochemu]
+📊 Ball kachestva: XX/100
+V podrobnom analize hook, soderzhanie, final, vizual i audio otsenivayutsya otdel'no.
+
+VAZHNO: esli v video net ob'ektivnoy sil'noy storony, NE pridumyvay pohvalu. Vmesto "🌟 Sil'naya storona" napishi:
+🎯 Tochka dlya nachala: Ideya video poka ne sformirovana chetko. Neyasno, kakuyu mysl' ili tsennost' poluchaet zritel'.
+I v kontse (dlya slabogo video) dobav':
+Eto ne otsenka sposobnostey avtora, a tekushchee sostoyanie imenno etogo video. Esli utochnit' ideyu i tsel', ego mozhno usilit'.
+DLINA: 350-600 znakov. Odin ekran, bez scroll. Gotovye hook/stsenariy/CTA NE davat' (eto Premium).
 [/QISQA]
 
 [TOLIQ]
-ПОЛНЫЙ, глубокий анализ (каждый раздел в несколько предложений, с эмодзи). ВАЖНО: между разделами оставляй ОДНУ ПУСТУЮ СТРОКУ, чтобы разделы не слипались и легко читались.
-ОГРАНИЧЕНИЕ ДЛИНЫ: весь полный анализ ВСЕГО не более 3500 символов. Каждый раздел пиши точно и ёмко, без лишней воды — коротко и по делу.
-ОЧЕНЬ ВАЖНО: в каждом разделе БАЛЛ ВСЕГДА В САМОМ НАЧАЛЕ, сразу после заголовка (ПЕРЕД пояснением). НЕ ставь балл в конец предложения. Формат строго такой: "заголовок — ⭐ _/10 — затем подробное пояснение".
-🎣 ХУК (0-3 сек) — ⭐ _/10 — цепляет? подробное пояснение
-🎬 ВИЗУАЛ И МОНТАЖ — ⭐ _/10 — 🎥 свет, камера, монтаж, подробно
-🗣️ АУДИО И РЕЧЬ — ⭐ _/10 — 🎙️ что сказано, тон, подробно
-📝 КОНТЕНТ И ЦЕННОСТЬ — ⭐ _/10 — 💬 посыл, призыв, подробно
-📊 ВЕРОЯТНОСТЬ В РЕКОМЕНДАЦИИ — 🎯 _% и причины.
-✅ СИЛЬНЫЕ СТОРОНЫ — реальные плюсы.
-❌ НЕДОСТАТКИ — все серьёзные минусы.
-💡 РЕКОМЕНДАЦИИ — 🚀 5 конкретных шагов.
-🇺🇿 СОВЕТ ДЛЯ УЗБЕКСКОГО РЫНКА — насколько видео подходит для УЗБЕКСКОЙ аудитории Instagram? Дай 2-3 конкретных совета: когда постить в Узбекистане (например вечером 19:00-23:00), местные тренды, что любит узбекский зритель, хештеги и местный контекст.
+📖 PODROBNYY ANALIZ
+Kazhdyy razdel 1-2 KOROTKIH predlozheniya. Ne povtoryay odnu mysl'. Mezhdu razdelami odna pustaya stroka. Ball vsegda srazu posle zagolovka.
+🎣 Hook — X/10 — [chto rabotaet ili net, konkretnyy moment]
+🧠 Soderzhanie — X/10 — [yasna li mysl', est' li logika i tsennost']
+🏁 Final — X/10 — [est' li zavershenie, ponyaten li itog, podhodit li CTA]
+🎬 Vizual i montazh — X/10 — [kadr, svet, tekst, temp — tol'ko vazhnoe]
+🎙 Audio i rech' — X/10 — [razborchivost', temp, ton — esli primenimo]
+⚠️ Samaya vazhnaya slabost' — [odna problema, ispravlenie kotoroy dast max usilenie. Ob'yasni, no NE pishi gotovyy variant]
+📊 Obshchiy ball kachestva: XX/100
+ℹ️ Eto ne prognoz prosmotrov i ne veroyatnost' "vyhoda v rek". Ball rasschitan po kachestvu hook, soderzhaniya, finala, vizuala i audio.
+
+PRAVILA:
+- Esli video horoshee — ne pridumyvay nedostatki. Tol'ko KONKRETNAYA problema.
+- Ne ispol'zuy pustuyu pohvalu: "otlichno", "professional'no", "vyydet v rek".
+- Esli format ne trebuet (atmosfera, yumor, vizual) — otsutstvie CTA/rechi/litsa NE schitat' oshibkoy.
+- Ne davat' universal'noe vremya (19:00-23:00). Mozhno: "Luchshee vremya opredelite cherez Insights".
+- DLINA: 900-1300 znakov.
 [/TOLIQ]
 
-Оценка должна соответствовать реальному качеству. Процент реальный. Ты не обычный AI, а эксперт, глубоко знающий узбекский рынок Instagram — давай местные, конкретные, полезные советы."""
+VESA balla: Hook 25%, Soderzhanie 30%, Final 20%, Vizual 15%, Audio 10%. Esli kriteriy ne primenim k formatu — ne stav' iskusstvenno nizkiy ball, isklyuchi ego i pereschitay ostal'nye."""
 
 
 # ===== PREMIUM QO'SHIMCHA: hook ko'tarish (baho + muammo + yechim + tayyor variant) =====
 PROMPT_PREMIUM_UZ = """
 
 [PREMIUM_BONUS]
-Bu PREMIUM foydalanuvchi. Yuqoridagi tahlilga QO'SHIMCHA, eng oxirida quyidagi maxsus bo'limni ham yoz (faqat to'liq tahlilda):
+Bu PREMIUM foydalanuvchi. Yuqoridagi bepul tahlil DIAGNOZ edi. Endi sen TAYYOR YECHIM berasan — foydalanuvchi ko'chirib ishlatadigan material. Eng oxirida quyidagi bo'limni yoz (faqat to'liq tahlilda):
 
-🔥 HOOKNI KUCHAYTIRISH (PREMIUM)
-Videoning hozirgi hook'ini chuqur tahlil qil va shu 3 qismni ber:
-1️⃣ MUAMMO: Hozirgi hook nega kuchsiz/o'rtacha — aniq sabab (1-2 jumla).
-2️⃣ YECHIM: Hook'ni qanday kuchaytirish — amaliy maslahat (1-2 jumla).
-3️⃣ TAYYOR VARIANTLAR: Shu video uchun 3 ta TAYYOR, kuchli hook matni yoz (foydalanuvchi to'g'ridan ko'chirib ishlatsa bo'ladigan, o'zbek auditoriyasiga mos, e'tibor tortadigan). Har birini alohida qatorda, "▪️" bilan boshlab yoz.
+🚀 VIDEONI KUCHAYTIRISH (PREMIUM)
 
-Bu bo'lim foydalanuvchiga ANIQ, ko'chirib ishlatса bo'ladigan qiymat bersin — umumiy gap emas, aniq tayyor matnlar."""
+🎣 3 TA TAYYOR HOOK — shu videoga aynan mos, kuchli, o'zbek auditoriyasiga mos, ko'chirib ishlatsa bo'ladigan. Har birini "▪️" bilan boshlab alohida qatorda yoz.
+
+🧠 KUCHAYTIRILGAN ASOS — videoning asosiy qismini qanday kuchaytirish. Muallif fikrini O'ZGARTIRMAY, uni aniqroq va ta'sirliroq qilib qayta tuz (2-3 jumla amaliy yo'nalish yoki tayyor formulirovka).
+
+🏁 3 TA YAKUN / CTA VARIANTI — videoni qanday tugatish. Har birini "▪️" bilan yoz. MUHIM: agar video formati (atmosfera, hazil, vizual, shaxsiy hikoya) CTA talab qilmasa — majburiy CTA yozma, buning o'rniga tabiiy yakun variantlarini ber.
+
+🎬 ANIQ TUZATISHLAR — FAQAT kerak bo'lsa: kadr, matn, temp yoki montaj bo'yicha 2-3 aniq ko'rsatma. Agar video texnik jihatdan yaxshi bo'lsa — "Texnik tomoni yaxshi, alohida tuzatish shart emas" de.
+
+💡 NEGA KUCHLIROQ — qisqa (1-2 jumla): taklif qilingan o'zgarishlar nega yaxshiroq ishlaydi.
+
+MUHIM: bu bo'lim ANIQ, ko'chirib ishlatsa bo'ladigan material bersin — umumiy gap emas. Bepul tahlilda aytilganni takrorlama, YECHIM ber."""
 
 PROMPT_PREMIUM_RU = """
 
 [PREMIUM_BONUS]
-Это PREMIUM пользователь. В ДОПОЛНЕНИЕ к анализу выше, в самом конце добавь специальный раздел (только в полном анализе):
+Это PREMIUM пользователь. Бесплатный анализ выше был ДИАГНОЗОМ. Теперь ты даёшь ГОТОВОЕ РЕШЕНИЕ — материал, который можно скопировать. В самом конце добавь (только в полном анализе):
 
-🔥 УСИЛЕНИЕ ХУКА (PREMIUM)
-Глубоко проанализируй текущий хук видео и дай 3 части:
-1️⃣ ПРОБЛЕМА: почему текущий хук слабый/средний — конкретная причина (1-2 предложения).
-2️⃣ РЕШЕНИЕ: как усилить хук — практический совет (1-2 предложения).
-3️⃣ ГОТОВЫЕ ВАРИАНТЫ: напиши 3 ГОТОВЫХ сильных текста хука для этого видео (которые можно скопировать и использовать). Каждый с новой строки, начиная с "▪️".
+🚀 УСИЛЕНИЕ ВИДЕО (PREMIUM)
 
-Дай конкретную ценность — не общие слова, а готовые тексты."""
+🎣 3 ГОТОВЫХ ХУКА — точно под это видео, сильные, для узбекской аудитории, готовые к использованию. Каждый с "▪️" с новой строки.
+
+🧠 УСИЛЕННАЯ ОСНОВА — как усилить основную часть. НЕ меняя мысль автора, сделай её точнее и сильнее (2-3 предложения или готовая формулировка).
+
+🏁 3 ВАРИАНТА ФИНАЛА / CTA — каждый с "▪️". ВАЖНО: если формат (атмосфера, юмор, визуал, личная история) не требует CTA — не пиши принудительный призыв, дай варианты естественного завершения.
+
+🎬 КОНКРЕТНЫЕ ПРАВКИ — ТОЛЬКО если нужно: 2-3 указания по кадру, тексту, темпу или монтажу. Если технически хорошо — "Технически хорошо, отдельных правок не требуется".
+
+💡 ПОЧЕМУ СИЛЬНЕЕ — кратко (1-2 предложения): почему предложенные изменения работают лучше.
+
+ВАЖНО: конкретный материал для копирования, не общие слова. Не повторяй бесплатный анализ, давай РЕШЕНИЕ."""
 
 
 PROMPT_PROFILE_UZ = """Sen Instagram bo'yicha tajribali, xolis ekspertsan. Senga foydalanuvchining Instagram profili va/yoki statistikasi (Insights) skrinshot(lar)i berildi.
@@ -1020,7 +1051,7 @@ PROMPT_PROFILE_RU = """Ты опытный, объективный экспер�
 ❌ <b>НЕДОСТАТКИ</b> — 🔧 серьёзные минусы, честно но дружелюбно.
 💡 <b>РЕКОМЕНДАЦИИ</b> — 🚀 5 конкретных шагов.
 🇺🇿 <b>УЗБЕКСКИЙ РЫНОК</b> — 🎯 2-3 совета для узбекской аудитории.
-🏆 <b>ОБЩАЯ ОЦЕНКА: _/100</b> — общая сила профиля и готовность к ТОПу (с мотивирующим комментарием).
+🏆 <b>ОБЩАЯ ОЦЕНКА: _/100</b> — общая сила профиля и потенциал качества (с мотивирующим комментарием).
 
 Опирайся только на то, что реально видно на скриншоте, не выдумывай."""
 
@@ -1187,7 +1218,7 @@ TEXTS = {
         'video_fikr_ask': ("💬 Video yoki bot haqida fikringizni yozing.\n\n"
                            "Fikringiz biz uchun juda muhim — botni yaxshilashga yordam beradi! 🤍"),
         'video_fikr_thanks': ("🎁 <b>Чин дилдан кичик бир совға:</b>\n\n"
-                              "Видеоларингиз доим ТОПда юришини хоҳлаганимиз учун, ҳеч қандай "
+                              "Видеоларингиз сифатли бўлишини хоҳлаганимиз учун, ҳеч қандай "
                               "шартларсиз сизга яна <b>1 ТА БЕПУЛ ЧУҚУР ТАҲЛИЛ</b> ҳадя қиламиз.\n\n"
                               "👇 Тугмани босинг:"),
         'video_sovga_btn': "🎁 СОВҒАНИ ОЛИШ ВА ТАҲЛИЛ ҚИЛИШ",
@@ -1315,7 +1346,7 @@ TEXTS = {
                                "🎣 <b>3 ta tayyor HOOK</b> — nusxa oling, ishlating\n"
                                "🎬 <b>Ta'sirli YAKUN</b> — odamni ushlab qoladi\n"
                                "📝 <b>Aniq tuzatishlar</b> — nima o'zgartirish\n\n"
-                               "Bir marta yozilgan kuchli hook — minglab ko'rish farqi! 🔥\n\n"
+                               "Tayyor material — o'zingiz yozib o'tirmaysiz, nusxa olasiz! 🔥\n\n"
                                "👇 Premium oling:"),
         'yaxshilash_loading': "🔥 Videongiz uchun tuzatish tayyorlanmoqda... ⏳",
         'tts_full_btn': "🔊 Ovozli eshitish",
@@ -1516,14 +1547,14 @@ TEXTS = {
                             "🔍 <b>ГЛУБОКИЙ АНАЛИЗ</b> — точная оценка\n"
                             "♾ <b>БЕЗЛИМИТ</b> — 7 дней без ограничений\n"
                             "🎙 <b>АУДИО-СОВЕТЫ</b> + сильные хештеги\n"
-                            "📈 <b>ВЕРОЯТНОСТЬ РЕК</b> — выход в ТОП в %\n"
+                            "📈 <b>ПОТЕНЦИАЛ КАЧЕСТВА</b> — оценка в %\n"
                             "━━━━━━━━━━━━━\n"
                             "Попробуйте неделю — понравится, перейдёте на полную! 🔥"),
         'test_taklif_btn': "⚡ 7 дней Premium — активировать",
         'sorov_msg': ("🆘 Нам нужна ваша помощь! Взамен дарим БОНУС 🎁\n\n"
                       "🎉 Друзья, за короткое время число пользователей бота превысило {n}!\n\n"
                       "Мы хотим приносить вам ещё больше пользы и помогать вашим видео "
-                      "выходить в РЕК 🚀\n\n"
+                      "усиливать контент 🚀\n\n"
                       "Ваше мнение очень важно 🙏 Всего 2 вопроса.\n"
                       "Каждому ответившему 🎁 +1 БЕСПЛАТНЫЙ анализ!\n\n"
                       "Нажмите кнопку ниже, чтобы начать 👇"),
@@ -1542,7 +1573,7 @@ TEXTS = {
                            "♾ <b>Безлимитный анализ</b>\n"
                            "🎙 <b>Аудио-советы</b>\n"
                            "🔥 <b>Самые сильные хештеги</b>\n"
-                           "📈 <b>Скрытая вероятность РЕК</b>\n\n"
+                           "📈 <b>Потенциал качества</b>\n\n"
                            "Ответьте на 2 вопроса 👇"),
         'test_sorov_btn': "✍️ Оставить отзыв",
         'test_sorov_q1': ("1️⃣ <b>Хотим добавить 7-дневный тест Premium (всего 6 990 сум)</b> — "
@@ -1561,7 +1592,7 @@ TEXTS = {
         'menu_help': "ℹ️ Помощь",
         'menu_fikr': "💬 Отзывы и предложения",
         'menu_premium': "💎 Перейти на Premium",
-        'sotuv_msg': ("Знаете, почему некоторые блогеры всегда в ТОПе? 🤔\n\n"
+        'sotuv_msg': ("Знаете, почему у некоторых блогеров контент сильнее? 🤔\n\n"
                       "Потому что они исправляют недостатки видео перед публикацией. "
                       "Но алгоритмы не стоят на месте — нужно анализировать каждый день и быть в тренде! 📊\n\n"
                       "💎 Что вы получите в PREMIUM?\n\n"
@@ -1578,7 +1609,7 @@ TEXTS = {
                       "Только сегодня: <b>19 900 сум/мес</b> 🎉\n"
                       "(Всего 650 сум в день! ☕️ дешевле чашки чая)\n\n"
                       "⏳ Торопитесь — цена только СЕГОДНЯ ДО 22:00! Потом снова поднимется.\n\n"
-                      "Одно видео в РЕК окупит эту сумму! 🚀\n\n"
+                      "Готовые хуки экономят ваше время! 🚀\n\n"
                       "👇 Активируйте сейчас — не упустите шанс!"),
         'fikr_ask': ("💬 Напишите ваш отзыв или предложение 👇\n"
                      "Каждое мнение важно для нас! 🙏\n\n"
@@ -1621,7 +1652,7 @@ TEXTS = {
                             "🎙 <b>Голосовой</b> совет\n"
                             "📊 <b>Анализ профиля</b> — личная стратегия\n\n"
                             "⏰ Эта цена только <b>сегодня до 22:00</b>!\n\n"
-                            "👇 Оформите Premium и выводите контент в ТОП!"),
+                            "👇 Оформите Premium и получите готовые решения!"),
         'tts_btn': "🔊 Кратко голосом",
         'yaxshilash_btn': "🔥 Как улучшить?",
         'yaxshilash_premium': ("🔒 <b>\"Как улучшить?\"</b> — это PREMIUM функция!\n\n"
@@ -1629,7 +1660,7 @@ TEXTS = {
                                "✅ Почему хук слабый — точная причина\n"
                                "✅ Как усилить — практическое решение\n"
                                "✅ <b>3 ГОТОВЫХ хука</b> — копируй и используй!\n\n"
-                               "👇 Оформите Premium и выводите контент в ТОП:"),
+                               "👇 Оформите Premium и получите готовые решения:"),
         'yaxshilash_loading': "🔥 Готовлю анализ хука... ⏳",
         'tts_full_btn': "🔊 Прослушать",
         'inv_sub_title': "InstaDoctor — подписка на 1 месяц",
@@ -1678,7 +1709,7 @@ TEXTS = {
                             "С Premium мы глубоко проанализируем весь ваш Instagram-профиль:\n"
                             "👤 Био и профиль — что хорошо, что улучшить\n"
                             "🎨 Общий стиль и контент\n"
-                            "📈 Точная стратегия выхода в ТОП\n"
+                            "📈 Точные шаги усиления видео\n"
                             "🇺🇿 Советы для узбекского рынка\n\n"
                             "👇 Перейдите на Premium и выведите профиль на новый уровень!"),
         'help_text': ("ℹ️ INSTADOKTOR — Помощь\n\n"
@@ -1703,7 +1734,7 @@ TEXTS = {
                          "♾ Безлимитный анализ видео\n"
                          "🗣 Аудио-анализ — слушайте советы\n"
                          "🔥 Самые сильные хештеги и тренды\n"
-                         "📈 Скрытая вероятность РЕК (в %)\n\n"
+                         "📈 Потенциал качества (в %)\n\n"
                          "👇 Активируйте подписку сейчас"),
         'too_big': "❌ Видео слишком большое (не более 2ГБ). 📏\n\nПожалуйста, отправьте покороче.",
         'wrong_format': "❌ Не распознал формат. Отправьте MP4 или MOV. 📹",
@@ -1732,7 +1763,7 @@ TEXTS = {
                        "━━━━━━━━━━━━━\n"
                        "💎 <b>1 месяц — 29 900 сум</b> (безлимит)\n"
                        "📍 <b>1 анализ — 5 090 сум</b>\n\n"
-                       "👇 Выберите и выводите контент в ТОП!"),
+                       "👇 Выберите и усильте свой контент!"),
         'balance_info': "💰 У вас {n} бесплатных анализов.",
         'choose_pkg': "💳 Подписка:",
         'pay_instr': ("💳 ПОДПИСКА НА 1 МЕСЯЦ — безлимитный анализ видео (30 дней)\n\n"
@@ -1772,14 +1803,14 @@ TEXTS = {
         'sub_active': "✅ Подписка активна — до {until}.\nБезлимитный анализ видео! 🎬",
         'sub_offer': ("💎 <b>InstaDoctor PREMIUM</b>\n"
                       "━━━━━━━━━━━━━━━\n\n"
-                      "Блогинг — это конкуренция. Те, кто в ТОПе, тщательно "
+                      "Блогинг — это конкуренция. Те, у кого сильный контент, тщательно "
                       "анализируют каждое видео и работают над ошибками.\n\n"
                       "<b>Что даёт Premium:</b>\n"
                       "♾ <b>Безлимитный анализ</b> — каждый день сколько хотите\n"
                       "🔍 <b>Глубокий анализ</b> — самая точная, подробная оценка\n"
                       "🗣 <b>Аудио-ответ</b> — слушайте советы\n"
                       "🔥 <b>Сильнейшие хештеги</b> и скрытые тренды\n"
-                      "📈 <b>Вероятность РЕК</b> — точный показатель в %\n"
+                      "📈 <b>Потенциал качества</b> — точный показатель в %\n"
                       "⚡ <b>Без очереди</b> — обслуживание без ожидания\n\n"
                       "💰 <b>Цена: 29 900 сум / месяц</b>\n"
                       "(меньше 1 000 сум в день — дешевле чашки чая! ☕️)\n\n"
@@ -2942,6 +2973,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         # Oxiriga bot havolasini qo'shamiz (ulashsa - reklama)
         toliq_text = toliq + t(context, 'analyzed_footer')
+        # TZ: bepul foydalanuvchiga tahlil oxirida premiumga undash (diagnoz -> yechim)
+        _uid = query.from_user.id
+        if not (is_admin(_uid) or sub_active(_uid)):
+            toliq_text += ("\n\n🚀 <b>Tayyor hook, kuchaytirilgan asos va yakun "
+                           "variantlarini olish uchun videoni kuchaytiring.</b>")
         # Tugmalar: Qisqaga qaytish + audio (admin uchun qo'shimcha)
         kb = tahlil_tugmalari(context, aid, query.from_user.id, birinchi='qisqa')
         # O'SHA xabarni to'liqqa o'zgartiramiz (yangi xabar emas, kasha bo'lmasin).
@@ -2949,10 +2985,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(toliq_text) > 4000:
             toliq_text = toliq_text[:3950] + "\n\n… (to'liq tahlil)"
         try:
-            await query.edit_message_text(toliq_text, reply_markup=kb)
+            await query.edit_message_text(toliq_text, reply_markup=kb, parse_mode="HTML")
         except Exception:
             try:
-                await query.message.reply_text(toliq_text, reply_markup=kb)
+                await query.message.reply_text(toliq_text, reply_markup=kb, parse_mode="HTML")
             except Exception:
                 pass
     elif data == 'kab_osish':
@@ -6741,6 +6777,122 @@ async def vip_hammaga_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"✅ VIP berildi: {berildi} ta\n📨 Xabar yetdi: {xabar_yetdi} ta")
 
 
+async def avto_segment(context: ContextTypes.DEFAULT_TYPE):
+    """AVTOMATIK segment reaktivatsiya. Har kuni o'zi ishlaydi.
+    - Kuniga 400 tadan (Telegram xavfsiz)
+    - 21 kun himoya (takror yo'q)
+    - Video yuborsa (faol) - to'xtaydi
+    - Segmentga qarab: 4-7 kun (1 premium), 8-20 (2 premium), 20+ (2 premium)
+    ADMIN yoqadi/o'chiradi: avto_segment_aktiv sozlamasi."""
+    if get_setting("avto_segment_aktiv", "off") != "on":
+        return  # o'chirilgan
+    KUNLIK = 400
+    now = datetime.now()
+    now_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    chegara_21 = (now - timedelta(days=21)).strftime("%Y-%m-%d")
+    # Har user: oxirgi faollik + oxirgi segment xabar sanasi
+    rows = _db_execute(
+        "SELECT u.user_id, MAX(a.created) AS oxirgi, u.segment_xabar_sana "
+        "FROM users u LEFT JOIN analyses a ON u.user_id = a.user_id "
+        "WHERE COALESCE(u.bloklangan,FALSE) = FALSE "
+        "AND COALESCE(u.avto_sotuv_off,FALSE) = FALSE "
+        "AND (u.sub_until IS NULL OR u.sub_until < %s) "
+        "GROUP BY u.user_id, u.segment_xabar_sana", (now_s,), fetch='all') or []
+    # Nomzodlarni segmentga ajratamiz
+    nomzod = []  # (uid, segment_turi)
+    for uid, oxirgi, seg_sana in rows:
+        if not oxirgi:
+            continue  # hech ishlatmagan - avto emas (alohida /hech_xabar)
+        # 21 kun ichida segment xabar olgan - o'tkazamiz (takror himoya)
+        if seg_sana and seg_sana[:10] > chegara_21:
+            continue
+        try:
+            kun = (now.date() - datetime.strptime(oxirgi[:10], "%Y-%m-%d").date()).days
+        except Exception:
+            continue
+        if 4 <= kun <= 7:
+            nomzod.append((uid, "soviyapti"))
+        elif 8 <= kun <= 20:
+            nomzod.append((uid, "uxlagan"))
+        elif kun >= 21:
+            nomzod.append((uid, "olik"))
+    if not nomzod:
+        return
+    # Bugungi qism (400 ta) - uzoq kelmaganlar oldin (o'lik > uxlagan > soviyapti)
+    tartib = {"olik": 0, "uxlagan": 1, "soviyapti": 2}
+    nomzod.sort(key=lambda x: tartib[x[1]])
+    bugun_hedef = nomzod[:KUNLIK]
+    # Segment matnlari
+    def _xabar(segment):
+        if segment == "soviyapti":
+            return ("👋 <b>Salom! Qaytishga vaqt keldi 😊</b>\n\n"
+                    "Bir necha kun ko'rinmadingiz. Kontentingiz qanday ketyapti?\n\n"
+                    "🎁 <b>1 ta BEPUL Premium tahlil</b> — videongizni yuboring 🎬",
+                    "🎬 Bepul tahlil olish", "sovga_1")
+        elif segment == "uxlagan":
+            return ("🤍 <b>Sizni sog'indik!</b>\n\n"
+                    "Nega qaytmadingiz? Fikringiz muhim.\n\n"
+                    "🎁 <b>2 ta BEPUL Premium tahlil</b> sovg'a!\n"
+                    "AI 3 tayyor hook, yakun, tuzatish beradi 🚀",
+                    "🎁 2 bepul tahlil olish", "sovga_2")
+        else:  # olik
+            return ("🤍 <b>Sizni juda sog'indik!</b>\n\n"
+                    "Ko'p xabar yuborgan bo'lsak — kechirasiz 🙏\n"
+                    "InstaDoctor yangilandi — kuchli va kamroq xabar!\n\n"
+                    "🎁 <b>2 ta BEPUL Premium tahlil</b> — qaytib keling 🎬",
+                    "🎁 2 bepul tahlil olish", "sovga_2")
+    yuborildi = 0
+    bugun_s = now.strftime("%Y-%m-%d %H:%M:%S")
+    for uid, segment in bugun_hedef:
+        matn, tugma, cb = _xabar(segment)
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton(tugma, callback_data=cb)]])
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET segment_xabar_sana = %s WHERE user_id = %s", (bugun_s, uid))
+            yuborildi += 1
+        except Exception:
+            pass
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    # Adminlarga hisobot
+    qolgan = len(nomzod) - yuborildi
+    for aid in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                aid, f"🤖 Avto-segment: {yuborildi} ta yuborildi. Navbatda: {max(0, qolgan)} ta.",
+                parse_mode="HTML")
+        except Exception:
+            pass
+    logger.info(f"Avto-segment: {yuborildi} yuborildi")
+
+
+async def avto_segment_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: avtomatik segmentni yoqadi/o'chiradi.
+    /avto_segment on - yoqadi | /avto_segment off - o'chiradi | /avto_segment - holat"""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0].lower() if context.args else "")
+    if arg == "on":
+        set_setting("avto_segment_aktiv", "on")
+        await update.message.reply_text(
+            "✅ <b>Avto-segment YOQILDI</b>\n\n"
+            "Har kuni 15:00 da tizim o'zi:\n"
+            "• 4-7 kun → 1 premium\n"
+            "• 8-20 kun → 2 premium\n"
+            "• 20+ kun → 2 premium\n\n"
+            "Kuniga 400 ta. 21 kun himoya. Video yuborsa to'xtaydi.\n"
+            "O'chirish: /avto_segment off", parse_mode="HTML")
+    elif arg == "off":
+        set_setting("avto_segment_aktiv", "off")
+        await update.message.reply_text("🔴 Avto-segment O'CHIRILDI.")
+    else:
+        holat = get_setting("avto_segment_aktiv", "off")
+        await update.message.reply_text(
+            f"🤖 <b>Avto-segment holati: {holat}</b>\n\n"
+            f"Yoqish: /avto_segment on\n"
+            f"O'chirish: /avto_segment off", parse_mode="HTML")
+
+
 async def kunlik_foyda(context: ContextTypes.DEFAULT_TYPE):
     """Har kuni: FAOL bo'lmagan (lekin bloklamagan) userlarga foydali maslahat/trend.
     Sotuv EMAS - qiymat. Odam botga qaytsin, zerikmasin. Kunlar bo'yicha aylanadi."""
@@ -7355,6 +7507,59 @@ async def sotuv_reset_command(update, context):
         f"♻️ sotuv{key} tiklandi! Endi /sotuv{key} bosing — HAMMAGA qayta boradi.")
 
 
+async def tekin_elon_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: 'InstaDoctor endi har hafta 3 bepul' e'lonini HAMMAga (1 marta).
+    Kuchli hook. /tekin_elon - test | /tekin_elon YUBOR - hammaga"""
+    if not is_admin(update.effective_user.id):
+        return
+    arg = (context.args[0] if context.args else "").upper()
+    matn = ("🎁 <b>InstaDoctor ENDI TEKIN!</b>\n\n"
+            "Ha, <b>noto'g'ri eshitmadingiz</b> 😊\n"
+            "Endi har hafta <b>3 ta videongizni BEPUL</b> tahlil qiling — "
+            "oyda 12 tagacha! 🔥\n\n"
+            "Va bu — <b>eski InstaDoctor emas.</b> Botni butunlay yangiladik:\n"
+            "⚡️ Tahlil endi <b>aniqroq va halol</b> — bo'sh maqtov yo'q\n"
+            "🎣 Hookdan yakungacha — <b>qayerda tomoshabin yo'qolishini</b> aniq ko'rsatadi\n"
+            "🎬 Vizual, audio, mazmun — har biri alohida baholanadi\n\n"
+            "<b>Keyingi videongizni joylashdan OLDIN shu yerga tashlang</b> — "
+            "1 daqiqada bilasiz kuchli tomoni va zaif joyini.\n\n"
+            "Bu haftalik <b>3 ta bepul tahlilingiz allaqachon ochiq</b> 👇")
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🎬 Bepul tahlilni boshlash", callback_data="tahlil_video")]])
+    if arg != "YUBOR":
+        # Nechta odam oladi (yangilik_given yangi ustun - tekin_elon_given)
+        qolgan = _db_execute(
+            "SELECT COUNT(*) FROM users WHERE COALESCE(tekin_elon_given,FALSE) = FALSE "
+            "AND COALESCE(bloklangan,FALSE) = FALSE", fetch='one')
+        soni = qolgan[0] if qolgan else 0
+        await update.message.reply_text(
+            f"📢 <b>TEKIN E'LON (test)</b>\n\n"
+            f"Yuboriladi: <b>{soni}</b> ta (hali olmagan)\n\n"
+            f"Namuna:\n━━━━━━━━━━━\n{matn}\n━━━━━━━━━━━\n\n"
+            f"Yuborish: <code>/tekin_elon YUBOR</code>\n"
+            f"(sekin yuboriladi, kuniga limit yo'q - hammaga 1 marta)",
+            reply_markup=kb, parse_mode="HTML")
+        return
+    rows = _db_execute(
+        "SELECT user_id FROM users WHERE COALESCE(tekin_elon_given,FALSE) = FALSE "
+        "AND COALESCE(bloklangan,FALSE) = FALSE", fetch='all') or []
+    if not rows:
+        await update.message.reply_text("✅ Hammaga yuborilgan! Qolган yo'q.")
+        return
+    await update.message.reply_text(f"⏳ {len(rows)} ta odamga yuborilyapti... (sekin, kuting)")
+    yuborildi = 0
+    for (uid,) in rows:
+        try:
+            await context.bot.send_message(uid, matn, reply_markup=kb, parse_mode="HTML")
+            _db_execute("UPDATE users SET tekin_elon_given = TRUE WHERE user_id = %s", (uid,))
+            yuborildi += 1
+        except Exception:
+            _db_execute("UPDATE users SET tekin_elon_given = TRUE WHERE user_id = %s", (uid,))
+        if yuborildi % 25 == 0:
+            await asyncio.sleep(1)
+    await update.message.reply_text(f"✅ Yuborildi: {yuborildi} ta")
+
+
 async def tahlil_ai_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin: butun baza statistikasini AI tahlil qiladi va XULOSA + TAVSIYA beradi.
     Arzon (1 marta umumiy tahlil). /tahlil_ai"""
@@ -7584,7 +7789,7 @@ async def sotuv_issiq_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "🎁 <b>Faqat SIZGA — maxsus narx:</b>\n"
             "💎 Premium 1 oy: <s>29,900</s> → <b>19,900 so'm</b>\n\n"
             "⏰ Faqat 48 soat! Keyin 29,900 ga qaytadi.\n\n"
-            "Bir marta REKka chiqqan video bu pulni qoplaydi 🚀")
+            "Kuchli kontent bilan farqni o'zingiz ko'rasiz 🚀")
         await update.message.reply_text(
             f"🔥 <b>SOTUV — ISSIQ (5+ ishlatgan)</b>\n\n"
             f"Topildi: <b>{len(hedef)}</b> ta\n\n"
@@ -10711,34 +10916,33 @@ def main():
             def uz_to_utc(h):
                 return (h - UZ_OFF) % 24
             # Juma = day 4 (PTB: Monday=0 ... Friday=4)
-            jq.run_daily(juma_aksiya_boshla, time=_dtime(hour=uz_to_utc(10), minute=0), days=(4,))
-            jq.run_daily(juma_eslatma_yubor, time=_dtime(hour=uz_to_utc(20), minute=0), days=(4,))
-            # Kuydirish: shanba 00:30 UZ = juma 19:30 UTC (agar UZ_OFF=5)
-            jq.run_daily(juma_kuydir, time=_dtime(hour=uz_to_utc(0), minute=30), days=(5,))
-            # Drip (3 kunlik isitish) - har kuni 19:00 UZ (aktiv payt)
-            jq.run_daily(drip_kunlik, time=_dtime(hour=uz_to_utc(19), minute=0))
+            # JUMA AKSIYA O'CHIRILDI (ortiqcha tekin/kasha - kerak emas)
+            # jq.run_daily(juma_aksiya_boshla, ...)
+            # jq.run_daily(juma_eslatma_yubor, ...)
+            # jq.run_daily(juma_kuydir, ...)
+            # DRIP O'CHIRILDI (yangi user 2 premium oladi, drip kerak emas)
+            # jq.run_daily(drip_kunlik, ...)
             jq.run_daily(streak_eslatma, time=_dtime(hour=uz_to_utc(18), minute=30))
             jq.run_daily(streak_tozala, time=_dtime(hour=uz_to_utc(6), minute=0))
             jq.run_daily(vip_keyingi_bosqich, time=_dtime(hour=uz_to_utc(12), minute=0))
             jq.run_daily(vip_kunlik_turtki, time=_dtime(hour=uz_to_utc(20), minute=30))
             jq.run_daily(kunlik_obzor, time=_dtime(hour=uz_to_utc(9), minute=0))
             jq.run_daily(kunlik_foyda, time=_dtime(hour=uz_to_utc(13), minute=0), days=(0, 2, 4))
+            jq.run_daily(avto_segment, time=_dtime(hour=uz_to_utc(15), minute=0))
             # Obuna tugash eslatmasi (renewal) - har kuni 11:00 UZ
             jq.run_daily(obuna_qiymat_eslatma, time=_dtime(hour=uz_to_utc(11), minute=0))
             jq.run_daily(obuna_tugash_eslatma, time=_dtime(hour=uz_to_utc(11), minute=30))
             # Obuna tugadi -> adminga xabar (har kuni 11:05 UZ)
             jq.run_daily(obuna_tugadi_xabar, time=_dtime(hour=uz_to_utc(11), minute=5))
-            # Marafon: har kuni 11:00 kunlik xabar+bepul, 23:00 kuydir
-            jq.run_daily(marafon_kunlik, time=_dtime(hour=uz_to_utc(11), minute=0))
-            # Marafon eslatma (18:00) - ishlatmaganlarga kuyishдан oldin
-            jq.run_daily(marafon_eslatma, time=_dtime(hour=uz_to_utc(18), minute=0))
-            # Marafon 6,990 taklif (5/5 tugatib 19,900 olmaganlarga 48 soat keyin) - kuniga 12:30
-            jq.run_daily(marafon_6990_taklif, time=_dtime(hour=uz_to_utc(12), minute=30))
+            # MARAFON JOBLARI O'CHIRILDI (marafon off, ichida odam yo'q, keraksiz)
+            # jq.run_daily(marafon_kunlik, ...)
+            # jq.run_daily(marafon_eslatma, ...)
+            # jq.run_daily(marafon_6990_taklif, ...)
             # Eslatmalar (Reels suratga olish) - har soat tekshiradi
             jq.run_repeating(eslatma_yubor, interval=3600, first=120)
-            jq.run_daily(marafon_kuydir, time=_dtime(hour=uz_to_utc(23), minute=59))
-            # Avto-sotuv (12:00) + 3 mahal hisobot (09:00, 14:00, 21:00)
-            jq.run_daily(avto_sotuv, time=_dtime(hour=uz_to_utc(12), minute=0))
+            # jq.run_daily(marafon_kuydir, ...)
+            # AVTO-SOTUV O'CHIRILDI (avto_segment bilan urishmasin - bitta tizim yetadi)
+            # jq.run_daily(avto_sotuv, time=_dtime(hour=uz_to_utc(12), minute=0))
             jq.run_daily(hisobot_ertalab, time=_dtime(hour=uz_to_utc(9), minute=0))
             jq.run_daily(hisobot_tushlik, time=_dtime(hour=uz_to_utc(14), minute=0))
             jq.run_daily(hisobot_kech, time=_dtime(hour=uz_to_utc(21), minute=0))
@@ -10841,6 +11045,8 @@ def main():
     app.add_handler(CommandHandler("xabar_tarix", xabar_tarix_command))
     app.add_handler(CommandHandler("eksport", eksport_command))
     app.add_handler(CommandHandler("tahlil_ai", tahlil_ai_command))
+    app.add_handler(CommandHandler("tekin_elon", tekin_elon_command))
+    app.add_handler(CommandHandler("avto_segment", avto_segment_command))
     app.add_handler(CommandHandler("sotuv1b", sotuv1b_command))
     app.add_handler(CommandHandler("sotuv3", sotuv3_command))
     app.add_handler(CommandHandler("sotuv4", sotuv4_command))
