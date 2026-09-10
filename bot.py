@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from aiohttp import web
 from google import genai
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup,
-                      ReplyKeyboardMarkup, KeyboardButton, BotCommand, LabeledPrice)
+                      ReplyKeyboardMarkup, KeyboardButton, BotCommand, LabeledPrice, WebAppInfo)
 from telegram.ext import (Application, CommandHandler, MessageHandler, filters,
                           ContextTypes, CallbackQueryHandler, PreCheckoutQueryHandler)
 from pyrogram import Client as PyroClient
@@ -115,6 +115,7 @@ PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN", "")
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
 GCS_BUCKET = os.getenv("GCS_BUCKET", "instadoctor-videos-2026")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "")  # Mini app URL (masalan https://xxx.up.railway.app/app)
 _gcp_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", "")
 
 client = None
@@ -2268,10 +2269,15 @@ def tahlil_tugmalari(context, aid, uid, birinchi='full'):
 
 
 def main_keyboard(context, uid=None):
-    # 6 TUGMA (soddalashtirilgan): Tahlil qilish + Kabinet + Premium + Do'stlar + Yordam + Fikr
+    # 6 TUGMA: Tahlil + Kabinet(mini app) + Premium + Do'stlar + Yordam + Fikr
+    # Agar WEBAPP_URL sozlangan bo'lsa - "Ilovam" tugmasi mini app ochadi
+    if WEBAPP_URL:
+        _kab_btn = KeyboardButton("📱 Ilovam", web_app=WebAppInfo(url=WEBAPP_URL))
+    else:
+        _kab_btn = KeyboardButton(t(context, 'menu_kabinet'))
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(t(context, 'menu_tahlil')), KeyboardButton(t(context, 'menu_kabinet'))],
+            [KeyboardButton(t(context, 'menu_tahlil')), _kab_btn],
             [KeyboardButton(t(context, 'menu_premium')), KeyboardButton(t(context, 'menu_ref'))],
             [KeyboardButton(t(context, 'menu_help')), KeyboardButton(t(context, 'menu_fikr'))],
         ],
@@ -9593,94 +9599,374 @@ async def health_handler(request):
 
 # ===== MINI APP (Telegram WebApp) =====
 MINIAPP_HTML = """<!DOCTYPE html>
-<html lang="uz"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>InstaDoctor AI</title>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>InstaDoctor</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-:root{--bg:#0B0E14;--card:#151A23;--accent:#00E5A0;--accent2:#7C5CFF;--text:#EAF0F6;--muted:#8A94A6;--line:#232C38;--warn:#FFB020}
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding:16px 14px 40px;max-width:520px;margin:0 auto;-webkit-font-smoothing:antialiased}
-.hdr{display:flex;align-items:center;gap:12px;margin-bottom:18px}
-.logo{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
-.hdr h1{font-size:19px;font-weight:700;letter-spacing:-0.3px}.hdr p{font-size:12.5px;color:var(--muted);margin-top:2px}
-.status{border-radius:16px;padding:16px;margin-bottom:14px;background:linear-gradient(135deg,rgba(0,229,160,0.12),rgba(124,92,255,0.10));border:1px solid var(--line)}
-.status.free{background:linear-gradient(135deg,rgba(255,176,32,0.10),rgba(255,92,92,0.06))}
-.status .row{display:flex;justify-content:space-between;align-items:center}
-.status .badge{font-size:12px;font-weight:700;padding:5px 11px;border-radius:999px;background:var(--accent);color:#05221A}
-.status.free .badge{background:var(--warn);color:#2A1C00}
-.status .big{font-size:26px;font-weight:800;margin-top:10px;letter-spacing:-0.5px}.status .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:16px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:13px 10px;text-align:center}
-.stat .n{font-size:21px;font-weight:800;letter-spacing:-0.5px}.stat .n.accent{color:var(--accent)}.stat .l{font-size:10.5px;color:var(--muted);margin-top:3px}
-.sec-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.6px;margin:20px 4px 11px}
-.btn-primary{width:100%;border:none;border-radius:14px;padding:16px;background:linear-gradient(135deg,var(--accent),#00C98D);color:#05221A;font-size:16px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 20px rgba(0,229,160,0.25)}
-.btn-primary:active{transform:scale(0.985)}
-.tariffs{display:flex;flex-direction:column;gap:10px}
-.tariff{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:15px;cursor:pointer;position:relative}
-.tariff.best{border-color:var(--accent)}
-.tariff .tag{position:absolute;top:-9px;right:14px;background:var(--accent);color:#05221A;font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:999px}
-.tariff .row{display:flex;justify-content:space-between;align-items:flex-start}
-.tariff .name{font-size:15.5px;font-weight:700}.tariff .desc{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
-.tariff .price{font-size:19px;font-weight:800;white-space:nowrap}.tariff .price small{font-size:11px;color:var(--muted);font-weight:500}
-.tariff .old{font-size:12px;color:var(--muted);text-decoration:line-through;display:block;text-align:right}
-.feat{display:flex;flex-direction:column;gap:9px}
-.frow{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 13px}
-.frow .ic{font-size:19px;width:24px;text-align:center;flex-shrink:0}.frow .ft{font-size:13.5px;font-weight:600}.frow .fd{font-size:11.5px;color:var(--muted);margin-top:1px}.frow .lock{margin-left:auto;font-size:13px;color:var(--warn)}
-.foot{text-align:center;font-size:11px;color:var(--muted);margin-top:26px;line-height:1.6}
-</style></head><body>
-<div class="hdr"><div class="logo">\U0001FA7A</div><div><h1>InstaDoctor AI</h1><p id="greeting">Reels tahlilchingiz</p></div></div>
-<div id="statusCard" class="status"><div class="row"><span class="badge" id="statusBadge">PREMIUM</span><span class="sub" id="statusDate"></span></div><div class="big" id="statusBig">Premium faol</div><div class="sub" id="statusSub">Cheksiz tahlil ochiq</div></div>
-<div class="stats"><div class="stat"><div class="n accent" id="stTotal">0</div><div class="l">Tahlil</div></div><div class="stat"><div class="n" id="stBest">\u2014</div><div class="l">Eng yuqori</div></div><div class="stat"><div class="n" id="stBalance">0</div><div class="l">Bepul qoldi</div></div></div>
-<button class="btn-primary" onclick="pickVideo()">\U0001F3AC Video tahlil qilish</button>
-<input type="file" id="vfile" accept="video/*" style="display:none">
-<div id="vmsg" style="font-size:12.5px;color:var(--muted);text-align:center;margin-top:8px;display:none"></div>
-<div class="sec-title">Premium imkoniyatlar</div>
-<div class="feat">
-<div class="frow"><span class="ic">\u267E\uFE0F</span><div><div class="ft">Cheksiz tahlil</div><div class="fd">Limitsiz video va profil</div></div><span class="lock" id="l1"></span></div>
-<div class="frow"><span class="ic">\U0001F525</span><div><div class="ft">Qanday yaxshilash?</div><div class="fd">Hook + 3 ta tayyor variant</div></div><span class="lock" id="l2"></span></div>
-<div class="frow"><span class="ic">\U0001F399\uFE0F</span><div><div class="ft">Ovozli maslahat</div><div class="fd">Tahlilni eshiting</div></div><span class="lock" id="l3"></span></div>
-<div class="frow"><span class="ic">\U0001F4CA</span><div><div class="ft">Profil tahlili</div><div class="fd">Shaxsiy strategiya</div></div><span class="lock" id="l4"></span></div>
+:root{
+--bg:#0A0A12;--bg2:#12101F;--card:#1A1826;--card2:#221F33;
+--ink:#F5F3FF;--mut:#9A94B8;--line:#2C2842;
+--brand:#8B5CFF;--brand2:#C13EFF;--glow:#A855F7;
+--gold:#FFB84D;--green:#3DDC97;--red:#FF5C7A;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif}
+body{background:radial-gradient(140% 100% at 50% 0%,#1C1533 0%,var(--bg) 55%);color:var(--ink);min-height:100vh;padding:14px 14px 90px;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.wrap{max-width:460px;margin:0 auto}
+
+/* HEADER */
+.top{display:flex;align-items:center;gap:11px;padding:6px 2px 16px}
+.av{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 6px 20px rgba(139,92,255,0.4)}
+.top .nm{font-size:17px;font-weight:700;letter-spacing:-0.3px}
+.top .sub{font-size:12px;color:var(--mut);margin-top:1px}
+.plan{margin-left:auto;font-size:11px;font-weight:700;padding:6px 12px;border-radius:999px;letter-spacing:0.3px}
+.plan.free{background:rgba(255,184,77,0.14);color:var(--gold);border:1px solid rgba(255,184,77,0.25)}
+.plan.pro{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;box-shadow:0 4px 14px rgba(139,92,255,0.4)}
+
+/* HERO STAT */
+.hero{background:linear-gradient(150deg,var(--card2),var(--card));border:1px solid var(--line);border-radius:22px;padding:20px;margin-bottom:12px;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;top:-40%;right:-20%;width:200px;height:200px;background:radial-gradient(circle,rgba(168,85,247,0.25),transparent 70%);pointer-events:none}
+.hero .lvlrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.hero .lvl{display:flex;align-items:center;gap:9px}
+.hero .lvl .emo{font-size:30px}
+.hero .lvl .txt .a{font-size:16px;font-weight:700}
+.hero .lvl .txt .b{font-size:11.5px;color:var(--mut);margin-top:1px}
+.hero .xp{text-align:right}
+.hero .xp .n{font-size:22px;font-weight:800;background:linear-gradient(135deg,var(--brand),var(--glow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero .xp .l{font-size:10.5px;color:var(--mut);letter-spacing:0.5px}
+.bar{height:8px;border-radius:999px;background:rgba(255,255,255,0.07);overflow:hidden;margin-bottom:7px}
+.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand2));box-shadow:0 0 12px rgba(139,92,255,0.6);transition:width 0.8s cubic-bezier(.2,.9,.3,1)}
+.hero .nx{font-size:11.5px;color:var(--mut)}
+
+/* STAT ROW */
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:12px}
+.st{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 10px;text-align:center}
+.st .n{font-size:20px;font-weight:800}
+.st .n.fire{color:var(--gold)}.st .n.grn{color:var(--green)}.st .n.br{color:var(--glow)}
+.st .l{font-size:10.5px;color:var(--mut);margin-top:3px}
+
+/* UPLOAD */
+.up{background:linear-gradient(150deg,rgba(139,92,255,0.14),rgba(193,62,255,0.06));border:1.5px dashed rgba(139,92,255,0.4);border-radius:20px;padding:26px 18px;text-align:center;margin-bottom:12px;cursor:pointer;transition:transform .15s,border-color .2s}
+.up:active{transform:scale(0.98)}
+.up .ic{font-size:38px;margin-bottom:8px}
+.up .t{font-size:15.5px;font-weight:700;margin-bottom:4px}
+.up .d{font-size:12px;color:var(--mut);line-height:1.5}
+.up .lim{display:inline-block;margin-top:9px;font-size:11px;font-weight:600;color:var(--brand);background:rgba(139,92,255,0.12);padding:4px 11px;border-radius:999px}
+#file{display:none}
+
+/* PROGRESS */
+.prog{display:none;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px 18px;margin-bottom:12px;text-align:center}
+.prog.on{display:block}
+.spin{width:44px;height:44px;margin:0 auto 14px;border:3px solid rgba(139,92,255,0.2);border-top-color:var(--brand);border-radius:50%;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.prog .step{font-size:14px;font-weight:600;min-height:20px;transition:opacity .3s}
+.prog .pct{font-size:12px;color:var(--mut);margin-top:6px}
+.upbar{height:6px;border-radius:999px;background:rgba(255,255,255,0.07);overflow:hidden;margin-top:12px}
+.upbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .3s}
+
+/* SECTION TITLE */
+.sec{display:flex;align-items:center;justify-content:space-between;padding:8px 4px;margin-top:6px}
+.sec h2{font-size:14px;font-weight:700;letter-spacing:-0.2px}
+.sec a{font-size:12px;color:var(--brand);font-weight:600}
+
+/* HISTORY */
+.hist{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.hi{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.hi .ball{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0}
+.hi .info{flex:1;min-width:0}
+.hi .info .a{font-size:14px;font-weight:600}
+.hi .info .b{font-size:11.5px;color:var(--mut);margin-top:1px}
+.hi .arw{color:var(--mut);font-size:18px}
+.empty{text-align:center;padding:30px 20px;color:var(--mut);font-size:13px;line-height:1.6}
+.empty .e{font-size:34px;margin-bottom:10px;opacity:0.5}
+
+/* PREMIUM CARD */
+.pro-card{background:linear-gradient(150deg,#2A1F4D,#1E1636);border:1px solid rgba(139,92,255,0.35);border-radius:20px;padding:20px;margin-bottom:12px;position:relative;overflow:hidden}
+.pro-card::after{content:"";position:absolute;bottom:-30%;left:-10%;width:180px;height:180px;background:radial-gradient(circle,rgba(193,62,255,0.2),transparent 70%)}
+.pro-card .h{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.pro-card .h .t{font-size:16px;font-weight:800}
+.pro-card .h .pill{margin-left:auto;font-size:10.5px;font-weight:700;color:var(--gold);background:rgba(255,184,77,0.15);padding:3px 9px;border-radius:999px}
+.pro-card ul{list-style:none;margin-bottom:16px}
+.pro-card li{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.5;margin-bottom:8px;color:#E4DFF7}
+.pro-card li .i{flex-shrink:0;font-size:14px}
+.pro-card .price{display:flex;align-items:baseline;gap:8px;margin-bottom:14px}
+.pro-card .price .now{font-size:26px;font-weight:800}
+.pro-card .price .per{font-size:13px;color:var(--mut)}
+.pro-card .price .day{margin-left:auto;font-size:11px;color:var(--green);background:rgba(61,220,151,0.12);padding:4px 10px;border-radius:999px;font-weight:600}
+
+/* BUTTON */
+.btn{display:block;width:100%;border:none;border-radius:15px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .12s;font-family:inherit}
+.btn:active{transform:scale(0.98)}
+.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;box-shadow:0 6px 20px rgba(139,92,255,0.45)}
+.btn.ghost{background:var(--card2);color:var(--ink);border:1px solid var(--line)}
+
+/* TABBAR */
+.tabs{position:fixed;bottom:0;left:0;right:0;background:rgba(12,10,22,0.92);backdrop-filter:blur(20px);border-top:1px solid var(--line);display:flex;padding:8px 6px calc(8px + env(safe-area-inset-bottom));z-index:50}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px;color:var(--mut);font-size:10.5px;font-weight:600;cursor:pointer;transition:color .2s}
+.tab.on{color:var(--brand)}
+.tab .ic{font-size:20px}
+
+.page{display:none}.page.on{display:block}
+.skl{background:linear-gradient(90deg,var(--card),var(--card2),var(--card));background-size:200% 100%;animation:sh 1.4s infinite;border-radius:12px}
+@keyframes sh{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="top">
+<div class="av">🩺</div>
+<div>
+<div class="nm" id="uname">InstaDoctor</div>
+<div class="sub" id="usub">Yuklanmoqda…</div>
 </div>
-<div id="tariffSection"><div class="sec-title">Tariflar</div><div class="tariffs">
-<div class="tariff best" onclick="sendAction('buy_sub')"><div class="tag">ENG MASHHUR</div><div class="row"><div><div class="name">1 oylik Premium</div><div class="desc">Cheksiz tahlil + barcha imkoniyatlar</div></div><div><span class="old" id="subOld"></span><div class="price" id="subPrice">29 900<small> so'm</small></div></div></div></div>
-<div class="tariff" onclick="sendAction('buy_one')"><div class="row"><div><div class="name">1 ta tahlil</div><div class="desc">Bir martalik chuqur tahlil</div></div><div class="price">5 090<small> so'm</small></div></div></div>
-</div></div>
-<div class="foot">InstaDoctor AI \u2014 Instagram algoritmlari bo'yicha tahlil<br>Yordam: @Nurislom_admin</div>
+<div class="plan free" id="plan">FREE</div>
+</div>
+
+<!-- BOSH SAHIFA -->
+<div class="page on" id="p-home">
+<div class="hero">
+<div class="lvlrow">
+<div class="lvl"><span class="emo" id="d-emo">🌱</span>
+<div class="txt"><div class="a" id="d-nom">—</div><div class="b">Sizning darajangiz</div></div></div>
+<div class="xp"><div class="n" id="d-xp">0</div><div class="l">XP</div></div>
+</div>
+<div class="bar"><i id="d-bar" style="width:0%"></i></div>
+<div class="nx" id="d-next">Keyingi darajaga…</div>
+</div>
+
+<div class="stats">
+<div class="st"><div class="n fire" id="s-streak">0</div><div class="l">🔥 Streak</div></div>
+<div class="st"><div class="n grn" id="s-free">0/3</div><div class="l">Haftalik bepul</div></div>
+<div class="st"><div class="n br" id="s-total">0</div><div class="l">Jami tahlil</div></div>
+</div>
+
+<label class="up" for="file">
+<div class="ic">🎬</div>
+<div class="t">Video yuklash</div>
+<div class="d">Reels yoki Shorts videongizni tashlang —<br>AI tahlil qilib beradi</div>
+<div class="lim">📁 1 GB gacha</div>
+</label>
+<input type="file" id="file" accept="video/*">
+
+<div class="prog" id="prog">
+<div class="spin"></div>
+<div class="step" id="pstep">Video yuklanmoqda…</div>
+<div class="pct" id="ppct">0%</div>
+<div class="upbar"><i id="pbar"></i></div>
+</div>
+
+<div class="sec"><h2>So'nggi tahlillar</h2><a id="see-all">Barchasi</a></div>
+<div class="hist" id="hist-home"></div>
+</div>
+
+<!-- TARIX -->
+<div class="page" id="p-hist">
+<div class="sec"><h2>📂 Tahlillar tarixi</h2></div>
+<div class="hist" id="hist-full"></div>
+</div>
+
+<!-- PREMIUM -->
+<div class="page" id="p-pro">
+<div class="pro-card">
+<div class="h"><span style="font-size:20px">💎</span><span class="t">Premium</span><span class="pill">ENG MASHHUR</span></div>
+<ul>
+<li><span class="i">🎣</span><span><b>Tayyor material</b> — AI 3 ta tayyor hook, asos va yakun yozadi. Nusxa olasiz!</span></li>
+<li><span class="i">♾</span><span><b>Cheksiz tahlil</b> — haftalik limit yo'q, kuniga 10 ta ham</span></li>
+<li><span class="i">📂</span><span><b>Chuqur hisobot</b> — qaysi mavzu sizga ishlashini aytadi</span></li>
+<li><span class="i">💬</span><span><b>AI mutaxassis 24/7</b> — har savolga javob</span></li>
+</ul>
+<div class="price"><span class="now">29 900</span><span class="per">so'm/oy</span><span class="day">☕️ kuniga 1000</span></div>
+<button class="btn primary" onclick="pay()">💎 Premium olish</button>
+</div>
+<div class="empty" style="font-size:12px">SMM mutaxassis oyiga 2-3 mln oladi.<br>InstaDoctor — 100 barobar arzon 🚀</div>
+</div>
+
+</div>
+
+<div class="tabs">
+<div class="tab on" data-p="home"><span class="ic">🏠</span>Bosh</div>
+<div class="tab" data-p="hist"><span class="ic">📂</span>Tarix</div>
+<div class="tab" data-p="pro"><span class="ic">💎</span>Premium</div>
+</div>
+
 <script>
-const tg=window.Telegram?window.Telegram.WebApp:null;if(tg){tg.ready();tg.expand();}
-const p=new URLSearchParams(location.search);
-const isPremium=p.get('premium')==='1';const total=p.get('total')||'0';const best=p.get('best')||'\u2014';const balance=p.get('balance')||'0';const name=p.get('name')||'';const price=p.get('price')||'29 900';const oldPrice=p.get('old')||'';const subUntil=p.get('until')||'';
-if(name)document.getElementById('greeting').textContent=name+', xush kelibsiz!';
-document.getElementById('stTotal').textContent=total;document.getElementById('stBest').textContent=best==='\u2014'?'\u2014':best+'%';document.getElementById('stBalance').textContent=balance;
-const card=document.getElementById('statusCard'),badge=document.getElementById('statusBadge'),big=document.getElementById('statusBig'),sub=document.getElementById('statusSub'),sdate=document.getElementById('statusDate');
-if(isPremium){card.classList.remove('free');badge.textContent='PREMIUM';big.textContent='Premium faol \u2728';sub.textContent='Barcha imkoniyatlar ochiq';if(subUntil)sdate.textContent='Tugaydi: '+subUntil;document.getElementById('tariffSection').style.display='none';['l1','l2','l3','l4'].forEach(id=>document.getElementById(id).textContent='\u2713');}
-else{card.classList.add('free');badge.textContent='BEPUL';big.textContent='Bepul rejim';sub.textContent=balance>0?balance+' ta bepul tahlil qoldi':'Bepul tahlillar tugadi';['l1','l2','l3','l4'].forEach(id=>document.getElementById(id).textContent='\U0001F512');document.getElementById('subPrice').innerHTML=price+"<small> so'm</small>";if(oldPrice)document.getElementById('subOld').textContent=oldPrice+" so'm";}
-function sendAction(action){if(tg){tg.HapticFeedback&&tg.HapticFeedback.impactOccurred('medium');tg.sendData(JSON.stringify({action:action}));tg.close();}else{alert('Telegram ichida ishlaydi: '+action);}}
-var LIMIT_MB=(isPremium?500:100);
-function pickVideo(){document.getElementById('vfile').click();}
-document.getElementById('vfile').addEventListener('change',function(e){
-  var f=e.target.files[0];if(!f)return;
-  var mb=f.size/(1024*1024);
-  var msg=document.getElementById('vmsg');msg.style.display='block';
-  if(mb>LIMIT_MB){
-    msg.style.color='#FFB020';
-    msg.innerHTML='\u26A0\uFE0F Bu video katta ('+mb.toFixed(1)+' MB). '+(isPremium?'Premium\\'da 500 MB gacha mumkin. ':'Bepul 100 MB gacha. ')+'Kattaroq videolarni to\\'g\\'ridan botga tashlang \u2014 ilova yopiladi.';
-    if(tg){tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred('warning');setTimeout(function(){tg.sendData(JSON.stringify({action:'analyze'}));tg.close();},2200);}
-  }else{
-    msg.style.color='#00E5A0';
-    msg.innerHTML='\u2705 Video tanlandi ('+mb.toFixed(1)+' MB). Yuklanmoqda... \u23F3';
-    if(tg){tg.HapticFeedback&&tg.HapticFeedback.impactOccurred('medium');}
-    var uid=(tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user)?tg.initDataUnsafe.user.id:p.get('uid');
-    if(!uid){msg.style.color='#FF5C5C';msg.innerHTML='\u274C Foydalanuvchi aniqlanmadi. Botga to\\'g\\'ridan tashlang.';return;}
-    var fd=new FormData();fd.append('user_id',uid);fd.append('video',f);
-    fetch('/upload',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(d){
-      if(d.ok){msg.style.color='#00E5A0';msg.innerHTML='\u2705 Yuklandi! Tahlil botda boshlandi \u2014 ilova yopilmoqda...';if(tg){tg.HapticFeedback&&tg.HapticFeedback.notificationOccurred('success');setTimeout(function(){tg.close();},1600);}}
-      else{msg.style.color='#FF5C5C';msg.innerHTML='\u274C Xato: '+(d.error||'')+'. Botga to\\'g\\'ridan tashlang.';}
-    }).catch(function(){msg.style.color='#FF5C5C';msg.innerHTML='\u274C Yuklab bo\\'lmadi. Botga to\\'g\\'ridan tashlang.';});
-  }
+var tg=window.Telegram?window.Telegram.WebApp:null;
+if(tg){tg.ready();tg.expand();try{tg.setHeaderColor('#0A0A12');tg.setBackgroundColor('#0A0A12');}catch(e){}}
+var UID=(tg&&tg.initDataUnsafe&&tg.initDataUnsafe.user)?tg.initDataUnsafe.user.id:(new URLSearchParams(location.search).get('uid')||'');
+
+function hap(t){try{tg&&tg.HapticFeedback&&tg.HapticFeedback.impactOccurred(t||'medium');}catch(e){}}
+function ballColor(b){if(b>=70)return'var(--green)';if(b>=45)return'var(--gold)';return'var(--red)';}
+function ballBg(b){if(b>=70)return'rgba(61,220,151,0.15)';if(b>=45)return'rgba(255,184,77,0.15)';return'rgba(255,92,122,0.15)';}
+
+// TAB SWITCH
+document.querySelectorAll('.tab').forEach(function(t){
+  t.onclick=function(){hap('light');
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.page').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    document.getElementById('p-'+t.dataset.p).classList.add('on');
+  };
 });
-</script></body></html>"""
+document.getElementById('see-all').onclick=function(){document.querySelector('.tab[data-p=hist]').click();};
+
+// LOAD USER
+function loadUser(){
+  if(!UID)return;
+  fetch('/api/user?uid='+UID).then(r=>r.json()).then(function(d){
+    if(!d.ok)return;
+    document.getElementById('uname').textContent=d.ism;
+    document.getElementById('usub').textContent=d.is_premium?'💎 Premium azo':'Bepul foydalanuvchi';
+    var pl=document.getElementById('plan');
+    if(d.is_premium){pl.className='plan pro';pl.textContent='PREMIUM';}
+    else{pl.className='plan free';pl.textContent='FREE';}
+    document.getElementById('d-emo').textContent=d.daraja_emoji;
+    document.getElementById('d-nom').textContent=d.daraja_nom;
+    document.getElementById('d-xp').textContent=d.xp;
+    document.getElementById('d-bar').style.width=d.daraja_progress+'%';
+    document.getElementById('d-next').textContent=d.keyingi_xp>0?('Keyingi darajaga '+d.keyingi_xp+' XP'):'Eng yuqori daraja! 🏆';
+    document.getElementById('s-streak').textContent=d.streak;
+    document.getElementById('s-free').textContent=d.is_premium?'∞':(d.haftalik_qoldi+'/'+d.haftalik_jami);
+    document.getElementById('s-total').textContent=d.tahlil_soni;
+  }).catch(function(){});
+}
+
+// LOAD HISTORY
+function loadHist(){
+  if(!UID)return;
+  fetch('/api/history?uid='+UID).then(r=>r.json()).then(function(d){
+    if(!d.ok)return;
+    var h=d.tahlillar||[];
+    var mk=function(list){
+      if(!list.length)return'<div class="empty"><div class="e">🎬</div>Hali tahlil yoq.<br>Birinchi videongizni yuklang!</div>';
+      return list.map(function(t){
+        return '<div class="hi"><div class="ball" style="color:'+ballColor(t.ball)+';background:'+ballBg(t.ball)+'">'+t.ball+'</div>'+
+          '<div class="info"><div class="a">Sifat balli: '+t.ball+'/100</div><div class="b">'+t.sana+'</div></div>'+
+          '<div class="arw">›</div></div>';
+      }).join('');
+    };
+    document.getElementById('hist-home').innerHTML=mk(h.slice(0,4));
+    document.getElementById('hist-full').innerHTML=mk(h);
+  }).catch(function(){});
+}
+
+// UPLOAD
+document.getElementById('file').onchange=function(e){
+  var f=e.target.files[0];if(!f)return;
+  if(!UID){alert('Botga tashlang');return;}
+  var prog=document.getElementById('prog');prog.classList.add('on');
+  document.querySelector('.up').style.display='none';
+  hap('medium');
+  var steps=['📥 Video qabul qilindi','🎬 Kadrlar tekshirilmoqda…','🎙 Audio tinglanmoqda…','🧠 Hook, mazmun tahlil qilinmoqda…','📊 Natija tayyorlanmoqda…'];
+  var si=0;
+  var stepTimer=setInterval(function(){si=(si+1)%steps.length;document.getElementById('pstep').textContent=steps[si];},2500);
+  var fd=new FormData();fd.append('user_id',UID);fd.append('video',f);
+  var xhr=new XMLHttpRequest();xhr.open('POST','/upload');
+  xhr.upload.onprogress=function(ev){if(ev.lengthComputable){var p=Math.round(ev.loaded/ev.total*100);document.getElementById('ppct').textContent='Yuklandi '+p+'%';document.getElementById('pbar').style.width=p+'%';}};
+  xhr.onload=function(){
+    clearInterval(stepTimer);
+    try{var d=JSON.parse(xhr.responseText);}catch(e){var d={};}
+    if(d.ok){
+      document.getElementById('pstep').textContent='✅ Yuborildi! Tahlil botda tayyor boladi';
+      document.getElementById('ppct').textContent='';
+      hap('heavy');
+      setTimeout(function(){if(tg){tg.close();}},1800);
+    }else{
+      document.getElementById('pstep').textContent='❌ Xato: '+(d.error||'qayta urining');
+    }
+  };
+  xhr.onerror=function(){clearInterval(stepTimer);document.getElementById('pstep').textContent='❌ Yuklab bolmadi';};
+  xhr.send(fd);
+};
+
+function pay(){hap('medium');if(tg){tg.sendData(JSON.stringify({action:'buy_sub'}));tg.close();}else{alert('Premium: botda tolov oynasi ochiladi');}}
+
+loadUser();loadHist();
+</script>
+</body></html>"""
+
+
+
+async def api_user_handler(request):
+    """Mini App uchun: foydalanuvchi ma'lumotlari (kabinet) JSON.
+    XP, daraja, streak, haftalik bepul, premium holati, tahlillar soni."""
+    try:
+        uid = request.query.get("uid", "")
+        try:
+            uid = int(uid)
+        except Exception:
+            return web.json_response({"ok": False, "error": "uid xato"}, status=400)
+        # Asosiy ma'lumotlar
+        row = _db_execute(
+            "SELECT COALESCE(xp,0), COALESCE(streak_kun,0), first_name, sub_until, "
+            "COALESCE(premium_balance,0) FROM users WHERE user_id = %s", (uid,), fetch='one')
+        if not row:
+            return web.json_response({"ok": False, "error": "user topilmadi"}, status=404)
+        xp, streak, ism, sub_until, prem_balans = row
+        daraja_raqam, daraja_nom, daraja_emoji, joriy_min, keyingi_min = daraja_aniqla(xp)
+        # Premium holati
+        now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        is_premium = bool(sub_until and sub_until > now_s)
+        # Haftalik bepul qoldi
+        haftalik_qoldi = oddiy_limit_qoldi(uid)
+        # Tahlillar soni
+        tahlil_row = _db_execute("SELECT COUNT(*) FROM analyses WHERE user_id = %s", (uid,), fetch='one')
+        tahlil_soni = tahlil_row[0] if tahlil_row else 0
+        # Streak (haqiqiy)
+        streak_real = streak_haqiqiy(uid)
+        # Daraja progress
+        if keyingi_min:
+            progress = int((xp - joriy_min) / (keyingi_min - joriy_min) * 100) if keyingi_min > joriy_min else 100
+            keyingi_xp = keyingi_min - xp
+        else:
+            progress = 100
+            keyingi_xp = 0
+        return web.json_response({
+            "ok": True,
+            "ism": ism or "Bloger",
+            "xp": xp,
+            "daraja_raqam": daraja_raqam,
+            "daraja_nom": daraja_nom,
+            "daraja_emoji": daraja_emoji,
+            "daraja_progress": progress,
+            "keyingi_xp": keyingi_xp,
+            "streak": streak_real,
+            "is_premium": is_premium,
+            "premium_balans": prem_balans,
+            "haftalik_qoldi": haftalik_qoldi,
+            "haftalik_jami": ODDIY_HAFTALIK_LIMIT,
+            "tahlil_soni": tahlil_soni,
+        })
+    except Exception as e:
+        logger.error(f"api_user xato: {e}")
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_history_handler(request):
+    """Mini App uchun: foydalanuvchi tahlillari tarixi JSON."""
+    try:
+        uid = request.query.get("uid", "")
+        try:
+            uid = int(uid)
+        except Exception:
+            return web.json_response({"ok": False, "error": "uid xato"}, status=400)
+        rows = _db_execute(
+            "SELECT id, created, foiz FROM analyses "
+            "WHERE user_id = %s ORDER BY id DESC LIMIT 30", (uid,), fetch='all') or []
+        tahlillar = []
+        for r in rows:
+            aid, created, foiz = r
+            tahlillar.append({
+                "id": aid,
+                "sana": created[:10] if created else "",
+                "ball": foiz or 0,
+            })
+        return web.json_response({"ok": True, "tahlillar": tahlillar})
+    except Exception as e:
+        logger.error(f"api_history xato: {e}")
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
 
 
 async def miniapp_handler(request):
@@ -9831,6 +10117,8 @@ async def run_web_server():
     web_app.router.add_get("/", health_handler)
     web_app.router.add_get("/health", health_handler)
     web_app.router.add_get("/app", miniapp_handler)
+    web_app.router.add_get("/api/user", api_user_handler)
+    web_app.router.add_get("/api/history", api_history_handler)
     web_app.router.add_post("/upload", upload_handler)
     runner = web.AppRunner(web_app)
     await runner.setup()
